@@ -170,7 +170,9 @@ struct FolderDetailView: View {
                             playEpisode(item.episode)
                         }
                         .contextMenu {
-                            episodeContextMenu(for: item.episode)
+                            EpisodeContextMenu(episode: item.episode) {
+                                playEpisode(item.episode)
+                            }
                         }
                         .swipeActions(edge: .leading) {
                             Button {
@@ -259,65 +261,6 @@ struct FolderDetailView: View {
             return "Star episodes to see them here"
         } else {
             return "No episodes available"
-        }
-    }
-
-    // MARK: - Context Menu
-
-    @ViewBuilder
-    private func episodeContextMenu(for episode: Episode) -> some View {
-        Button {
-            playEpisode(episode)
-        } label: {
-            Label("Play", systemImage: "play")
-        }
-
-        Button {
-            QueueManager.shared.playNext(episode)
-        } label: {
-            Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
-        }
-
-        Button {
-            QueueManager.shared.addToQueue(episode)
-        } label: {
-            Label("Add to Queue", systemImage: "text.badge.plus")
-        }
-
-        Divider()
-
-        Button {
-            episode.isStarred.toggle()
-            if episode.isStarred && episode.localFilePath == nil {
-                DownloadManager.shared.download(episode)
-            }
-        } label: {
-            Label(
-                episode.isStarred ? "Unstar" : "Star",
-                systemImage: episode.isStarred ? "star.slash" : "star"
-            )
-        }
-
-        Divider()
-
-        if episode.localFilePath != nil {
-            Button(role: .destructive) {
-                DownloadManager.shared.deleteDownload(episode)
-            } label: {
-                Label("Delete Download", systemImage: "trash")
-            }
-        } else if episode.downloadProgress != nil {
-            Button {
-                DownloadManager.shared.cancelDownload(episode)
-            } label: {
-                Label("Cancel Download", systemImage: "xmark.circle")
-            }
-        } else {
-            Button {
-                DownloadManager.shared.download(episode)
-            } label: {
-                Label("Download", systemImage: "arrow.down.circle")
-            }
         }
     }
 

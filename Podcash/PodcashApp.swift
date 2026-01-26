@@ -33,6 +33,9 @@ struct PodcashApp: App {
                     DownloadObserver.shared.setModelContext(context)
                     QueueManager.shared.setModelContext(context)
                     StatsService.shared.setModelContext(context)
+
+                    // Migrate old absolute paths to relative filenames
+                    DownloadManager.shared.migrateLocalPaths(context: context)
                 }
                 .task {
                     // Sync on app launch if iCloud is available

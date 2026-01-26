@@ -214,7 +214,7 @@ struct NowPlayingView: View {
                     }
 
                     // Share button
-                    ShareLink(item: shareText(for: episode)) {
+                    ShareLink(item: shareURL(for: episode)) {
                         Image(systemName: "square.and.arrow.up")
                             .font(.title2)
                             .foregroundStyle(.secondary)
@@ -292,13 +292,8 @@ struct NowPlayingView: View {
         return "gobackward.15"
     }
 
-    private func shareText(for episode: Episode) -> String {
-        var text = "🎧 \(episode.title)"
-        if let podcast = episode.podcast {
-            text += "\n\(podcast.title)"
-            text += "\n\n\(podcast.shareURL)"
-        }
-        return text
+    private func shareURL(for episode: Episode) -> String {
+        episode.podcast?.shareURL ?? episode.audioURL
     }
 }
 

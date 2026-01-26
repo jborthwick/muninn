@@ -67,6 +67,7 @@ final class FeedService {
 
         let existingGUIDs = Set(podcast.episodes.map { $0.guid })
         var addedCount = 0
+        var newlyAddedEpisodes: [Episode] = []
 
         for episode in newEpisodes {
             if !existingGUIDs.contains(episode.guid) {
@@ -74,10 +75,22 @@ final class FeedService {
                 podcast.episodes.append(episode)
                 context.insert(episode)
                 addedCount += 1
+                newlyAddedEpisodes.append(episode)
             }
         }
 
         podcast.lastRefreshed = Date()
+
+        // Auto-download new episodes if enabled for this podcast
+        if podcast.autoDownloadNewEpisodes {
+            for episode in newlyAddedEpisodes {
+                DownloadManager.shared.download(episode)
+            }
+
+            // Enforce per-podcast limit after downloads start
+            DownloadCleanupService.shared.enforcePerPodcastLimit(for: podcast, context: context)
+        }
+
         return addedCount
     }
 

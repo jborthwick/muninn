@@ -15,6 +15,8 @@ struct PodcastDetailView: View {
     @State private var isRefreshing = false
     @State private var showFolderPicker = false
     @State private var showUnsubscribeConfirmation = false
+    @State private var shareText: String?
+    @State private var isPreparingShare = false
 
     var body: some View {
         List {
@@ -73,6 +75,24 @@ struct PodcastDetailView: View {
                     )
 
                     Spacer()
+
+                    // Auto-download toggle
+                    Button {
+                        podcast.autoDownloadNewEpisodes.toggle()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: podcast.autoDownloadNewEpisodes ? "antenna.radiowaves.left.and.right" : "antenna.radiowaves.left.and.right.slash")
+                            Text("Auto")
+                                .font(.caption)
+                        }
+                        .font(.subheadline)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(podcast.autoDownloadNewEpisodes ? Color.blue.opacity(0.2) : Color.secondary.opacity(0.1))
+                        .foregroundStyle(podcast.autoDownloadNewEpisodes ? .blue : .secondary)
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
                 }
             }
 
@@ -91,7 +111,9 @@ struct PodcastDetailView: View {
                                 playEpisode(episode)
                             }
                             .contextMenu {
-                                episodeContextMenu(for: episode)
+                                EpisodeContextMenu(episode: episode) {
+                                    playEpisode(episode)
+                                }
                             }
                             .swipeActions(edge: .leading) {
                                 Button {
@@ -135,9 +157,18 @@ struct PodcastDetailView: View {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 16) {
                     // Share button
-                    ShareLink(item: podcastShareText) {
-                        Image(systemName: "square.and.arrow.up")
+                    Button {
+                        Task {
+                            await prepareAndShare()
+                        }
+                    } label: {
+                        if isPreparingShare {
+                            ProgressView()
+                        } else {
+                            Image(systemName: "square.and.arrow.up")
+                        }
                     }
+                    .disabled(isPreparingShare)
 
                     // Folder button
                     Button {
@@ -155,6 +186,14 @@ struct PodcastDetailView: View {
                             .foregroundStyle(.green)
                     }
                 }
+            }
+        }
+        .sheet(isPresented: Binding(
+            get: { shareText != nil },
+            set: { if !$0 { shareText = nil } }
+        )) {
+            if let text = shareText {
+                ShareSheet(items: [text])
             }
         }
         .confirmationDialog(
@@ -176,6 +215,14 @@ struct PodcastDetailView: View {
             // Auto-filter to downloaded when offline
             if !networkMonitor.isConnected {
                 showDownloadedOnly = true
+            }
+
+            // Pre-lookup public feed URL for sharing
+            if podcast.isPrivateFeed && podcast.publicFeedURL == nil {
+                Task {
+                    await lookupPublicFeed()
+                    try? modelContext.save()
+                }
             }
         }
     }
@@ -230,75 +277,6 @@ struct PodcastDetailView: View {
         }
     }
 
-    @ViewBuilder
-    private func episodeContextMenu(for episode: Episode) -> some View {
-        Button {
-            playEpisode(episode)
-        } label: {
-            Label("Play", systemImage: "play")
-        }
-
-        Button {
-            QueueManager.shared.playNext(episode)
-        } label: {
-            Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
-        }
-
-        Button {
-            QueueManager.shared.addToQueue(episode)
-        } label: {
-            Label("Add to Queue", systemImage: "text.badge.plus")
-        }
-
-        Divider()
-
-        Button {
-            toggleStar(episode)
-        } label: {
-            Label(
-                episode.isStarred ? "Unstar" : "Star",
-                systemImage: episode.isStarred ? "star.slash" : "star"
-            )
-        }
-
-        ShareLink(item: episodeShareText(for: episode)) {
-            Label("Share", systemImage: "square.and.arrow.up")
-        }
-
-        Divider()
-
-        if episode.localFilePath != nil {
-            Button(role: .destructive) {
-                DownloadManager.shared.deleteDownload(episode)
-            } label: {
-                Label("Delete Download", systemImage: "trash")
-            }
-        } else if episode.downloadProgress != nil {
-            Button {
-                DownloadManager.shared.cancelDownload(episode)
-            } label: {
-                Label("Cancel Download", systemImage: "xmark.circle")
-            }
-        } else {
-            Button {
-                DownloadManager.shared.download(episode)
-            } label: {
-                Label("Download", systemImage: "arrow.down.circle")
-            }
-        }
-
-        Divider()
-
-        Button {
-            episode.isPlayed.toggle()
-        } label: {
-            Label(
-                episode.isPlayed ? "Mark Unplayed" : "Mark Played",
-                systemImage: episode.isPlayed ? "circle" : "checkmark.circle"
-            )
-        }
-    }
-
     private func playEpisode(_ episode: Episode) {
         // Check if offline and not downloaded
         if !networkMonitor.isConnected && episode.localFilePath == nil {
@@ -340,21 +318,113 @@ struct PodcastDetailView: View {
         dismiss()
     }
 
-    private var podcastShareText: String {
-        var text = "🎧 \(podcast.title)"
-        if let author = podcast.author {
-            text += " by \(author)"
+    private func prepareAndShare() async {
+        isPreparingShare = true
+
+        // If private feed without public URL, try to find it
+        if podcast.isPrivateFeed && podcast.publicFeedURL == nil {
+            await lookupPublicFeed()
+            try? modelContext.save()
         }
-        text += "\n\n\(podcast.shareURL)"
-        return text
+
+        await MainActor.run {
+            shareText = podcast.shareURL
+            isPreparingShare = false
+        }
     }
 
-    private func episodeShareText(for episode: Episode) -> String {
-        var text = "🎧 \(episode.title)"
-        text += "\n\(podcast.title)"
-        text += "\n\n\(podcast.shareURL)"
-        return text
+    private func lookupPublicFeed() async {
+        let logger = AppLogger.feed
+        logger.info("Looking up public feed for: \(podcast.title)")
+        logger.info("Private feed URL: \(podcast.feedURL)")
+
+        // Clean up the title - remove common private feed suffixes
+        var cleanTitle = podcast.title
+
+        // Remove "(private feed for email@example.com)" pattern
+        if let range = cleanTitle.range(of: #"\s*\(private feed.*\)"#, options: [.regularExpression, .caseInsensitive]) {
+            cleanTitle = String(cleanTitle[..<range.lowerBound])
+        }
+
+        // Remove "(Premium)" or similar suffixes
+        if let range = cleanTitle.range(of: #"\s*\((premium|subscriber|member|patron).*\)"#, options: [.regularExpression, .caseInsensitive]) {
+            cleanTitle = String(cleanTitle[..<range.lowerBound])
+        }
+
+        cleanTitle = cleanTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        logger.info("Clean title for search: \(cleanTitle)")
+
+        // Try progressively shorter search queries until we find good matches
+        // This handles cases like "If Books Could Kill Mile High Club" where "Mile High Club" is a tier name
+        var searchQueries = [cleanTitle]
+        let words = cleanTitle.split(separator: " ").map(String.init)
+        if words.count > 3 {
+            // Try removing last 1, 2, 3 words
+            for dropCount in 1...min(3, words.count - 2) {
+                let shortened = words.dropLast(dropCount).joined(separator: " ")
+                if shortened.count >= 3 {
+                    searchQueries.append(shortened)
+                }
+            }
+        }
+
+        for searchQuery in searchQueries {
+            logger.info("Trying search query: \(searchQuery)")
+
+            do {
+                let results = try await PodcastLookupService.shared.searchPodcasts(query: searchQuery)
+                logger.info("Found \(results.count) search results")
+
+                if results.isEmpty { continue }
+
+                // Try to find best match using word overlap
+                let titleWords = Set(searchQuery.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init))
+                logger.info("Title words: \(titleWords)")
+
+                var bestMatch: (result: PodcastSearchResult, score: Int)?
+
+                for result in results {
+                    let resultWords = Set(result.title.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init))
+                    let overlap = titleWords.intersection(resultWords).count
+                    let score = overlap * 2 - abs(titleWords.count - resultWords.count)
+
+                    logger.info("Result: '\(result.title)' - overlap: \(overlap), score: \(score)")
+
+                    if result.feedURL != nil && score > 0 {
+                        if bestMatch == nil || score > bestMatch!.score {
+                            bestMatch = (result, score)
+                        }
+                    }
+                }
+
+                if let match = bestMatch, match.result.feedURL != nil {
+                    logger.info("Best match: '\(match.result.title)' with score \(match.score)")
+                    let appleURL = "https://podcasts.apple.com/podcast/id\(match.result.id)"
+                    logger.info("Setting public URL: \(appleURL)")
+                    await MainActor.run {
+                        podcast.publicFeedURL = appleURL
+                    }
+                    return
+                }
+            } catch {
+                logger.error("Search failed: \(error.localizedDescription)")
+            }
+        }
+
+        logger.warning("No matching public feed found after trying all queries")
     }
+}
+
+// MARK: - Share Sheet
+
+struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 // MARK: - Filter Toggle

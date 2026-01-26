@@ -34,6 +34,13 @@ final class DownloadObserver {
                 self?.handleDownloadFailed(notification)
             }
             .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .episodePlaybackCompleted)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] notification in
+                self?.handleEpisodeCompleted(notification)
+            }
+            .store(in: &cancellables)
     }
 
     private func handleDownloadCompleted(_ notification: Notification) {
@@ -52,6 +59,12 @@ final class DownloadObserver {
                 episode.downloadProgress = nil
                 try context.save()
                 logger.info("Updated episode with download path: \(episode.title)")
+
+                // Enforce storage limit and per-podcast limit after download
+                DownloadCleanupService.shared.enforceStorageLimit(context: context)
+                if let podcast = episode.podcast {
+                    DownloadCleanupService.shared.enforcePerPodcastLimit(for: podcast, context: context)
+                }
             }
         } catch {
             logger.error("Failed to update episode after download: \(error.localizedDescription)")
@@ -77,6 +90,24 @@ final class DownloadObserver {
             }
         } catch {
             logger.error("Failed to update episode after download failure: \(error.localizedDescription)")
+        }
+    }
+
+    private func handleEpisodeCompleted(_ notification: Notification) {
+        guard let context = modelContext,
+              let userInfo = notification.userInfo,
+              let guid = userInfo["guid"] as? String else { return }
+
+        let descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate { $0.guid == guid }
+        )
+
+        do {
+            if let episode = try context.fetch(descriptor).first {
+                DownloadCleanupService.shared.onEpisodeCompleted(episode, context: context)
+            }
+        } catch {
+            logger.error("Failed to handle episode completion: \(error.localizedDescription)")
         }
     }
 }

@@ -19,8 +19,16 @@ final class Episode {
     var isStarred: Bool = false
 
     // Download state
-    var localFilePath: String?      // nil = not downloaded
+    var localFilePath: String?      // nil = not downloaded, stores just filename (not full path)
     var downloadProgress: Double?   // nil = not downloading, 0-1 = in progress
+
+    /// Returns the full file URL for the downloaded episode
+    var localFileURL: URL? {
+        guard let filename = localFilePath else { return nil }
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let downloadsPath = documentsPath.appendingPathComponent("Downloads", isDirectory: true)
+        return downloadsPath.appendingPathComponent(filename)
+    }
 
     // Relationships
     var podcast: Podcast?

@@ -72,9 +72,8 @@ final class DownloadManager: NSObject {
 
     /// Deletes a downloaded episode
     func deleteDownload(_ episode: Episode) {
-        guard let localPath = episode.localFilePath else { return }
+        guard let fileURL = episode.localFileURL else { return }
 
-        let fileURL = URL(fileURLWithPath: localPath)
         do {
             try fileManager.removeItem(at: fileURL)
             logger.info("Deleted download for episode: \(episode.title)")
@@ -118,15 +117,43 @@ final class DownloadManager: NSObject {
 
         var totalSize: Int64 = 0
         for episode in episodes {
-            if let path = episode.localFilePath {
-                let url = URL(fileURLWithPath: path)
-                if let attrs = try? fileManager.attributesOfItem(atPath: url.path),
+            if let fileURL = episode.localFileURL {
+                if let attrs = try? fileManager.attributesOfItem(atPath: fileURL.path),
                    let size = attrs[.size] as? Int64 {
                     totalSize += size
                 }
             }
         }
         return totalSize
+    }
+
+    /// Migrates old absolute paths to just filenames
+    /// Call this on app launch to fix existing downloads
+    func migrateLocalPaths(context: ModelContext) {
+        let descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate { $0.localFilePath != nil }
+        )
+
+        guard let episodes = try? context.fetch(descriptor) else { return }
+
+        var migratedCount = 0
+        for episode in episodes {
+            guard let oldPath = episode.localFilePath else { continue }
+
+            // Check if this looks like an absolute path (contains "/")
+            if oldPath.contains("/") {
+                // Extract just the filename
+                let filename = (oldPath as NSString).lastPathComponent
+                episode.localFilePath = filename
+                migratedCount += 1
+                logger.info("Migrated path for episode: \(episode.title)")
+            }
+        }
+
+        if migratedCount > 0 {
+            try? context.save()
+            logger.info("Migrated \(migratedCount) episode paths from absolute to relative")
+        }
     }
 
     // MARK: - Private Methods
@@ -170,6 +197,9 @@ extension DownloadManager: URLSessionDownloadDelegate {
             try fileManager.moveItem(at: location, to: destinationURL)
             logger.info("Download completed for episode: \(download.episodeGUID)")
 
+            // Store just the filename, not the full path (iOS paths change between app launches)
+            let filename = destinationURL.lastPathComponent
+
             DispatchQueue.main.async {
                 // Update episode with local path
                 // Note: We need to find the episode by GUID and update it
@@ -178,7 +208,7 @@ extension DownloadManager: URLSessionDownloadDelegate {
                     object: nil,
                     userInfo: [
                         "guid": download.episodeGUID,
-                        "localPath": destinationURL.path
+                        "localPath": filename
                     ]
                 )
             }
@@ -232,4 +262,5 @@ extension Notification.Name {
     static let downloadCompleted = Notification.Name("downloadCompleted")
     static let downloadFailed = Notification.Name("downloadFailed")
     static let backgroundDownloadsCompleted = Notification.Name("backgroundDownloadsCompleted")
+    static let episodePlaybackCompleted = Notification.Name("episodePlaybackCompleted")
 }

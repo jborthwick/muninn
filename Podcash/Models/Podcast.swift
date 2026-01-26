@@ -14,17 +14,21 @@ final class Podcast {
 
     // Per-podcast settings
     var playbackSpeedOverride: Double?  // nil = use global setting
-    var autoDownloadCount: Int = 0       // 0 = disabled
+    var autoDownloadNewEpisodes: Bool = false  // Auto-download new episodes when refreshed
 
-    /// Whether this podcast uses a private feed URL (Patreon, Substack, etc.)
+    /// Whether this podcast uses a private feed URL (Patreon, Substack, Supercast, etc.)
     var isPrivateFeed: Bool {
         guard let url = URL(string: feedURL) else { return false }
         let host = url.host?.lowercased() ?? ""
         let path = url.path.lowercased()
         let query = url.query?.lowercased() ?? ""
 
-        // Known private feed hosts
-        if host.contains("patreon.com") || host.contains("substack.com") {
+        // Known private/premium feed hosts
+        if host.contains("patreon.com") ||
+           host.contains("substack.com") ||
+           host.contains("supercast.com") ||
+           host.contains("supportingcast.fm") ||
+           host.contains("glow.fm") {
             return true
         }
 

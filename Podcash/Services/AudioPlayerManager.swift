@@ -112,14 +112,13 @@ final class AudioPlayerManager {
     func play(_ episode: Episode) {
         // Determine URL first (validate before changing state)
         let url: URL
-        if let localPath = episode.localFilePath {
-            let fileURL = URL(fileURLWithPath: localPath)
+        if let fileURL = episode.localFileURL {
             if FileManager.default.fileExists(atPath: fileURL.path) {
                 url = fileURL
                 logger.info("Playing from local file: \(fileURL.path)")
             } else {
                 // Local path set but file doesn't exist - try remote if online
-                logger.warning("Local file not found at: \(localPath)")
+                logger.warning("Local file not found at: \(fileURL.path)")
                 if !NetworkMonitor.shared.isConnected {
                     // Offline and file missing - can't play
                     logger.warning("Cannot play: offline and local file missing")
@@ -543,6 +542,13 @@ final class AudioPlayerManager {
         episode.isPlayed = true
         episode.playbackPosition = 0
         isPlaying = false
+
+        // Notify for download cleanup
+        NotificationCenter.default.post(
+            name: .episodePlaybackCompleted,
+            object: nil,
+            userInfo: ["guid": episode.guid]
+        )
 
         // Check if sleep timer is set to end of episode
         if isSleepTimerEndOfEpisode {

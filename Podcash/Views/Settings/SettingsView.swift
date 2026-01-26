@@ -4,6 +4,7 @@ import SwiftData
 struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var allEpisodes: [Episode]
+    @Query private var settings: [AppSettings]
 
     private var networkMonitor = NetworkMonitor.shared
     private var playerManager = AudioPlayerManager.shared
@@ -11,8 +12,28 @@ struct SettingsView: View {
 
     @State private var repairResult: String?
     @State private var showRepairResult = false
+    @State private var showDeleteConfirmation = false
+    @State private var downloadSize: Int64 = 0
 
     private let skipIntervalOptions: [Double] = [5, 10, 15, 30, 45, 60, 90]
+    private let storageLimitOptions: [(label: String, value: Int)] = [
+        ("Unlimited", 0),
+        ("1 GB", 1),
+        ("2 GB", 2),
+        ("5 GB", 5),
+        ("10 GB", 10)
+    ]
+    private let keepLatestOptions: [(label: String, value: Int)] = [
+        ("Unlimited", 0),
+        ("1 episode", 1),
+        ("3 episodes", 3),
+        ("5 episodes", 5),
+        ("10 episodes", 10)
+    ]
+
+    private var appSettings: AppSettings {
+        settings.first ?? AppSettings.getOrCreate(context: modelContext)
+    }
 
     var body: some View {
         NavigationStack {
@@ -106,8 +127,52 @@ struct SettingsView: View {
                     }
                 }
 
-                // Storage/Downloads section
-                Section("Storage") {
+                // Downloads section
+                Section("Downloads") {
+                    // Storage used
+                    HStack {
+                        Text("Storage Used")
+                        Spacer()
+                        Text(formatBytes(downloadSize))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    // Storage limit picker
+                    Picker("Storage Limit", selection: Binding(
+                        get: { appSettings.storageLimitGB },
+                        set: { appSettings.storageLimitGB = $0 }
+                    )) {
+                        ForEach(storageLimitOptions, id: \.value) { option in
+                            Text(option.label).tag(option.value)
+                        }
+                    }
+
+                    // Keep latest N per podcast
+                    Picker("Keep Per Podcast", selection: Binding(
+                        get: { appSettings.keepLatestDownloadsPerPodcast },
+                        set: { appSettings.keepLatestDownloadsPerPodcast = $0 }
+                    )) {
+                        ForEach(keepLatestOptions, id: \.value) { option in
+                            Text(option.label).tag(option.value)
+                        }
+                    }
+
+                    Text("Completed episodes are auto-deleted. Starred and queued episodes are protected.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                // Storage management section
+                Section {
+                    Button(role: .destructive) {
+                        showDeleteConfirmation = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "trash")
+                            Text("Delete All Downloads")
+                        }
+                    }
+
                     Button {
                         repairDownloads()
                     } label: {
@@ -117,10 +182,6 @@ struct SettingsView: View {
                         }
                     }
 
-                    Text("Fixes episodes that show as downloaded but the file is missing")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
                     Button {
                         clearImageCache()
                     } label: {
@@ -129,10 +190,6 @@ struct SettingsView: View {
                             Text("Clear Image Cache")
                         }
                     }
-
-                    Text("Clears cached podcast artwork images")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
 
                 // Listening Stats
@@ -159,12 +216,42 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .onAppear {
+                updateDownloadSize()
+            }
             .alert("Repair Complete", isPresented: $showRepairResult) {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(repairResult ?? "")
             }
+            .confirmationDialog(
+                "Delete All Downloads?",
+                isPresented: $showDeleteConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Delete All", role: .destructive) {
+                    deleteAllDownloads()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This will delete all downloaded episodes except starred and queued ones.")
+            }
         }
+    }
+
+    private func updateDownloadSize() {
+        downloadSize = DownloadManager.shared.totalDownloadSize(context: modelContext)
+    }
+
+    private func deleteAllDownloads() {
+        DownloadCleanupService.shared.deleteAllUnprotectedDownloads(context: modelContext)
+        updateDownloadSize()
+    }
+
+    private func formatBytes(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
     }
 
     private func repairDownloads() {

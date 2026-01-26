@@ -13,6 +13,7 @@ struct EditFolderView: View {
     @State private var selectedPodcasts: Set<String> = [] // Feed URLs
     @State private var showManagePodcasts = false
     @State private var createdFolder: Folder?
+    @FocusState private var isNameFocused: Bool
 
     private let colorOptions = [
         "007AFF", // Blue
@@ -32,6 +33,7 @@ struct EditFolderView: View {
             Form {
                 Section("Folder Name") {
                     TextField("Name", text: $name)
+                        .focused($isNameFocused)
                 }
 
                 Section("Color") {
@@ -97,6 +99,9 @@ struct EditFolderView: View {
                     name = folder.name
                     selectedColor = folder.colorHex ?? "007AFF"
                     selectedPodcasts = Set(folder.podcasts.map { $0.feedURL })
+                } else {
+                    // Auto-focus name field for new folders
+                    isNameFocused = true
                 }
             }
             .sheet(isPresented: $showManagePodcasts) {
