@@ -19,16 +19,13 @@ struct MiniPlayerView: View {
                 // Content
                 HStack(spacing: 12) {
                     // Artwork
-                    AsyncImage(url: URL(string: episode.displayArtworkURL ?? "")) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                        default:
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Color.secondary.opacity(0.2))
-                        }
+                    CachedAsyncImage(url: URL(string: episode.displayArtworkURL ?? "")) { image in
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } placeholder: {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.secondary.opacity(0.2))
                     }
                     .frame(width: 44, height: 44)
                     .clipShape(RoundedRectangle(cornerRadius: 4))

@@ -116,14 +116,11 @@ private struct DownloadedEpisodeRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            AsyncImage(url: URL(string: episode.podcast?.artworkURL ?? "")) { phase in
-                switch phase {
-                case .success(let image):
-                    image.resizable().aspectRatio(contentMode: .fill)
-                default:
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.secondary.opacity(0.2))
-                }
+            CachedAsyncImage(url: URL(string: episode.podcast?.artworkURL ?? "")) { image in
+                image.resizable().aspectRatio(contentMode: .fill)
+            } placeholder: {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.secondary.opacity(0.2))
             }
             .frame(width: 50, height: 50)
             .clipShape(RoundedRectangle(cornerRadius: 6))
@@ -165,14 +162,11 @@ private struct DownloadingEpisodeRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            AsyncImage(url: URL(string: episode.podcast?.artworkURL ?? "")) { phase in
-                switch phase {
-                case .success(let image):
-                    image.resizable().aspectRatio(contentMode: .fill)
-                default:
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.secondary.opacity(0.2))
-                }
+            CachedAsyncImage(url: URL(string: episode.podcast?.artworkURL ?? "")) { image in
+                image.resizable().aspectRatio(contentMode: .fill)
+            } placeholder: {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.secondary.opacity(0.2))
             }
             .frame(width: 50, height: 50)
             .clipShape(RoundedRectangle(cornerRadius: 6))

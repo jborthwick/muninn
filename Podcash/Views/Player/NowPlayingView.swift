@@ -29,21 +29,18 @@ struct NowPlayingView: View {
                 Spacer()
 
                 // Artwork
-                AsyncImage(url: URL(string: episode.displayArtworkURL ?? "")) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    default:
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(Color.secondary.opacity(0.2))
-                            .overlay {
-                                Image(systemName: "mic")
-                                    .font(.system(size: 60))
-                                    .foregroundStyle(.secondary)
-                            }
-                    }
+                CachedAsyncImage(url: URL(string: episode.displayArtworkURL ?? "")) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color.secondary.opacity(0.2))
+                        .overlay {
+                            Image(systemName: "mic")
+                                .font(.system(size: 60))
+                                .foregroundStyle(.secondary)
+                        }
                 }
                 .frame(width: 280, height: 280)
                 .clipShape(RoundedRectangle(cornerRadius: 16))

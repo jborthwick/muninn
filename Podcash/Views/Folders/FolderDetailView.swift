@@ -8,11 +8,15 @@ struct FolderDetailView: View {
 
     private var networkMonitor: NetworkMonitor { NetworkMonitor.shared }
 
+    @Environment(\.dismiss) private var dismiss
+
     @State private var viewMode: ViewMode = .episodes
     @State private var sortNewestFirst = true
     @State private var showStarredOnly = false
     @State private var showDownloadedOnly = false
     @State private var showManagePodcasts = false
+    @State private var showEditFolder = false
+    @State private var showDeleteConfirmation = false
 
     enum ViewMode: String, CaseIterable {
         case podcasts = "Podcasts"
@@ -78,13 +82,48 @@ struct FolderDetailView: View {
         .navigationTitle(folder.name)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button("Edit") {
-                    showManagePodcasts = true
+                Menu {
+                    Button {
+                        showManagePodcasts = true
+                    } label: {
+                        Label("Manage Podcasts", systemImage: "plus.circle")
+                    }
+
+                    Button {
+                        showEditFolder = true
+                    } label: {
+                        Label("Rename Folder", systemImage: "pencil")
+                    }
+
+                    Divider()
+
+                    Button(role: .destructive) {
+                        showDeleteConfirmation = true
+                    } label: {
+                        Label("Delete Folder", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
                 }
             }
         }
         .sheet(isPresented: $showManagePodcasts) {
             ManageFolderPodcastsView(folder: folder, allPodcasts: allPodcasts)
+        }
+        .sheet(isPresented: $showEditFolder) {
+            EditFolderView(folder: folder)
+        }
+        .confirmationDialog(
+            "Delete \(folder.name)?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                deleteFolder()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will remove the folder. Podcasts will remain in your library.")
         }
         .onAppear {
             if !networkMonitor.isConnected {
@@ -283,6 +322,12 @@ struct FolderDetailView: View {
             folder.podcasts.remove(at: index)
             try? modelContext.save()
         }
+    }
+
+    private func deleteFolder() {
+        modelContext.delete(folder)
+        try? modelContext.save()
+        dismiss()
     }
 }
 

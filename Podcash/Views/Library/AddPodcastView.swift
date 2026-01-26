@@ -277,22 +277,17 @@ private struct SearchResultRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            AsyncImage(url: URL(string: result.artworkURL ?? "")) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                case .failure, .empty:
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.secondary.opacity(0.2))
-                        .overlay {
-                            Image(systemName: "mic")
-                                .foregroundStyle(.secondary)
-                        }
-                @unknown default:
-                    EmptyView()
-                }
+            CachedAsyncImage(url: URL(string: result.artworkURL ?? "")) { image in
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } placeholder: {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.secondary.opacity(0.2))
+                    .overlay {
+                        Image(systemName: "mic")
+                            .foregroundStyle(.secondary)
+                    }
             }
             .frame(width: 50, height: 50)
             .clipShape(RoundedRectangle(cornerRadius: 8))

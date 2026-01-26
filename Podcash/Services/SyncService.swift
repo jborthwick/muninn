@@ -138,132 +138,130 @@ final class SyncService {
 
     // MARK: - Data Export
 
+    @MainActor
     private func exportLocalData(context: ModelContext) async throws -> SyncData {
-        try await MainActor.run {
-            let podcastDescriptor = FetchDescriptor<Podcast>()
-            let podcasts = try context.fetch(podcastDescriptor)
+        let podcastDescriptor = FetchDescriptor<Podcast>()
+        let podcasts = try context.fetch(podcastDescriptor)
 
-            let folderDescriptor = FetchDescriptor<Folder>()
-            let folders = try context.fetch(folderDescriptor)
+        let folderDescriptor = FetchDescriptor<Folder>()
+        let folders = try context.fetch(folderDescriptor)
 
-            let episodeDescriptor = FetchDescriptor<Episode>()
-            let episodes = try context.fetch(episodeDescriptor)
+        let episodeDescriptor = FetchDescriptor<Episode>()
+        let episodes = try context.fetch(episodeDescriptor)
 
-            // Build sync data
-            var syncData = SyncData(timestamp: Date())
+        // Build sync data
+        var syncData = SyncData(timestamp: Date())
 
-            // Export podcasts
-            syncData.podcasts = podcasts.map { podcast in
-                SyncPodcast(
-                    feedURL: podcast.feedURL,
-                    playbackSpeedOverride: podcast.playbackSpeedOverride
-                )
-            }
-
-            // Export folders
-            syncData.folders = folders.map { folder in
-                SyncFolder(
-                    id: folder.id.uuidString,
-                    name: folder.name,
-                    colorHex: folder.colorHex,
-                    sortOrder: folder.sortOrder,
-                    podcastFeedURLs: folder.podcasts.map { $0.feedURL }
-                )
-            }
-
-            // Export episode states (only for episodes with meaningful state)
-            syncData.episodeStates = episodes.compactMap { episode -> SyncEpisodeState? in
-                guard episode.isPlayed || episode.isStarred || episode.playbackPosition > 0 else {
-                    return nil
-                }
-                return SyncEpisodeState(
-                    guid: episode.guid,
-                    podcastFeedURL: episode.podcast?.feedURL ?? "",
-                    isPlayed: episode.isPlayed,
-                    isStarred: episode.isStarred,
-                    playbackPosition: episode.playbackPosition
-                )
-            }
-
-            // Export settings
-            syncData.settings = SyncSettings(
-                globalPlaybackSpeed: AudioPlayerManager.shared.globalPlaybackSpeed,
-                skipForwardInterval: AudioPlayerManager.shared.skipForwardInterval,
-                skipBackwardInterval: AudioPlayerManager.shared.skipBackwardInterval
+        // Export podcasts
+        syncData.podcasts = podcasts.map { podcast in
+            SyncPodcast(
+                feedURL: podcast.feedURL,
+                playbackSpeedOverride: podcast.playbackSpeedOverride
             )
-
-            return syncData
         }
+
+        // Export folders
+        syncData.folders = folders.map { folder in
+            SyncFolder(
+                id: folder.id.uuidString,
+                name: folder.name,
+                colorHex: folder.colorHex,
+                sortOrder: folder.sortOrder,
+                podcastFeedURLs: folder.podcasts.map { $0.feedURL }
+            )
+        }
+
+        // Export episode states (only for episodes with meaningful state)
+        syncData.episodeStates = episodes.compactMap { episode -> SyncEpisodeState? in
+            guard episode.isPlayed || episode.isStarred || episode.playbackPosition > 0 else {
+                return nil
+            }
+            return SyncEpisodeState(
+                guid: episode.guid,
+                podcastFeedURL: episode.podcast?.feedURL ?? "",
+                isPlayed: episode.isPlayed,
+                isStarred: episode.isStarred,
+                playbackPosition: episode.playbackPosition
+            )
+        }
+
+        // Export settings
+        syncData.settings = SyncSettings(
+            globalPlaybackSpeed: AudioPlayerManager.shared.globalPlaybackSpeed,
+            skipForwardInterval: AudioPlayerManager.shared.skipForwardInterval,
+            skipBackwardInterval: AudioPlayerManager.shared.skipBackwardInterval
+        )
+
+        return syncData
     }
 
     // MARK: - Data Import
 
+    @MainActor
     private func importData(_ data: SyncData, context: ModelContext) async throws {
-        try await MainActor.run {
-            // Fetch existing data
-            let podcastDescriptor = FetchDescriptor<Podcast>()
-            let existingPodcasts = try context.fetch(podcastDescriptor)
-            let podcastsByURL = Dictionary(uniqueKeysWithValues: existingPodcasts.map { ($0.feedURL, $0) })
+        // Fetch existing data
+        let podcastDescriptor = FetchDescriptor<Podcast>()
+        let existingPodcasts = try context.fetch(podcastDescriptor)
+        let podcastsByURL = Dictionary(uniqueKeysWithValues: existingPodcasts.map { ($0.feedURL, $0) })
 
-            let folderDescriptor = FetchDescriptor<Folder>()
-            let existingFolders = try context.fetch(folderDescriptor)
-            let foldersById = Dictionary(uniqueKeysWithValues: existingFolders.compactMap { folder -> (String, Folder)? in
-                return (folder.id.uuidString, folder)
-            })
+        let folderDescriptor = FetchDescriptor<Folder>()
+        let existingFolders = try context.fetch(folderDescriptor)
+        let foldersById = Dictionary(uniqueKeysWithValues: existingFolders.compactMap { folder -> (String, Folder)? in
+            return (folder.id.uuidString, folder)
+        })
 
-            // Import podcasts (add new ones)
-            for syncPodcast in data.podcasts {
-                if let existing = podcastsByURL[syncPodcast.feedURL] {
-                    // Update speed override if set
-                    if let speed = syncPodcast.playbackSpeedOverride {
-                        existing.playbackSpeedOverride = speed
-                    }
-                }
-                // Note: We don't auto-subscribe to podcasts from cloud
-                // User needs to manually add podcasts on each device
-            }
-
-            // Import folders
-            for syncFolder in data.folders {
-                if let existing = foldersById[syncFolder.id] {
-                    // Update existing folder
-                    existing.name = syncFolder.name
-                    existing.colorHex = syncFolder.colorHex
-                    existing.sortOrder = syncFolder.sortOrder
-
-                    // Update podcast assignments
-                    existing.podcasts = syncFolder.podcastFeedURLs.compactMap { podcastsByURL[$0] }
-                } else {
-                    // Create new folder
-                    let newFolder = Folder(name: syncFolder.name, colorHex: syncFolder.colorHex)
-                    newFolder.sortOrder = syncFolder.sortOrder
-                    newFolder.podcasts = syncFolder.podcastFeedURLs.compactMap { podcastsByURL[$0] }
-                    context.insert(newFolder)
+        // Import podcasts (add new ones)
+        for syncPodcast in data.podcasts {
+            if let existing = podcastsByURL[syncPodcast.feedURL] {
+                // Update speed override if set
+                if let speed = syncPodcast.playbackSpeedOverride {
+                    existing.playbackSpeedOverride = speed
                 }
             }
-
-            // Import episode states
-            let episodeDescriptor = FetchDescriptor<Episode>()
-            let allEpisodes = try context.fetch(episodeDescriptor)
-            let episodesByGUID = Dictionary(uniqueKeysWithValues: allEpisodes.map { ($0.guid, $0) })
-
-            for state in data.episodeStates {
-                if let episode = episodesByGUID[state.guid] {
-                    episode.isPlayed = state.isPlayed
-                    episode.isStarred = state.isStarred
-                    episode.playbackPosition = state.playbackPosition
-                }
-            }
-
-            // Import settings
-            if let settings = data.settings {
-                AudioPlayerManager.shared.globalPlaybackSpeed = settings.globalPlaybackSpeed
-                AudioPlayerManager.shared.skipForwardInterval = settings.skipForwardInterval
-                AudioPlayerManager.shared.skipBackwardInterval = settings.skipBackwardInterval
-            }
-
-            try context.save()
+            // Note: We don't auto-subscribe to podcasts from cloud
+            // User needs to manually add podcasts on each device
         }
+
+        // Import folders
+        for syncFolder in data.folders {
+            if let existing = foldersById[syncFolder.id] {
+                // Update existing folder
+                existing.name = syncFolder.name
+                existing.colorHex = syncFolder.colorHex
+                existing.sortOrder = syncFolder.sortOrder
+
+                // Update podcast assignments
+                existing.podcasts = syncFolder.podcastFeedURLs.compactMap { podcastsByURL[$0] }
+            } else {
+                // Create new folder
+                let newFolder = Folder(name: syncFolder.name, colorHex: syncFolder.colorHex)
+                newFolder.sortOrder = syncFolder.sortOrder
+                newFolder.podcasts = syncFolder.podcastFeedURLs.compactMap { podcastsByURL[$0] }
+                context.insert(newFolder)
+            }
+        }
+
+        // Import episode states
+        let episodeDescriptor = FetchDescriptor<Episode>()
+        let allEpisodes = try context.fetch(episodeDescriptor)
+        let episodesByGUID = Dictionary(uniqueKeysWithValues: allEpisodes.map { ($0.guid, $0) })
+
+        for state in data.episodeStates {
+            if let episode = episodesByGUID[state.guid] {
+                episode.isPlayed = state.isPlayed
+                episode.isStarred = state.isStarred
+                episode.playbackPosition = state.playbackPosition
+            }
+        }
+
+        // Import settings
+        if let settings = data.settings {
+            AudioPlayerManager.shared.globalPlaybackSpeed = settings.globalPlaybackSpeed
+            AudioPlayerManager.shared.skipForwardInterval = settings.skipForwardInterval
+            AudioPlayerManager.shared.skipBackwardInterval = settings.skipBackwardInterval
+        }
+
+        try context.save()
     }
 
     // MARK: - Cloud Storage

@@ -5,22 +5,12 @@ struct PodcastRowView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            AsyncImage(url: URL(string: podcast.artworkURL ?? "")) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                case .failure:
-                    artworkPlaceholder
-                case .empty:
-                    artworkPlaceholder
-                        .overlay {
-                            ProgressView()
-                        }
-                @unknown default:
-                    artworkPlaceholder
-                }
+            CachedAsyncImage(url: URL(string: podcast.artworkURL ?? "")) { image in
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } placeholder: {
+                artworkPlaceholder
             }
             .frame(width: 60, height: 60)
             .clipShape(RoundedRectangle(cornerRadius: 8))
