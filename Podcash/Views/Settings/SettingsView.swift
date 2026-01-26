@@ -135,7 +135,20 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                // Placeholder for future settings
+                // Listening Stats
+                Section {
+                    NavigationLink {
+                        StatsView()
+                    } label: {
+                        HStack {
+                            Image(systemName: "chart.bar.fill")
+                                .foregroundStyle(.purple)
+                            Text("Listening Stats")
+                        }
+                    }
+                }
+
+                // About
                 Section("About") {
                     HStack {
                         Text("Version")

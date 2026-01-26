@@ -212,6 +212,13 @@ struct NowPlayingView: View {
                             .font(.title2)
                             .foregroundStyle(episode.isStarred ? .yellow : .secondary)
                     }
+
+                    // Share button
+                    ShareLink(item: shareText(for: episode)) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.title2)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .padding(.top, 24)
 
@@ -283,6 +290,15 @@ struct NowPlayingView: View {
             return "gobackward.\(interval)"
         }
         return "gobackward.15"
+    }
+
+    private func shareText(for episode: Episode) -> String {
+        var text = "🎧 \(episode.title)"
+        if let podcast = episode.podcast {
+            text += "\n\(podcast.title)"
+            text += "\n\n\(podcast.feedURL)"
+        }
+        return text
     }
 }
 

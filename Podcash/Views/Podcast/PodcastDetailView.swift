@@ -3,6 +3,7 @@ import SwiftData
 
 struct PodcastDetailView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
     @Query(sort: \Folder.sortOrder) private var allFolders: [Folder]
     let podcast: Podcast
 
@@ -13,6 +14,7 @@ struct PodcastDetailView: View {
     @State private var showDownloadedOnly = false
     @State private var isRefreshing = false
     @State private var showFolderPicker = false
+    @State private var showUnsubscribeConfirmation = false
 
     var body: some View {
         List {
@@ -132,6 +134,11 @@ struct PodcastDetailView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 16) {
+                    // Share button
+                    ShareLink(item: podcastShareText) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+
                     // Folder button
                     Button {
                         showFolderPicker = true
@@ -140,18 +147,27 @@ struct PodcastDetailView: View {
                             .foregroundStyle(podcast.folders.isEmpty ? Color.secondary : Color.accentColor)
                     }
 
-                    // More options menu
-                    Menu {
-                        Button(role: .destructive) {
-                            unsubscribe()
-                        } label: {
-                            Label("Unsubscribe", systemImage: "trash")
-                        }
+                    // Subscribed toggle
+                    Button {
+                        showUnsubscribeConfirmation = true
                     } label: {
-                        Image(systemName: "ellipsis.circle")
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
                     }
                 }
             }
+        }
+        .confirmationDialog(
+            "Unsubscribe from \(podcast.title)?",
+            isPresented: $showUnsubscribeConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Unsubscribe", role: .destructive) {
+                unsubscribe()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will remove the podcast and delete all downloaded episodes.")
         }
         .sheet(isPresented: $showFolderPicker) {
             FolderPickerView(podcast: podcast, allFolders: allFolders)
@@ -317,6 +333,16 @@ struct PodcastDetailView: View {
         // Delete downloads first
         DownloadManager.shared.deleteDownloads(for: podcast)
         modelContext.delete(podcast)
+        dismiss()
+    }
+
+    private var podcastShareText: String {
+        var text = "🎧 \(podcast.title)"
+        if let author = podcast.author {
+            text += " by \(author)"
+        }
+        text += "\n\n\(podcast.feedURL)"
+        return text
     }
 }
 

@@ -34,11 +34,41 @@ final class StatsService {
         guard let start = currentSessionStart else { return }
         accumulatedTime += Date().timeIntervalSince(start)
         currentSessionStart = nil
+
+        // Save session on pause if we have meaningful listening time
+        saveSessionIfSignificant()
     }
 
     func resumeListening() {
         guard currentEpisode != nil, currentSessionStart == nil else { return }
         currentSessionStart = Date()
+    }
+
+    /// Saves the current session if accumulated time is significant
+    private func saveSessionIfSignificant() {
+        guard let episode = currentEpisode,
+              let context = modelContext,
+              accumulatedTime >= 30 else { return }
+
+        let session = ListeningSession(
+            podcastFeedURL: episode.podcast?.feedURL ?? "",
+            podcastTitle: episode.podcast?.title ?? "Unknown",
+            episodeGUID: episode.guid,
+            episodeTitle: episode.title,
+            startTime: Date(),
+            duration: accumulatedTime
+        )
+
+        context.insert(session)
+        do {
+            try context.save()
+            logger.info("Saved listening session on pause: \(Int(self.accumulatedTime))s for \(episode.title)")
+        } catch {
+            logger.error("Failed to save listening session: \(error.localizedDescription)")
+        }
+
+        // Reset accumulated time since we saved it
+        accumulatedTime = 0
     }
 
     func endCurrentSession() {
