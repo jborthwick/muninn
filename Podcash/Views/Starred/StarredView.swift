@@ -9,6 +9,8 @@ struct StarredView: View {
 
     @State private var sortNewestFirst = true
     @State private var showDownloadedOnly = false
+    @State private var showCellularConfirmation = false
+    @State private var episodePendingDownload: Episode?
 
     private var starredEpisodes: [Episode] {
         var episodes = allEpisodes.filter { $0.isStarred }
@@ -89,8 +91,14 @@ struct StarredView: View {
                             } else {
                                 ForEach(starredEpisodes) { episode in
                                     StarredEpisodeRow(episode: episode)
-                                        .onTapGesture {
-                                            playEpisode(episode)
+                                        .contextMenu {
+                                            EpisodeContextMenu(
+                                                episode: episode,
+                                                onDownloadNeedsConfirmation: {
+                                                    episodePendingDownload = episode
+                                                    showCellularConfirmation = true
+                                                }
+                                            )
                                         }
                                 }
                             }
@@ -107,21 +115,20 @@ struct StarredView: View {
                     showDownloadedOnly = true
                 }
             }
+            .alert("Download on Cellular?", isPresented: $showCellularConfirmation) {
+                Button("Download") {
+                    if let episode = episodePendingDownload {
+                        DownloadManager.shared.download(episode)
+                    }
+                    episodePendingDownload = nil
+                }
+                Button("Cancel", role: .cancel) {
+                    episodePendingDownload = nil
+                }
+            } message: {
+                Text("You're on cellular data. Download anyway?")
+            }
         }
-    }
-
-    private func playEpisode(_ episode: Episode) {
-        // Check if offline and not downloaded
-        if !networkMonitor.isConnected && episode.localFilePath == nil {
-            return
-        }
-
-        // Auto-download when playing
-        if episode.localFilePath == nil {
-            DownloadManager.shared.download(episode)
-        }
-
-        AudioPlayerManager.shared.play(episode)
     }
 }
 
@@ -130,83 +137,107 @@ struct StarredView: View {
 private struct StarredEpisodeRow: View {
     let episode: Episode
 
+    private var progressValue: Double {
+        guard let duration = episode.duration, duration > 0 else { return 0 }
+        return episode.playbackPosition / duration
+    }
+
+    private var remainingTime: String {
+        guard let duration = episode.duration else { return "" }
+        let remaining = duration - episode.playbackPosition
+        return remaining.formattedDuration + " left"
+    }
+
     var body: some View {
-        HStack(spacing: 12) {
-            // Podcast artwork
-            CachedAsyncImage(url: URL(string: episode.podcast?.artworkURL ?? "")) { image in
-                image.resizable().aspectRatio(contentMode: .fill)
-            } placeholder: {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.secondary.opacity(0.2))
-            }
-            .frame(width: 50, height: 50)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(episode.title)
-                    .font(.headline)
-                    .lineLimit(2)
-                    .foregroundStyle(episode.isPlayed ? .secondary : .primary)
-
-                HStack(spacing: 8) {
-                    if let podcast = episode.podcast {
-                        Text(podcast.title)
-                    }
-                    if let date = episode.publishedDate {
-                        Text("•")
-                        Text(date.relativeFormatted)
-                    }
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            // Action buttons
+        NavigationLink {
+            EpisodeDetailView(episode: episode)
+        } label: {
             HStack(spacing: 12) {
-                // Star button (always filled since we're in starred view)
-                Button {
-                    episode.isStarred.toggle()
-                } label: {
-                    Image(systemName: "star.fill")
-                        .font(.title2)
-                        .foregroundStyle(.yellow)
+                CachedAsyncImage(url: URL(string: episode.podcast?.artworkURL ?? "")) { image in
+                    image.resizable().aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color.secondary.opacity(0.2))
                 }
-                .buttonStyle(.plain)
+                .frame(width: 50, height: 50)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
 
-                // Download button
-                if episode.localFilePath != nil {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(episode.title)
+                        .font(.headline)
+                        .lineLimit(2)
+                        .foregroundStyle(episode.isPlayed ? .secondary : .primary)
+
+                    HStack(spacing: 6) {
+                        // Progress pie indicator if partially played
+                        if episode.playbackPosition > 0 && !episode.isPlayed {
+                            ProgressPieView(progress: progressValue)
+                                .frame(width: 12, height: 12)
+                        }
+
+                        if let podcast = episode.podcast {
+                            Text(podcast.title)
+                        }
+                        if let date = episode.publishedDate {
+                            Text("•")
+                            if episode.playbackPosition > 0 && !episode.isPlayed {
+                                Text(remainingTime)
+                                    .foregroundStyle(Color.accentColor)
+                            } else {
+                                Text(date.relativeFormatted)
+                            }
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                // Action buttons
+                HStack(spacing: 12) {
+                    // Star button (always filled since we're in starred view)
                     Button {
-                        DownloadManager.shared.deleteDownload(episode)
+                        episode.isStarred.toggle()
                     } label: {
-                        Image(systemName: "arrow.down.circle.fill")
+                        Image(systemName: "star.fill")
                             .font(.title2)
-                            .foregroundStyle(.green)
+                            .foregroundStyle(.yellow)
                     }
                     .buttonStyle(.plain)
-                } else if let progress = episode.downloadProgress {
-                    Button {
-                        DownloadManager.shared.cancelDownload(episode)
-                    } label: {
-                        CircularProgressView(progress: progress)
-                            .frame(width: 22, height: 22)
+
+                    // Download button
+                    if episode.localFilePath != nil {
+                        Button {
+                            DownloadManager.shared.deleteDownload(episode)
+                        } label: {
+                            Image(systemName: "arrow.down.circle.fill")
+                                .font(.title2)
+                                .foregroundStyle(.green)
+                        }
+                        .buttonStyle(.plain)
+                    } else if let progress = episode.downloadProgress {
+                        Button {
+                            DownloadManager.shared.cancelDownload(episode)
+                        } label: {
+                            CircularProgressView(progress: progress)
+                                .frame(width: 22, height: 22)
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        Button {
+                            DownloadManager.shared.download(episode)
+                        } label: {
+                            Image(systemName: "arrow.down.circle")
+                                .font(.title2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
-                } else {
-                    Button {
-                        DownloadManager.shared.download(episode)
-                    } label: {
-                        Image(systemName: "arrow.down.circle")
-                            .font(.title2)
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
                 }
             }
+            .opacity(episode.isPlayed ? 0.7 : 1.0)
         }
-        .contentShape(Rectangle())
-        .opacity(episode.isPlayed ? 0.7 : 1.0)
     }
 }
 

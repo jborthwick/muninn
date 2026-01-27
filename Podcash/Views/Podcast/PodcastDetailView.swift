@@ -17,6 +17,8 @@ struct PodcastDetailView: View {
     @State private var showUnsubscribeConfirmation = false
     @State private var shareText: String?
     @State private var isPreparingShare = false
+    @State private var showCellularConfirmation = false
+    @State private var episodePendingDownload: Episode?
 
     var body: some View {
         List {
@@ -106,15 +108,20 @@ struct PodcastDetailView: View {
                     )
                 } else {
                     ForEach(filteredEpisodes) { episode in
-                        EpisodeRowView(episode: episode)
-                            .onTapGesture {
-                                playEpisode(episode)
-                            }
-                            .contextMenu {
-                                EpisodeContextMenu(episode: episode) {
-                                    playEpisode(episode)
+                        NavigationLink {
+                            EpisodeDetailView(episode: episode)
+                        } label: {
+                            EpisodeRowView(episode: episode)
+                        }
+                        .contextMenu {
+                            EpisodeContextMenu(
+                                episode: episode,
+                                onDownloadNeedsConfirmation: {
+                                    episodePendingDownload = episode
+                                    showCellularConfirmation = true
                                 }
-                            }
+                            )
+                        }
                             .swipeActions(edge: .leading) {
                                 Button {
                                     toggleStar(episode)
@@ -210,6 +217,19 @@ struct PodcastDetailView: View {
         }
         .sheet(isPresented: $showFolderPicker) {
             FolderPickerView(podcast: podcast, allFolders: allFolders)
+        }
+        .alert("Download on Cellular?", isPresented: $showCellularConfirmation) {
+            Button("Download") {
+                if let episode = episodePendingDownload {
+                    DownloadManager.shared.download(episode)
+                }
+                episodePendingDownload = nil
+            }
+            Button("Cancel", role: .cancel) {
+                episodePendingDownload = nil
+            }
+        } message: {
+            Text("You're on cellular data. Download anyway?")
         }
         .onAppear {
             // Auto-filter to downloaded when offline

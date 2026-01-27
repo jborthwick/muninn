@@ -1,27 +1,25 @@
 import SwiftUI
 import SwiftData
 
-struct FolderDetailView: View {
+struct AllEpisodesView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Podcast.title) private var allPodcasts: [Podcast]
-    @Bindable var folder: Folder
+    @Query(sort: \Folder.sortOrder) private var allFolders: [Folder]
 
     private var networkMonitor: NetworkMonitor { NetworkMonitor.shared }
 
-    @Environment(\.dismiss) private var dismiss
+    /// When true, shows only podcasts not in any folder
+    var showUnsortedOnly: Bool = false
 
     @State private var viewMode: ViewMode = .episodes
     @State private var sortNewestFirst = true
     @State private var showStarredOnly = false
     @State private var showDownloadedOnly = false
-    @State private var showManagePodcasts = false
-    @State private var showEditFolder = false
-    @State private var showDeleteConfirmation = false
-    @State private var showCreateFolder = false
-    @State private var podcastForNewFolder: Podcast?
     @State private var showCellularConfirmation = false
     @State private var episodePendingDownload: Episode?
     @State private var podcastToUnsubscribe: Podcast?
+    @State private var showCreateFolder = false
+    @State private var podcastForNewFolder: Podcast?
 
     private var refreshManager: RefreshManager { RefreshManager.shared }
 
@@ -30,27 +28,40 @@ struct FolderDetailView: View {
         case episodes = "Episodes"
     }
 
-    // Get podcasts in this folder by checking the relationship
-    private var podcastsInFolder: [Podcast] {
-        allPodcasts.filter { podcast in
-            folder.podcasts.contains { $0.feedURL == podcast.feedURL }
+    // Podcasts based on filter mode
+    private var podcasts: [Podcast] {
+        if showUnsortedOnly {
+            return allPodcasts.filter { podcast in
+                !allFolders.contains { folder in
+                    folder.podcasts.contains { $0.feedURL == podcast.feedURL }
+                }
+            }
         }
+        return Array(allPodcasts)
     }
 
-    // Get all episodes paired with their podcast (to avoid relationship issues)
+    // Get all episodes paired with their podcast
     private var allEpisodesWithPodcast: [(episode: Episode, podcast: Podcast)] {
-        podcastsInFolder.flatMap { podcast in
+        podcasts.flatMap { podcast in
             podcast.episodes.map { episode in (episode: episode, podcast: podcast) }
         }
     }
 
+    private var title: String {
+        showUnsortedOnly ? "Unsorted" : "All Episodes"
+    }
+
+    private var icon: String {
+        showUnsortedOnly ? "tray" : "list.bullet"
+    }
+
     var body: some View {
         Group {
-            if podcastsInFolder.isEmpty {
+            if podcasts.isEmpty {
                 ContentUnavailableView(
-                    "No Podcasts",
-                    systemImage: "folder",
-                    description: Text("Tap + to add podcasts to this folder")
+                    showUnsortedOnly ? "No Unsorted Podcasts" : "No Podcasts",
+                    systemImage: icon,
+                    description: Text(showUnsortedOnly ? "All podcasts are organized in folders" : "Add podcasts to your library first")
                 )
             } else {
                 List {
@@ -91,61 +102,11 @@ struct FolderDetailView: View {
                 .listStyle(.plain)
                 .refreshable {
                     // Trigger background refresh and return immediately
-                    refreshManager.refreshPodcasts(podcastsInFolder, context: modelContext)
+                    refreshManager.refreshPodcasts(podcasts, context: modelContext)
                 }
             }
         }
-        .navigationTitle(folder.name)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button {
-                        showManagePodcasts = true
-                    } label: {
-                        Label("Manage Podcasts", systemImage: "plus.circle")
-                    }
-
-                    Button {
-                        showEditFolder = true
-                    } label: {
-                        Label("Rename Folder", systemImage: "pencil")
-                    }
-
-                    Divider()
-
-                    Button(role: .destructive) {
-                        showDeleteConfirmation = true
-                    } label: {
-                        Label("Delete Folder", systemImage: "trash")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                }
-            }
-        }
-        .sheet(isPresented: $showManagePodcasts) {
-            ManageFolderPodcastsView(folder: folder, allPodcasts: allPodcasts)
-        }
-        .sheet(isPresented: $showEditFolder) {
-            EditFolderView(folder: folder)
-        }
-        .sheet(isPresented: $showCreateFolder, onDismiss: {
-            podcastForNewFolder = nil
-        }) {
-            EditFolderView(folder: nil, initialPodcast: podcastForNewFolder)
-        }
-        .confirmationDialog(
-            "Delete \(folder.name)?",
-            isPresented: $showDeleteConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Delete", role: .destructive) {
-                deleteFolder()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will remove the folder. Podcasts will remain in your library.")
-        }
+        .navigationTitle(title)
         .onAppear {
             if !networkMonitor.isConnected {
                 showDownloadedOnly = true
@@ -185,6 +146,11 @@ struct FolderDetailView: View {
         } message: {
             Text("This will remove the podcast and delete all downloaded episodes.")
         }
+        .sheet(isPresented: $showCreateFolder, onDismiss: {
+            podcastForNewFolder = nil
+        }) {
+            EditFolderView(folder: nil, initialPodcast: podcastForNewFolder)
+        }
     }
 
     // MARK: - Podcasts View
@@ -192,7 +158,7 @@ struct FolderDetailView: View {
     @ViewBuilder
     private var podcastsView: some View {
         Section {
-            ForEach(podcastsInFolder) { podcast in
+            ForEach(podcasts) { podcast in
                 NavigationLink {
                     PodcastDetailView(podcast: podcast)
                 } label: {
@@ -209,25 +175,10 @@ struct FolderDetailView: View {
                             showCreateFolder = true
                         }
                     )
-
-                    Divider()
-
-                    Button(role: .destructive) {
-                        removePodcastFromFolder(podcast)
-                    } label: {
-                        Label("Remove from Folder", systemImage: "folder.badge.minus")
-                    }
-                }
-                .swipeActions(edge: .trailing) {
-                    Button(role: .destructive) {
-                        removePodcastFromFolder(podcast)
-                    } label: {
-                        Label("Remove", systemImage: "folder.badge.minus")
-                    }
                 }
             }
         } header: {
-            Text("\(podcastsInFolder.count) Podcasts")
+            Text("\(podcasts.count) Podcasts")
         }
     }
 
@@ -281,7 +232,7 @@ struct FolderDetailView: View {
                 )
             } else {
                 ForEach(filteredEpisodes, id: \.episode.guid) { item in
-                    FolderEpisodeRow(
+                    AllEpisodesRow(
                         episode: item.episode,
                         podcast: item.podcast,
                         onDownloadNeedsConfirmation: { episode in
@@ -292,6 +243,9 @@ struct FolderDetailView: View {
                         .contextMenu {
                             EpisodeContextMenu(
                                 episode: item.episode,
+                                onPlay: {
+                                    playEpisode(item.episode)
+                                },
                                 onDownloadNeedsConfirmation: {
                                     episodePendingDownload = item.episode
                                     showCellularConfirmation = true
@@ -410,107 +364,14 @@ struct FolderDetailView: View {
 
         AudioPlayerManager.shared.play(episode)
     }
-
-    private func removePodcastFromFolder(_ podcast: Podcast) {
-        if let index = folder.podcasts.firstIndex(where: { $0.feedURL == podcast.feedURL }) {
-            folder.podcasts.remove(at: index)
-            try? modelContext.save()
-        }
-    }
-
-    private func deleteFolder() {
-        modelContext.delete(folder)
-        try? modelContext.save()
-        dismiss()
-    }
 }
 
-// MARK: - Manage Folder Podcasts View
+// MARK: - All Episodes Row
 
-struct ManageFolderPodcastsView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Environment(\.dismiss) private var dismiss
-
-    @Bindable var folder: Folder
-    let allPodcasts: [Podcast]
-
-    var body: some View {
-        NavigationStack {
-            List {
-                if allPodcasts.isEmpty {
-                    ContentUnavailableView(
-                        "No Podcasts",
-                        systemImage: "mic",
-                        description: Text("Add podcasts to your library first")
-                    )
-                } else {
-                    Section {
-                        ForEach(allPodcasts) { podcast in
-                            Button {
-                                togglePodcast(podcast)
-                            } label: {
-                                HStack {
-                                    // Podcast artwork
-                                    CachedAsyncImage(url: URL(string: podcast.artworkURL ?? "")) { image in
-                                        image
-                                            .resizable()
-                                            .aspectRatio(contentMode: .fill)
-                                    } placeholder: {
-                                        RoundedRectangle(cornerRadius: 6)
-                                            .fill(Color.secondary.opacity(0.2))
-                                    }
-                                    .frame(width: 44, height: 44)
-                                    .clipShape(RoundedRectangle(cornerRadius: 6))
-
-                                    Text(podcast.title)
-                                        .foregroundStyle(.primary)
-
-                                    Spacer()
-
-                                    if isInFolder(podcast) {
-                                        Image(systemName: "checkmark")
-                                            .foregroundStyle(Color.accentColor)
-                                    }
-                                }
-                            }
-                        }
-                    } footer: {
-                        Text("Tap to add or remove podcasts from this folder")
-                    }
-                }
-            }
-            .navigationTitle("Manage Podcasts")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                }
-            }
-        }
-    }
-
-    private func isInFolder(_ podcast: Podcast) -> Bool {
-        folder.podcasts.contains { $0.feedURL == podcast.feedURL }
-    }
-
-    private func togglePodcast(_ podcast: Podcast) {
-        if let index = folder.podcasts.firstIndex(where: { $0.feedURL == podcast.feedURL }) {
-            folder.podcasts.remove(at: index)
-        } else {
-            folder.podcasts.append(podcast)
-        }
-        try? modelContext.save()
-    }
-}
-
-// MARK: - Folder Episode Row
-
-private struct FolderEpisodeRow: View {
+private struct AllEpisodesRow: View {
     @Environment(\.modelContext) private var modelContext
     let episode: Episode
-    let podcast: Podcast  // Explicitly passed to avoid relationship issues
+    let podcast: Podcast
     var onDownloadNeedsConfirmation: ((Episode) -> Void)?
 
     private var progressValue: Double {
@@ -634,9 +495,8 @@ private struct FolderEpisodeRow: View {
 }
 
 #Preview {
-    let folder = Folder(name: "News", colorHex: "FF3B30")
-    return NavigationStack {
-        FolderDetailView(folder: folder)
+    NavigationStack {
+        AllEpisodesView()
     }
-    .modelContainer(for: [Folder.self, Podcast.self], inMemory: true)
+    .modelContainer(for: [Podcast.self, Folder.self], inMemory: true)
 }

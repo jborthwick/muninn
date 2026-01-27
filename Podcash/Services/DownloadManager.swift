@@ -2,6 +2,15 @@ import Foundation
 import SwiftData
 import os
 
+/// Result of attempting to start a download
+enum DownloadResult {
+    case started
+    case alreadyDownloaded
+    case alreadyDownloading
+    case blocked(reason: String)
+    case needsConfirmation
+}
+
 /// Manages episode downloads with background URLSession support
 final class DownloadManager: NSObject {
     static let shared = DownloadManager()
@@ -29,8 +38,69 @@ final class DownloadManager: NSObject {
 
     // MARK: - Public Methods
 
-    /// Downloads an episode
+    /// Checks if a download can proceed based on network preferences
+    /// - Parameters:
+    ///   - episode: The episode to download
+    ///   - isAutoDownload: Whether this is an automatic download (uses different preference)
+    ///   - context: ModelContext to fetch settings
+    /// - Returns: DownloadResult indicating whether to proceed
+    func checkDownloadAllowed(_ episode: Episode, isAutoDownload: Bool = false, context: ModelContext) -> DownloadResult {
+        guard URL(string: episode.audioURL) != nil else {
+            return .blocked(reason: "Invalid URL")
+        }
+
+        // Skip if already downloaded
+        if episode.localFilePath != nil {
+            return .alreadyDownloaded
+        }
+
+        // Skip if already downloading
+        if let url = URL(string: episode.audioURL), activeDownloads[url] != nil {
+            return .alreadyDownloading
+        }
+
+        // Check network preference
+        let settings = AppSettings.getOrCreate(context: context)
+        let preference = isAutoDownload ? settings.autoDownloadPreference : settings.downloadPreference
+        let connectionType = NetworkMonitor.shared.connectionType
+
+        if connectionType == .cellular {
+            switch preference {
+            case .wifiOnly:
+                return .blocked(reason: "WiFi only")
+            case .askOnCellular:
+                return .needsConfirmation
+            case .always:
+                break // proceed
+            }
+        }
+
+        return .started
+    }
+
+    /// Downloads an episode (bypasses network preference check - use checkDownloadAllowed first)
     func download(_ episode: Episode) {
+        startDownload(episode)
+    }
+
+    /// Downloads an episode with network preference checking
+    /// - Returns: DownloadResult indicating what happened
+    @discardableResult
+    func downloadWithCheck(_ episode: Episode, isAutoDownload: Bool = false, context: ModelContext) -> DownloadResult {
+        let result = checkDownloadAllowed(episode, isAutoDownload: isAutoDownload, context: context)
+
+        switch result {
+        case .started:
+            startDownload(episode)
+        case .alreadyDownloaded, .alreadyDownloading, .blocked, .needsConfirmation:
+            break
+        }
+
+        return result
+    }
+
+    /// Internal method to start the actual download
+    private func startDownload(_ episode: Episode) {
         guard let url = URL(string: episode.audioURL) else { return }
 
         // Skip if already downloaded

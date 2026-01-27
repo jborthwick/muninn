@@ -234,7 +234,7 @@ struct AddPodcastView: View {
         successMessage = nil
 
         do {
-            try await addPodcast(feedURL: feedURL)
+            try await addPodcast(feedURL: feedURL, itunesID: result.id)
             successMessage = "Added \(result.title)"
         } catch let error as AddPodcastError {
             errorMessage = error.localizedDescription
@@ -245,7 +245,7 @@ struct AddPodcastView: View {
         addingID = nil
     }
 
-    private func addPodcast(feedURL: String) async throws {
+    private func addPodcast(feedURL: String, itunesID: String? = nil) async throws {
         // Check if already subscribed
         let descriptor = FetchDescriptor<Podcast>(
             predicate: #Predicate { $0.feedURL == feedURL }
@@ -258,6 +258,9 @@ struct AddPodcastView: View {
         let (podcast, episodes) = try await FeedService.shared.fetchPodcast(from: feedURL)
 
         await MainActor.run {
+            // Store iTunes ID for sharing
+            podcast.itunesID = itunesID
+
             modelContext.insert(podcast)
             for episode in episodes {
                 episode.podcast = podcast

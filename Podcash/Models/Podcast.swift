@@ -9,7 +9,10 @@ final class Podcast {
     var artworkURL: String?
     var podcastDescription: String?
 
-    // Public feed URL for sharing (if this is a private feed)
+    // iTunes/Apple Podcasts ID for sharing
+    var itunesID: String?
+
+    // Public feed URL for sharing (fallback if no iTunes ID and this is a private feed)
     var publicFeedURL: String?
 
     // Per-podcast settings
@@ -45,9 +48,27 @@ final class Podcast {
         return false
     }
 
-    /// The URL to use when sharing (public if available, otherwise feed URL)
+    /// The URL to use when sharing - prefers iTunes URL, falls back to public feed URL or feed URL
     var shareURL: String {
-        publicFeedURL ?? feedURL
+        // Prefer iTunes URL for sharing (more universal)
+        if let itunesID {
+            return "https://podcasts.apple.com/podcast/id\(itunesID)"
+        }
+        // Fall back to public feed URL (for private feeds without iTunes ID)
+        if let publicFeedURL {
+            return publicFeedURL
+        }
+        // Last resort: use the feed URL (but not if it's a private feed with auth tokens)
+        if !isPrivateFeed {
+            return feedURL
+        }
+        // Private feed with no public alternative - return empty to prevent sharing
+        return ""
+    }
+
+    /// Whether this podcast can be shared
+    var canShare: Bool {
+        !shareURL.isEmpty
     }
 
     // Relationships

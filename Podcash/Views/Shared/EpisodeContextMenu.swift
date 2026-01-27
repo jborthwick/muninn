@@ -1,8 +1,11 @@
 import SwiftUI
+import SwiftData
 
 struct EpisodeContextMenu: View {
+    @Environment(\.modelContext) private var modelContext
     let episode: Episode
     var onPlay: (() -> Void)?
+    var onDownloadNeedsConfirmation: (() -> Void)?
 
     var body: some View {
         // Play actions
@@ -34,7 +37,15 @@ struct EpisodeContextMenu: View {
         Button {
             episode.isStarred.toggle()
             if episode.isStarred && episode.localFilePath == nil {
-                DownloadManager.shared.download(episode)
+                let result = DownloadManager.shared.checkDownloadAllowed(episode, isAutoDownload: true, context: modelContext)
+                switch result {
+                case .started:
+                    DownloadManager.shared.download(episode)
+                case .needsConfirmation:
+                    onDownloadNeedsConfirmation?()
+                case .blocked, .alreadyDownloaded, .alreadyDownloading:
+                    break
+                }
             }
         } label: {
             Label(
@@ -43,9 +54,9 @@ struct EpisodeContextMenu: View {
             )
         }
 
-        // Share
-        if let shareURL = episode.podcast?.shareURL {
-            ShareLink(item: shareURL) {
+        // Share (only if podcast can be shared)
+        if let podcast = episode.podcast, podcast.canShare {
+            ShareLink(item: podcast.shareURL) {
                 Label("Share", systemImage: "square.and.arrow.up")
             }
         }
@@ -67,7 +78,15 @@ struct EpisodeContextMenu: View {
             }
         } else {
             Button {
-                DownloadManager.shared.download(episode)
+                let result = DownloadManager.shared.checkDownloadAllowed(episode, isAutoDownload: false, context: modelContext)
+                switch result {
+                case .started:
+                    DownloadManager.shared.download(episode)
+                case .needsConfirmation:
+                    onDownloadNeedsConfirmation?()
+                case .blocked, .alreadyDownloaded, .alreadyDownloading:
+                    break
+                }
             } label: {
                 Label("Download", systemImage: "arrow.down.circle")
             }

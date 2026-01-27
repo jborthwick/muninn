@@ -1,6 +1,7 @@
 import AVFoundation
 import MediaPlayer
 import SwiftUI
+import SwiftData
 import Combine
 import os
 
@@ -18,6 +19,8 @@ final class AudioPlayerManager {
         static let playbackSpeed = "playbackSpeed"
         static let skipForwardInterval = "skipForwardInterval"
         static let skipBackwardInterval = "skipBackwardInterval"
+        static let lastEpisodeGuid = "lastEpisodeGuid"
+        static let lastPlaybackPosition = "lastPlaybackPosition"
     }
 
     // MARK: - Observable State
@@ -102,6 +105,27 @@ final class AudioPlayerManager {
 
         setupAudioSession()
         setupRemoteCommands()
+        setupAppLifecycleObservers()
+    }
+
+    private func setupAppLifecycleObservers() {
+        // Save state when app goes to background
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.willResignActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.saveLastEpisode()
+        }
+
+        // Save state when app is terminating
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.saveCurrentPosition()
+        }
     }
 
     // Note: deinit not needed as this is a singleton that lives for app lifetime.
@@ -203,6 +227,14 @@ final class AudioPlayerManager {
     }
 
     func resume() {
+        // If we have an episode but no player, need to reload
+        if currentEpisode != nil && player == nil {
+            if let episode = currentEpisode {
+                play(episode)
+            }
+            return
+        }
+
         player?.rate = Float(effectivePlaybackSpeed)
         isPlaying = true
         updateNowPlayingInfo()
@@ -287,6 +319,7 @@ final class AudioPlayerManager {
 
     func stop() {
         saveCurrentPosition()
+        saveLastEpisode()  // Save before clearing so it can be restored later
         StatsService.shared.endCurrentSession()
         clearObservers()
         player?.pause()
@@ -376,9 +409,19 @@ final class AudioPlayerManager {
             return
         }
 
-        // Pause when headphones are unplugged
-        if reason == .oldDeviceUnavailable {
+        switch reason {
+        case .oldDeviceUnavailable:
+            // Pause when headphones are unplugged
             pause()
+        case .newDeviceAvailable:
+            // When AirPods reconnect, ensure audio session is active
+            // so remote commands can work
+            if currentEpisode != nil {
+                activateAudioSession()
+                updateNowPlayingInfo()
+            }
+        default:
+            break
         }
     }
 
@@ -533,6 +576,55 @@ final class AudioPlayerManager {
             episode.isPlayed = true
             episode.playbackPosition = 0
         }
+
+        // Save last episode GUID for restoration on next launch
+        saveLastEpisode()
+    }
+
+    private func saveLastEpisode() {
+        guard let episode = currentEpisode else {
+            // Clear saved episode if nothing playing
+            UserDefaults.standard.removeObject(forKey: Keys.lastEpisodeGuid)
+            UserDefaults.standard.removeObject(forKey: Keys.lastPlaybackPosition)
+            return
+        }
+        UserDefaults.standard.set(episode.guid, forKey: Keys.lastEpisodeGuid)
+        UserDefaults.standard.set(currentTime, forKey: Keys.lastPlaybackPosition)
+    }
+
+    /// Restores the last played episode on app launch (without starting playback)
+    func restoreLastEpisode(from context: SwiftData.ModelContext) {
+        guard currentEpisode == nil,
+              let guid = UserDefaults.standard.string(forKey: Keys.lastEpisodeGuid) else {
+            return
+        }
+
+        // Fetch the episode by GUID
+        let predicate = #Predicate<Episode> { $0.guid == guid }
+        let descriptor = FetchDescriptor<Episode>(predicate: predicate)
+
+        guard let episodes = try? context.fetch(descriptor),
+              let episode = episodes.first else {
+            // Episode not found - clear saved state
+            UserDefaults.standard.removeObject(forKey: Keys.lastEpisodeGuid)
+            UserDefaults.standard.removeObject(forKey: Keys.lastPlaybackPosition)
+            return
+        }
+
+        // Restore episode state (without playing)
+        currentEpisode = episode
+
+        // Restore position from either UserDefaults or episode's saved position
+        let savedPosition = UserDefaults.standard.double(forKey: Keys.lastPlaybackPosition)
+        currentTime = savedPosition > 0 ? savedPosition : episode.playbackPosition
+
+        // Get duration from episode if available
+        duration = episode.duration ?? 0
+
+        // Update Now Playing info so lock screen shows the episode
+        updateNowPlayingInfo()
+
+        logger.info("Restored last episode: \(episode.title)")
     }
 
     // MARK: - Playback Ended

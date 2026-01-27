@@ -7,12 +7,14 @@ struct EditFolderView: View {
     @Query(sort: \Podcast.title) private var allPodcasts: [Podcast]
 
     let folder: Folder?
+    var initialPodcast: Podcast?
 
     @State private var name: String = ""
     @State private var selectedColor: String = "007AFF" // Default blue
     @State private var selectedPodcasts: Set<String> = [] // Feed URLs
     @State private var showManagePodcasts = false
     @State private var createdFolder: Folder?
+    @State private var autoDownloadEnabled: Bool = false
     @FocusState private var isNameFocused: Bool
 
     private let colorOptions = [
@@ -59,6 +61,19 @@ struct EditFolderView: View {
                     .padding(.vertical, 8)
                 }
 
+                // Auto-download section
+                Section {
+                    Toggle(isOn: $autoDownloadEnabled) {
+                        HStack {
+                            Image(systemName: "arrow.down.circle")
+                                .foregroundStyle(.green)
+                            Text("Auto-Download New Episodes")
+                        }
+                    }
+                } footer: {
+                    Text("Automatically download new episodes from podcasts in this folder")
+                }
+
                 // Show podcasts section for editing existing folders
                 if isEditing, let folder = folder {
                     Section {
@@ -99,12 +114,18 @@ struct EditFolderView: View {
                     name = folder.name
                     selectedColor = folder.colorHex ?? "007AFF"
                     selectedPodcasts = Set(folder.podcasts.map { $0.feedURL })
+                    autoDownloadEnabled = folder.autoDownloadNewEpisodes
                 } else {
                     // Auto-focus name field for new folders
                     isNameFocused = true
                 }
             }
-            .sheet(isPresented: $showManagePodcasts) {
+            .sheet(isPresented: $showManagePodcasts, onDismiss: {
+                // If we just created a new folder (not editing), dismiss the entire view
+                if createdFolder != nil {
+                    dismiss()
+                }
+            }) {
                 if let folder = folder ?? createdFolder {
                     ManageFolderPodcastsSheet(folder: folder, allPodcasts: allPodcasts)
                 }
@@ -125,11 +146,17 @@ struct EditFolderView: View {
             // Edit existing
             folder.name = trimmedName
             folder.colorHex = selectedColor
+            folder.autoDownloadNewEpisodes = autoDownloadEnabled
             try? modelContext.save()
             dismiss()
         } else {
             // Create new - then show podcast picker
             let newFolder = Folder(name: trimmedName, colorHex: selectedColor)
+            newFolder.autoDownloadNewEpisodes = autoDownloadEnabled
+            // Add initial podcast if provided (from context menu)
+            if let initialPodcast {
+                newFolder.podcasts.append(initialPodcast)
+            }
             modelContext.insert(newFolder)
             try? modelContext.save()
             createdFolder = newFolder
@@ -218,6 +245,6 @@ private struct ManageFolderPodcastsSheet: View {
 }
 
 #Preview {
-    EditFolderView(folder: nil)
+    EditFolderView(folder: nil, initialPodcast: nil)
         .modelContainer(for: [Folder.self, Podcast.self], inMemory: true)
 }

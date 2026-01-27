@@ -8,6 +8,8 @@ struct DownloadsView: View {
     private var networkMonitor: NetworkMonitor { NetworkMonitor.shared }
 
     @State private var showDeleteAllConfirmation = false
+    @State private var showCellularConfirmation = false
+    @State private var episodePendingDownload: Episode?
 
     private var downloadedEpisodes: [Episode] {
         allEpisodes
@@ -60,6 +62,15 @@ struct DownloadsView: View {
                         Section("Downloaded (\(formattedTotalSize))") {
                             ForEach(downloadedEpisodes) { episode in
                                 DownloadedEpisodeRow(episode: episode)
+                                    .contextMenu {
+                                        EpisodeContextMenu(
+                                            episode: episode,
+                                            onDownloadNeedsConfirmation: {
+                                                episodePendingDownload = episode
+                                                showCellularConfirmation = true
+                                            }
+                                        )
+                                    }
                                     .swipeActions(edge: .trailing) {
                                         Button(role: .destructive) {
                                             DownloadManager.shared.deleteDownload(episode)
@@ -100,6 +111,19 @@ struct DownloadsView: View {
             } message: {
                 Text("This will remove all downloaded episodes from your device.")
             }
+            .alert("Download on Cellular?", isPresented: $showCellularConfirmation) {
+                Button("Download") {
+                    if let episode = episodePendingDownload {
+                        DownloadManager.shared.download(episode)
+                    }
+                    episodePendingDownload = nil
+                }
+                Button("Cancel", role: .cancel) {
+                    episodePendingDownload = nil
+                }
+            } message: {
+                Text("You're on cellular data. Download anyway?")
+            }
         }
     }
 
@@ -114,43 +138,67 @@ struct DownloadsView: View {
 private struct DownloadedEpisodeRow: View {
     let episode: Episode
 
+    private var progressValue: Double {
+        guard let duration = episode.duration, duration > 0 else { return 0 }
+        return episode.playbackPosition / duration
+    }
+
+    private var remainingTime: String {
+        guard let duration = episode.duration else { return "" }
+        let remaining = duration - episode.playbackPosition
+        return remaining.formattedDuration + " left"
+    }
+
     var body: some View {
-        HStack(spacing: 12) {
-            CachedAsyncImage(url: URL(string: episode.podcast?.artworkURL ?? "")) { image in
-                image.resizable().aspectRatio(contentMode: .fill)
-            } placeholder: {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.secondary.opacity(0.2))
-            }
-            .frame(width: 50, height: 50)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(episode.title)
-                    .font(.headline)
-                    .lineLimit(2)
-
-                HStack(spacing: 8) {
-                    if let podcast = episode.podcast {
-                        Text(podcast.title)
-                    }
-                    if let duration = episode.duration {
-                        Text("•")
-                        Text(duration.formattedDuration)
-                    }
+        NavigationLink {
+            EpisodeDetailView(episode: episode)
+        } label: {
+            HStack(spacing: 12) {
+                CachedAsyncImage(url: URL(string: episode.podcast?.artworkURL ?? "")) { image in
+                    image.resizable().aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color.secondary.opacity(0.2))
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .frame(width: 50, height: 50)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(episode.title)
+                        .font(.headline)
+                        .lineLimit(2)
+                        .foregroundStyle(episode.isPlayed ? .secondary : .primary)
+
+                    HStack(spacing: 6) {
+                        // Progress pie indicator if partially played
+                        if episode.playbackPosition > 0 && !episode.isPlayed {
+                            ProgressPieView(progress: progressValue)
+                                .frame(width: 12, height: 12)
+                        }
+
+                        if let podcast = episode.podcast {
+                            Text(podcast.title)
+                        }
+                        if let duration = episode.duration {
+                            Text("•")
+                            if episode.playbackPosition > 0 && !episode.isPlayed {
+                                Text(remainingTime)
+                                    .foregroundStyle(Color.accentColor)
+                            } else {
+                                Text(duration.formattedDuration)
+                            }
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
             }
-
-            Spacer()
-
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            AudioPlayerManager.shared.play(episode)
+            .opacity(episode.isPlayed ? 0.7 : 1.0)
         }
     }
 }

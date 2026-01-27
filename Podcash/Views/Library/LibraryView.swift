@@ -9,6 +9,10 @@ struct LibraryView: View {
     @State private var showingAddPodcast = false
     @State private var showingAddFolder = false
     @State private var folderToEdit: Folder?
+    @State private var podcastToUnsubscribe: Podcast?
+    @State private var podcastForNewFolder: Podcast?
+
+    private var refreshManager: RefreshManager { RefreshManager.shared }
 
     var body: some View {
         NavigationStack {
@@ -21,6 +25,28 @@ struct LibraryView: View {
                     )
                 } else {
                     List {
+                        // Refresh status banner
+                        RefreshStatusBanner()
+                            .listRowInsets(EdgeInsets())
+                            .listRowSeparator(.hidden)
+
+                        // Virtual folders section (only when user has folders)
+                        if !folders.isEmpty {
+                            Section {
+                                NavigationLink {
+                                    AllEpisodesView()
+                                } label: {
+                                    Label("All Episodes", systemImage: "list.bullet")
+                                }
+
+                                NavigationLink {
+                                    AllEpisodesView(showUnsortedOnly: true)
+                                } label: {
+                                    Label("Unsorted", systemImage: "tray")
+                                }
+                            }
+                        }
+
                         // Folders section
                         if !folders.isEmpty {
                             Section("Folders") {
@@ -53,13 +79,26 @@ struct LibraryView: View {
                                     PodcastRowView(podcast: podcast)
                                 }
                                 .contextMenu {
-                                    addToFolderMenu(for: podcast)
+                                    PodcastContextMenu(
+                                        podcast: podcast,
+                                        onUnsubscribe: {
+                                            podcastToUnsubscribe = podcast
+                                        },
+                                        onCreateFolder: { podcastToAdd in
+                                            podcastForNewFolder = podcastToAdd
+                                            showingAddFolder = true
+                                        }
+                                    )
                                 }
                             }
                             .onDelete(perform: deletePodcasts)
                         }
                     }
                     .listStyle(.plain)
+                    .refreshable {
+                        // Trigger background refresh and return immediately
+                        refreshManager.refreshAllPodcasts(context: modelContext)
+                    }
                 }
             }
             .navigationTitle("Library")
@@ -91,57 +130,36 @@ struct LibraryView: View {
             .sheet(isPresented: $showingAddPodcast) {
                 AddPodcastView()
             }
-            .sheet(isPresented: $showingAddFolder) {
-                EditFolderView(folder: nil)
+            .sheet(isPresented: $showingAddFolder, onDismiss: {
+                podcastForNewFolder = nil
+            }) {
+                EditFolderView(folder: nil, initialPodcast: podcastForNewFolder)
             }
             .sheet(item: $folderToEdit) { folder in
                 EditFolderView(folder: folder)
             }
-        }
-    }
-
-    @ViewBuilder
-    private func addToFolderMenu(for podcast: Podcast) -> some View {
-        if folders.isEmpty {
-            Button {
-                showingAddFolder = true
-            } label: {
-                Label("Create Folder", systemImage: "folder.badge.plus")
-            }
-        } else {
-            Menu {
-                ForEach(folders) { folder in
-                    Button {
-                        togglePodcastInFolder(podcast, folder: folder)
-                    } label: {
-                        if folder.podcasts.contains(where: { $0.id == podcast.id }) {
-                            Label(folder.name, systemImage: "checkmark")
-                        } else {
-                            Text(folder.name)
-                        }
+            .confirmationDialog(
+                "Unsubscribe from \(podcastToUnsubscribe?.title ?? "podcast")?",
+                isPresented: Binding(
+                    get: { podcastToUnsubscribe != nil },
+                    set: { if !$0 { podcastToUnsubscribe = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Unsubscribe", role: .destructive) {
+                    if let podcast = podcastToUnsubscribe {
+                        DownloadManager.shared.deleteDownloads(for: podcast)
+                        modelContext.delete(podcast)
                     }
+                    podcastToUnsubscribe = nil
                 }
-
-                Divider()
-
-                Button {
-                    showingAddFolder = true
-                } label: {
-                    Label("New Folder", systemImage: "folder.badge.plus")
+                Button("Cancel", role: .cancel) {
+                    podcastToUnsubscribe = nil
                 }
-            } label: {
-                Label("Add to Folder", systemImage: "folder")
+            } message: {
+                Text("This will remove the podcast and delete all downloaded episodes.")
             }
         }
-    }
-
-    private func togglePodcastInFolder(_ podcast: Podcast, folder: Folder) {
-        if let index = folder.podcasts.firstIndex(where: { $0.id == podcast.id }) {
-            folder.podcasts.remove(at: index)
-        } else {
-            folder.podcasts.append(podcast)
-        }
-        try? modelContext.save()
     }
 
     private func deletePodcasts(at offsets: IndexSet) {

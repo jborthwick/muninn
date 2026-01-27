@@ -64,6 +64,15 @@ struct MiniPlayerView: View {
                             .font(.title3)
                             .frame(width: 44, height: 44)
                     }
+                    .contextMenu {
+                        Button {
+                            episode.isPlayed = true
+                            episode.playbackPosition = 0
+                            playerManager.stop()
+                        } label: {
+                            Label("Mark as Played", systemImage: "checkmark.circle")
+                        }
+                    }
                 }
                 .padding(.horizontal)
                 .padding(.vertical, 8)

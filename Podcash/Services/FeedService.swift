@@ -61,6 +61,33 @@ final class FeedService {
         }
     }
 
+    /// Refreshes all podcasts in the library
+    /// - Returns: Total number of new episodes added across all podcasts
+    func refreshAllPodcasts(context: ModelContext) async -> Int {
+        let descriptor = FetchDescriptor<Podcast>()
+        guard let podcasts = try? context.fetch(descriptor) else { return 0 }
+
+        var totalNew = 0
+        for podcast in podcasts {
+            if let count = try? await refreshPodcast(podcast, context: context) {
+                totalNew += count
+            }
+        }
+        return totalNew
+    }
+
+    /// Refreshes a specific list of podcasts
+    /// - Returns: Total number of new episodes added
+    func refreshPodcasts(_ podcasts: [Podcast], context: ModelContext) async -> Int {
+        var totalNew = 0
+        for podcast in podcasts {
+            if let count = try? await refreshPodcast(podcast, context: context) {
+                totalNew += count
+            }
+        }
+        return totalNew
+    }
+
     /// Refreshes an existing podcast, adding new episodes
     func refreshPodcast(_ podcast: Podcast, context: ModelContext) async throws -> Int {
         let (_, newEpisodes) = try await fetchPodcast(from: podcast.feedURL)
@@ -81,10 +108,18 @@ final class FeedService {
 
         podcast.lastRefreshed = Date()
 
-        // Auto-download new episodes if enabled for this podcast
-        if podcast.autoDownloadNewEpisodes {
+        // Check if auto-download is enabled for this podcast or any of its folders
+        let shouldAutoDownload = podcast.autoDownloadNewEpisodes || isInAutoDownloadFolder(podcast, context: context)
+
+        // Auto-download new episodes if enabled
+        if shouldAutoDownload {
             for episode in newlyAddedEpisodes {
-                DownloadManager.shared.download(episode)
+                // Check network preference for auto-downloads (skip confirmation for background refresh)
+                let result = DownloadManager.shared.checkDownloadAllowed(episode, isAutoDownload: true, context: context)
+                if case .started = result {
+                    DownloadManager.shared.download(episode)
+                }
+                // Note: .wifiOnly will block, .askOnCellular treated as blocked for auto-downloads
             }
 
             // Enforce per-podcast limit after downloads start
@@ -211,6 +246,26 @@ final class FeedService {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter.date(from: dateString) ?? ISO8601DateFormatter().date(from: dateString)
+    }
+
+    /// Checks if a podcast is in any folder that has auto-download enabled
+    private func isInAutoDownloadFolder(_ podcast: Podcast, context: ModelContext) -> Bool {
+        let descriptor = FetchDescriptor<Folder>(
+            predicate: #Predicate { $0.autoDownloadNewEpisodes == true }
+        )
+
+        guard let autoDownloadFolders = try? context.fetch(descriptor) else {
+            return false
+        }
+
+        // Check if any auto-download folder contains this podcast
+        for folder in autoDownloadFolders {
+            if folder.podcasts.contains(where: { $0.feedURL == podcast.feedURL }) {
+                return true
+            }
+        }
+
+        return false
     }
 }
 

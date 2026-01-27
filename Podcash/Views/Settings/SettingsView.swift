@@ -103,30 +103,6 @@ struct SettingsView: View {
                     }
                 }
 
-                // Developer/Testing section
-                Section("Developer") {
-                    Toggle(isOn: Binding(
-                        get: { networkMonitor.simulateOffline },
-                        set: { networkMonitor.simulateOffline = $0 }
-                    )) {
-                        HStack {
-                            Image(systemName: "wifi.slash")
-                                .foregroundStyle(.orange)
-                            Text("Simulate Offline Mode")
-                        }
-                    }
-
-                    if networkMonitor.simulateOffline {
-                        HStack {
-                            Image(systemName: "info.circle")
-                                .foregroundStyle(.secondary)
-                            Text("App will behave as if offline")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
                 // Downloads section
                 Section("Downloads") {
                     // Storage used
@@ -135,6 +111,26 @@ struct SettingsView: View {
                         Spacer()
                         Text(formatBytes(downloadSize))
                             .foregroundStyle(.secondary)
+                    }
+
+                    // Manual download network preference
+                    Picker("Manual Downloads", selection: Binding(
+                        get: { appSettings.downloadPreferenceRaw },
+                        set: { appSettings.downloadPreferenceRaw = $0 }
+                    )) {
+                        ForEach(DownloadPreference.allCases, id: \.rawValue) { pref in
+                            Text(pref.label).tag(pref.rawValue)
+                        }
+                    }
+
+                    // Auto-download network preference
+                    Picker("Auto-Downloads", selection: Binding(
+                        get: { appSettings.autoDownloadPreferenceRaw },
+                        set: { appSettings.autoDownloadPreferenceRaw = $0 }
+                    )) {
+                        ForEach(DownloadPreference.allCases, id: \.rawValue) { pref in
+                            Text(pref.label).tag(pref.rawValue)
+                        }
                     }
 
                     // Storage limit picker
@@ -160,6 +156,28 @@ struct SettingsView: View {
                     Text("Completed episodes are auto-deleted. Starred and queued episodes are protected.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+
+                    // Developer/Testing: Simulate offline mode
+                    Toggle(isOn: Binding(
+                        get: { networkMonitor.simulateOffline },
+                        set: { networkMonitor.simulateOffline = $0 }
+                    )) {
+                        HStack {
+                            Image(systemName: "wifi.slash")
+                                .foregroundStyle(.orange)
+                            Text("Simulate Offline Mode")
+                        }
+                    }
+
+                    if networkMonitor.simulateOffline {
+                        HStack {
+                            Image(systemName: "info.circle")
+                                .foregroundStyle(.secondary)
+                            Text("App will behave as if offline")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
 
                 // Storage management section

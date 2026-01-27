@@ -13,6 +13,9 @@ final class Folder {
 
     var dateCreated: Date = Date()
 
+    /// When enabled, new episodes from podcasts in this folder will be auto-downloaded
+    var autoDownloadNewEpisodes: Bool = false
+
     init(name: String, colorHex: String? = nil) {
         self.name = name
         self.colorHex = colorHex

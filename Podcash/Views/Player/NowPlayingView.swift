@@ -122,6 +122,15 @@ struct NowPlayingView: View {
                         Image(systemName: skipForwardIcon)
                             .font(.system(size: 32))
                     }
+                    .contextMenu {
+                        Button {
+                            episode.isPlayed = true
+                            episode.playbackPosition = 0
+                            playerManager.stop()
+                        } label: {
+                            Label("Mark as Played", systemImage: "checkmark.circle")
+                        }
+                    }
                 }
                 .foregroundStyle(.primary)
                 .padding(.top, 24)
@@ -210,11 +219,13 @@ struct NowPlayingView: View {
                             .foregroundStyle(episode.isStarred ? .yellow : .secondary)
                     }
 
-                    // Share button
-                    ShareLink(item: shareURL(for: episode)) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.title2)
-                            .foregroundStyle(.secondary)
+                    // Share button (only if podcast can be shared)
+                    if let podcast = episode.podcast, podcast.canShare {
+                        ShareLink(item: podcast.shareURL) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.title2)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
                 .padding(.top, 24)
@@ -289,9 +300,6 @@ struct NowPlayingView: View {
         return "gobackward.15"
     }
 
-    private func shareURL(for episode: Episode) -> String {
-        episode.podcast?.shareURL ?? episode.audioURL
-    }
 }
 
 // MARK: - Speed Picker Sheet

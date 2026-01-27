@@ -1,7 +1,11 @@
 import SwiftUI
+import SwiftData
 
 struct EpisodeRowView: View {
+    @Environment(\.modelContext) private var modelContext
     let episode: Episode
+
+    @State private var showCellularConfirmation = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -30,24 +34,30 @@ struct EpisodeRowView: View {
                     .foregroundStyle(episode.isPlayed ? .secondary : .primary)
 
                 // Metadata row
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    // Progress pie indicator if partially played
+                    if episode.playbackPosition > 0 && !episode.isPlayed {
+                        ProgressPieView(progress: progressValue)
+                            .frame(width: 12, height: 12)
+                    }
+
                     if let date = episode.publishedDate {
                         Text(date.relativeFormatted)
                     }
 
                     if let duration = episode.duration {
                         Text("•")
-                        Text(duration.formattedDuration)
+                        // Show remaining time if partially played
+                        if episode.playbackPosition > 0 && !episode.isPlayed {
+                            Text(remainingTime)
+                                .foregroundStyle(Color.accentColor)
+                        } else {
+                            Text(duration.formattedDuration)
+                        }
                     }
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
-
-                // Progress indicator if partially played
-                if episode.playbackPosition > 0 && !episode.isPlayed {
-                    ProgressView(value: progressValue)
-                        .tint(.accentColor)
-                }
             }
 
             Spacer()
@@ -57,9 +67,17 @@ struct EpisodeRowView: View {
                 // Star button
                 Button {
                     episode.isStarred.toggle()
-                    // Auto-download when starring
+                    // Auto-download when starring (respects auto-download preference)
                     if episode.isStarred && episode.localFilePath == nil {
-                        DownloadManager.shared.download(episode)
+                        let result = DownloadManager.shared.checkDownloadAllowed(episode, isAutoDownload: true, context: modelContext)
+                        switch result {
+                        case .started:
+                            DownloadManager.shared.download(episode)
+                        case .needsConfirmation:
+                            showCellularConfirmation = true
+                        case .blocked, .alreadyDownloaded, .alreadyDownloading:
+                            break
+                        }
                     }
                 } label: {
                     Image(systemName: episode.isStarred ? "star.fill" : "star")
@@ -88,7 +106,7 @@ struct EpisodeRowView: View {
                     .buttonStyle(.plain)
                 } else {
                     Button {
-                        DownloadManager.shared.download(episode)
+                        attemptDownload()
                     } label: {
                         Image(systemName: "arrow.down.circle")
                             .font(.title2)
@@ -101,15 +119,41 @@ struct EpisodeRowView: View {
         .padding(.vertical, 4)
         .contentShape(Rectangle())
         .opacity(episode.isPlayed ? 0.7 : 1.0)
+        .alert("Download on Cellular?", isPresented: $showCellularConfirmation) {
+            Button("Download") {
+                DownloadManager.shared.download(episode)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You're on cellular data. Download anyway?")
+        }
+    }
+
+    private func attemptDownload() {
+        let result = DownloadManager.shared.checkDownloadAllowed(episode, isAutoDownload: false, context: modelContext)
+        switch result {
+        case .started:
+            DownloadManager.shared.download(episode)
+        case .needsConfirmation:
+            showCellularConfirmation = true
+        case .blocked, .alreadyDownloaded, .alreadyDownloading:
+            break
+        }
     }
 
     private var progressValue: Double {
         guard let duration = episode.duration, duration > 0 else { return 0 }
         return episode.playbackPosition / duration
     }
+
+    private var remainingTime: String {
+        guard let duration = episode.duration else { return "" }
+        let remaining = duration - episode.playbackPosition
+        return remaining.formattedDuration + " left"
+    }
 }
 
-// MARK: - Circular Progress View
+// MARK: - Circular Progress View (for downloads)
 
 struct CircularProgressView: View {
     let progress: Double
@@ -124,6 +168,42 @@ struct CircularProgressView: View {
                 .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2, lineCap: .round))
                 .rotationEffect(.degrees(-90))
         }
+    }
+}
+
+// MARK: - Progress Pie View (small filled pie for playback progress)
+
+struct ProgressPieView: View {
+    let progress: Double
+
+    var body: some View {
+        ZStack {
+            // Background circle
+            Circle()
+                .fill(Color.secondary.opacity(0.3))
+
+            // Progress pie slice
+            PieSlice(progress: progress)
+                .fill(Color.accentColor)
+        }
+    }
+}
+
+struct PieSlice: Shape {
+    let progress: Double
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let radius = min(rect.width, rect.height) / 2
+        let startAngle = Angle(degrees: -90)
+        let endAngle = Angle(degrees: -90 + (360 * progress))
+
+        path.move(to: center)
+        path.addArc(center: center, radius: radius, startAngle: startAngle, endAngle: endAngle, clockwise: false)
+        path.closeSubpath()
+
+        return path
     }
 }
 
