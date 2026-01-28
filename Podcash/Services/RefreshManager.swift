@@ -12,6 +12,9 @@ final class RefreshManager {
     var totalCount = 0
     var lastRefreshDate: Date?
 
+    /// Number of concurrent feed fetches
+    private let concurrentFetches = 6
+
     private init() {}
 
     /// Triggers a background refresh of all podcasts
@@ -30,17 +33,7 @@ final class RefreshManager {
             }
 
             totalCount = podcasts.count
-
-            // Refresh each podcast with low priority to avoid blocking UI
-            for (index, podcast) in podcasts.enumerated() {
-                // Yield to let UI updates happen
-                await Task.yield()
-
-                _ = try? await FeedService.shared.refreshPodcast(podcast, context: context)
-
-                refreshedCount = index + 1
-                refreshProgress = Double(refreshedCount) / Double(totalCount)
-            }
+            await refreshInParallel(podcasts: podcasts, context: context)
 
             lastRefreshDate = Date()
             isRefreshing = false
@@ -57,18 +50,40 @@ final class RefreshManager {
             refreshedCount = 0
             totalCount = podcasts.count
 
-            for (index, podcast) in podcasts.enumerated() {
-                // Yield to let UI updates happen
-                await Task.yield()
-
-                _ = try? await FeedService.shared.refreshPodcast(podcast, context: context)
-
-                refreshedCount = index + 1
-                refreshProgress = Double(refreshedCount) / Double(totalCount)
-            }
+            await refreshInParallel(podcasts: podcasts, context: context)
 
             lastRefreshDate = Date()
             isRefreshing = false
+        }
+    }
+
+    /// Refresh podcasts in parallel with limited concurrency
+    private func refreshInParallel(podcasts: [Podcast], context: ModelContext) async {
+        await withTaskGroup(of: Void.self) { group in
+            var inFlight = 0
+            var index = 0
+
+            for podcast in podcasts {
+                // Wait if we've hit the concurrency limit
+                if inFlight >= concurrentFetches {
+                    await group.next()
+                    inFlight -= 1
+                    refreshedCount += 1
+                    refreshProgress = Double(refreshedCount) / Double(totalCount)
+                }
+
+                group.addTask {
+                    _ = try? await FeedService.shared.refreshPodcast(podcast, context: context)
+                }
+                inFlight += 1
+                index += 1
+            }
+
+            // Wait for remaining tasks
+            for await _ in group {
+                refreshedCount += 1
+                refreshProgress = Double(refreshedCount) / Double(totalCount)
+            }
         }
     }
 }

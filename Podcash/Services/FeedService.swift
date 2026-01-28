@@ -35,6 +35,64 @@ final class FeedService {
         }
     }
 
+    /// Fetches a podcast feed with conditional HTTP headers (ETag/If-Modified-Since)
+    /// Returns nil if the feed has not been modified (304 response)
+    private func fetchPodcastConditional(
+        from urlString: String,
+        etag: String?,
+        lastModified: String?
+    ) async throws -> (podcast: Podcast, episodes: [Episode], etag: String?, lastModified: String?)? {
+        guard let url = URL(string: urlString) else {
+            throw FeedError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+
+        // Add conditional headers if we have them
+        if let etag = etag {
+            request.setValue(etag, forHTTPHeaderField: "If-None-Match")
+        }
+        if let lastModified = lastModified {
+            request.setValue(lastModified, forHTTPHeaderField: "If-Modified-Since")
+        }
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw FeedError.parsingFailed("Invalid response")
+        }
+
+        // 304 Not Modified - feed hasn't changed
+        if httpResponse.statusCode == 304 {
+            return nil
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            throw FeedError.parsingFailed("HTTP \(httpResponse.statusCode)")
+        }
+
+        // Extract caching headers from response
+        let newETag = httpResponse.value(forHTTPHeaderField: "ETag")
+        let newLastModified = httpResponse.value(forHTTPHeaderField: "Last-Modified")
+
+        // Parse the feed data
+        let parser = FeedParser(data: data)
+        let result = await withCheckedContinuation { continuation in
+            parser.parseAsync { result in
+                continuation.resume(returning: result)
+            }
+        }
+
+        switch result {
+        case .success(let feed):
+            let (podcast, episodes) = try parseFeed(feed, feedURL: urlString)
+            return (podcast, episodes, newETag, newLastModified)
+        case .failure(let error):
+            throw FeedError.parsingFailed(error.localizedDescription)
+        }
+    }
+
     /// Searches iTunes for the public version of a private podcast
     private func findPublicFeed(for podcast: Podcast) async {
         do {
@@ -89,8 +147,24 @@ final class FeedService {
     }
 
     /// Refreshes an existing podcast, adding new episodes
+    /// Returns -1 if feed was not modified (304), otherwise returns count of new episodes
     func refreshPodcast(_ podcast: Podcast, context: ModelContext) async throws -> Int {
-        let (_, newEpisodes) = try await fetchPodcast(from: podcast.feedURL)
+        // Try conditional fetch first
+        let fetchResult = try await fetchPodcastConditional(
+            from: podcast.feedURL,
+            etag: podcast.feedETag,
+            lastModified: podcast.feedLastModified
+        )
+
+        // Feed not modified - skip parsing
+        guard let (_, newEpisodes, newETag, newLastModified) = fetchResult else {
+            podcast.lastRefreshed = Date()
+            return -1  // Not modified
+        }
+
+        // Update caching headers
+        podcast.feedETag = newETag
+        podcast.feedLastModified = newLastModified
 
         let existingGUIDs = Set(podcast.episodes.map { $0.guid })
         var addedCount = 0

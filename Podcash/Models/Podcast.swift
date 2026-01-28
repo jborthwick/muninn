@@ -82,6 +82,10 @@ final class Podcast {
     var dateAdded: Date = Date()
     var lastRefreshed: Date?
 
+    // HTTP caching headers for conditional requests
+    var feedETag: String?
+    var feedLastModified: String?
+
     init(
         feedURL: String,
         title: String,
