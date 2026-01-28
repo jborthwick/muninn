@@ -5,16 +5,36 @@ import Foundation
 actor ImageCache {
     static let shared = ImageCache()
 
-    private let memoryCache = NSCache<NSString, UIImage>()
+    // NSCache is thread-safe, so we can access it synchronously from any thread
+    private static let memoryCache = NSCache<NSString, UIImage>()
     private let fileManager = FileManager.default
     private var cacheDirectory: URL?
     private var inFlightRequests: [String: Task<UIImage?, Never>] = [:]
 
     private init() {
         // Increase memory cache limits
-        memoryCache.countLimit = 200
-        memoryCache.totalCostLimit = 100 * 1024 * 1024 // 100 MB
+        Self.memoryCache.countLimit = 200
+        Self.memoryCache.totalCostLimit = 100 * 1024 * 1024 // 100 MB
         setupCacheDirectory()
+    }
+
+    /// Synchronous memory cache lookup - can be called from any thread
+    nonisolated func cachedImage(for url: URL) -> UIImage? {
+        let key = cacheKey(for: url) as NSString
+        return Self.memoryCache.object(forKey: key)
+    }
+
+    /// Generate cache key - nonisolated for sync access
+    nonisolated private func cacheKey(for url: URL) -> String {
+        let urlString = url.absoluteString
+        guard let data = urlString.data(using: .utf8) else {
+            return UUID().uuidString + ".jpg"
+        }
+        var hash: UInt64 = 5381
+        for byte in data {
+            hash = ((hash << 5) &+ hash) &+ UInt64(byte)
+        }
+        return String(format: "%016llx", hash) + ".jpg"
     }
 
     private func setupCacheDirectory() {
@@ -30,14 +50,14 @@ actor ImageCache {
     func image(for url: URL) async -> UIImage? {
         let key = cacheKey(for: url)
 
-        // Check memory cache first
-        if let cached = memoryCache.object(forKey: key as NSString) {
+        // Check memory cache first (already thread-safe)
+        if let cached = Self.memoryCache.object(forKey: key as NSString) {
             return cached
         }
 
         // Check disk cache
         if let diskImage = loadFromDisk(key: key) {
-            memoryCache.setObject(diskImage, forKey: key as NSString, cost: diskImage.jpegData(compressionQuality: 1.0)?.count ?? 0)
+            Self.memoryCache.setObject(diskImage, forKey: key as NSString, cost: diskImage.jpegData(compressionQuality: 1.0)?.count ?? 0)
             return diskImage
         }
 
@@ -55,8 +75,8 @@ actor ImageCache {
 
             // Store in caches
             let cost = data.count
-            memoryCache.setObject(image, forKey: key as NSString, cost: cost)
-            saveToDisk(image: image, key: key)
+            Self.memoryCache.setObject(image, forKey: key as NSString, cost: cost)
+            await self.saveToDisk(image: image, key: key)
 
             return image
         }
@@ -74,33 +94,18 @@ actor ImageCache {
     }
 
     /// Check if image is already cached (memory or disk)
-    func isCached(url: URL) -> Bool {
+    nonisolated func isCached(url: URL) -> Bool {
         let key = cacheKey(for: url)
 
-        // Check memory
-        if memoryCache.object(forKey: key as NSString) != nil {
+        // Check memory (thread-safe)
+        if Self.memoryCache.object(forKey: key as NSString) != nil {
             return true
         }
 
         // Check disk
-        guard let cacheDir = cacheDirectory else { return false }
-        let fileURL = cacheDir.appendingPathComponent(key)
-        return fileManager.fileExists(atPath: fileURL.path)
-    }
-
-    private func cacheKey(for url: URL) -> String {
-        // Create a safe filename from URL using hash
-        let urlString = url.absoluteString
-        guard let data = urlString.data(using: .utf8) else {
-            return UUID().uuidString + ".jpg"
-        }
-
-        // Simple hash using built-in hashValue and additional mixing
-        var hash: UInt64 = 5381
-        for byte in data {
-            hash = ((hash << 5) &+ hash) &+ UInt64(byte)
-        }
-        return String(format: "%016llx", hash) + ".jpg"
+        guard let cachePath = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return false }
+        let fileURL = cachePath.appendingPathComponent("ImageCache").appendingPathComponent(key)
+        return FileManager.default.fileExists(atPath: fileURL.path)
     }
 
     private func loadFromDisk(key: String) -> UIImage? {
@@ -118,7 +123,7 @@ actor ImageCache {
     }
 
     func clearCache() {
-        memoryCache.removeAllObjects()
+        Self.memoryCache.removeAllObjects()
         if let cacheDir = cacheDirectory {
             try? fileManager.removeItem(at: cacheDir)
             setupCacheDirectory()
@@ -136,9 +141,18 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
     @State private var image: UIImage?
     @State private var loadingURL: URL?
 
+    // Check memory cache synchronously for instant display
+    private var memoryCachedImage: UIImage? {
+        guard let url = url else { return nil }
+        return ImageCache.shared.cachedImage(for: url)
+    }
+
     var body: some View {
         Group {
-            if let image = image {
+            // First check sync memory cache, then async-loaded image
+            if let cached = memoryCachedImage {
+                content(Image(uiImage: cached))
+            } else if let image = image {
                 content(Image(uiImage: image))
             } else {
                 placeholder()
@@ -152,6 +166,11 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
     private func loadImage() async {
         guard let url = url else {
             image = nil
+            return
+        }
+
+        // Skip if already in memory cache (will be shown via memoryCachedImage)
+        if ImageCache.shared.cachedImage(for: url) != nil {
             return
         }
 
