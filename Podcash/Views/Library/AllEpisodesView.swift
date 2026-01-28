@@ -339,11 +339,10 @@ struct AllEpisodesView: View {
     /// How many more episodes to load when scrolling
     private let loadMoreIncrement = 50
 
-    private var allFilteredEpisodes: [(episode: Episode, podcast: Podcast)] {
-        // Start with pre-sorted episodes from @Query (already sorted by date descending)
+    /// Filtered episodes without tuple conversion (fast for counting)
+    private var filteredEpisodesRaw: [Episode] {
         var episodes = baseEpisodes
 
-        // Apply filters
         if showStarredOnly {
             episodes = episodes.filter { $0.isStarred }
         }
@@ -352,24 +351,23 @@ struct AllEpisodesView: View {
             episodes = episodes.filter { $0.localFilePath != nil }
         }
 
-        // Reverse if sorting oldest first
         if !sortNewestFirst {
-            episodes = episodes.reversed()
+            return episodes.reversed()
         }
 
-        // Convert to tuple format (podcast accessed through relationship)
-        return episodes.compactMap { episode in
+        return episodes
+    }
+
+    /// Only create tuples for episodes we're actually displaying (expensive podcast lookup)
+    private var filteredEpisodes: [(episode: Episode, podcast: Podcast)] {
+        filteredEpisodesRaw.prefix(displayLimit).compactMap { episode in
             guard let podcast = episode.podcast else { return nil }
             return (episode: episode, podcast: podcast)
         }
     }
 
-    private var filteredEpisodes: [(episode: Episode, podcast: Podcast)] {
-        Array(allFilteredEpisodes.prefix(displayLimit))
-    }
-
     private var totalEpisodeCount: Int {
-        allFilteredEpisodes.count
+        filteredEpisodesRaw.count
     }
 
     private var hasMoreEpisodes: Bool {

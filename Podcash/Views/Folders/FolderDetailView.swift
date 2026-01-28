@@ -39,11 +39,20 @@ struct FolderDetailView: View {
         }
     }
 
-    // Get all episodes paired with their podcast (to avoid relationship issues)
-    private var allEpisodesWithPodcast: [(episode: Episode, podcast: Podcast)] {
-        podcastsInFolder.flatMap { podcast in
-            podcast.episodes.map { episode in (episode: episode, podcast: podcast) }
+    // Dictionary for fast podcast lookup by episode
+    private var podcastByEpisodeGuid: [String: Podcast] {
+        var dict: [String: Podcast] = [:]
+        for podcast in podcastsInFolder {
+            for episode in podcast.episodes {
+                dict[episode.guid] = podcast
+            }
         }
+        return dict
+    }
+
+    // Get all episodes in folder (without creating tuples yet)
+    private var allEpisodesInFolder: [Episode] {
+        podcastsInFolder.flatMap { $0.episodes }
     }
 
     var body: some View {
@@ -378,30 +387,36 @@ struct FolderDetailView: View {
     /// How many more episodes to load when scrolling
     private let loadMoreIncrement = 50
 
-    private var allFilteredEpisodes: [(episode: Episode, podcast: Podcast)] {
-        var items = allEpisodesWithPodcast
+    /// Filtered and sorted episodes without tuple conversion (fast for counting)
+    private var filteredEpisodesRaw: [Episode] {
+        var episodes = allEpisodesInFolder
 
         if showStarredOnly {
-            items = items.filter { $0.episode.isStarred }
+            episodes = episodes.filter { $0.isStarred }
         }
 
         if showDownloadedOnly {
-            items = items.filter { $0.episode.localFilePath != nil }
+            episodes = episodes.filter { $0.localFilePath != nil }
         }
 
-        return items.sorted { e1, e2 in
-            let date1 = e1.episode.publishedDate ?? .distantPast
-            let date2 = e2.episode.publishedDate ?? .distantPast
+        return episodes.sorted { e1, e2 in
+            let date1 = e1.publishedDate ?? .distantPast
+            let date2 = e2.publishedDate ?? .distantPast
             return sortNewestFirst ? date1 > date2 : date1 < date2
         }
     }
 
+    /// Only create tuples for episodes we're actually displaying
     private var filteredEpisodes: [(episode: Episode, podcast: Podcast)] {
-        Array(allFilteredEpisodes.prefix(displayLimit))
+        let lookup = podcastByEpisodeGuid
+        return filteredEpisodesRaw.prefix(displayLimit).compactMap { episode in
+            guard let podcast = lookup[episode.guid] else { return nil }
+            return (episode: episode, podcast: podcast)
+        }
     }
 
     private var totalEpisodeCount: Int {
-        allFilteredEpisodes.count
+        filteredEpisodesRaw.count
     }
 
     private var hasMoreEpisodes: Bool {
