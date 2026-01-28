@@ -147,24 +147,13 @@ final class FeedService {
     }
 
     /// Refreshes an existing podcast, adding new episodes
-    /// Returns -1 if feed was not modified (304), otherwise returns count of new episodes
     func refreshPodcast(_ podcast: Podcast, context: ModelContext) async throws -> Int {
-        // Try conditional fetch first
-        let fetchResult = try await fetchPodcastConditional(
-            from: podcast.feedURL,
-            etag: podcast.feedETag,
-            lastModified: podcast.feedLastModified
-        )
+        let logger = AppLogger.feed
 
-        // Feed not modified - skip parsing
-        guard let (_, newEpisodes, newETag, newLastModified) = fetchResult else {
-            podcast.lastRefreshed = Date()
-            return -1  // Not modified
-        }
+        // Always do a full fetch (HTTP caching disabled - was causing missed episodes)
+        let (_, newEpisodes) = try await fetchPodcast(from: podcast.feedURL)
 
-        // Update caching headers
-        podcast.feedETag = newETag
-        podcast.feedLastModified = newLastModified
+        logger.info("[\(podcast.title)] Fetched \(newEpisodes.count) episodes")
 
         let existingGUIDs = Set(podcast.episodes.map { $0.guid })
         var addedCount = 0
@@ -177,7 +166,14 @@ final class FeedService {
                 context.insert(episode)
                 addedCount += 1
                 newlyAddedEpisodes.append(episode)
+                logger.info("[\(podcast.title)] NEW: \(episode.title)")
             }
+        }
+
+        if addedCount == 0 {
+            logger.info("[\(podcast.title)] No new episodes")
+        } else {
+            logger.info("[\(podcast.title)] Added \(addedCount) new episode(s)")
         }
 
         podcast.lastRefreshed = Date()

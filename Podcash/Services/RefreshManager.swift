@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import os
 
 @MainActor
 @Observable
@@ -12,8 +13,12 @@ final class RefreshManager {
     var totalCount = 0
     var lastRefreshDate: Date?
 
+    // Debug stats for last refresh
+    var lastRefreshStats: (notModified: Int, fetched: Int, errors: Int) = (0, 0, 0)
+
     /// Number of concurrent feed fetches
     private let concurrentFetches = 6
+    private let logger = Logger(subsystem: "com.personal.podcash", category: "Refresh")
 
     private init() {}
 
@@ -59,31 +64,50 @@ final class RefreshManager {
 
     /// Refresh podcasts in parallel with limited concurrency
     private func refreshInParallel(podcasts: [Podcast], context: ModelContext) async {
-        await withTaskGroup(of: Void.self) { group in
+        var notModified = 0
+        var fetched = 0
+        var errors = 0
+
+        logger.info("Starting refresh of \(podcasts.count) podcasts (concurrency: \(self.concurrentFetches))")
+
+        // Result type: -1 = not modified, >= 0 = fetched (new episode count), nil = error
+        await withTaskGroup(of: Int?.self) { group in
             var inFlight = 0
-            var index = 0
 
             for podcast in podcasts {
                 // Wait if we've hit the concurrency limit
                 if inFlight >= concurrentFetches {
-                    await group.next()
+                    if let result = await group.next() {
+                        switch result {
+                        case .some(-1): notModified += 1
+                        case .some(_): fetched += 1
+                        case .none: errors += 1
+                        }
+                    }
                     inFlight -= 1
                     refreshedCount += 1
                     refreshProgress = Double(refreshedCount) / Double(totalCount)
                 }
 
                 group.addTask {
-                    _ = try? await FeedService.shared.refreshPodcast(podcast, context: context)
+                    try? await FeedService.shared.refreshPodcast(podcast, context: context)
                 }
                 inFlight += 1
-                index += 1
             }
 
             // Wait for remaining tasks
-            for await _ in group {
+            for await result in group {
+                switch result {
+                case .some(-1): notModified += 1
+                case .some(_): fetched += 1
+                case .none: errors += 1
+                }
                 refreshedCount += 1
                 refreshProgress = Double(refreshedCount) / Double(totalCount)
             }
         }
+
+        lastRefreshStats = (notModified, fetched, errors)
+        logger.info("Refresh complete: \(fetched) fetched, \(notModified) not modified (304), \(errors) errors")
     }
 }
