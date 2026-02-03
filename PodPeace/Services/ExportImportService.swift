@@ -135,16 +135,60 @@ final class ExportImportService {
         return try saveExportFile(exportData, filename: "full-export")
     }
     
+    // MARK: - Data Deletion
+    
+    /// Delete all existing data before import
+    @MainActor
+    private func deleteAllData(context: ModelContext) async throws {
+        logger.info("Deleting all existing data")
+        
+        // Delete in order to respect relationships
+        // 1. Queue items (reference episodes)
+        let queueDescriptor = FetchDescriptor<QueueItem>()
+        let queueItems = try context.fetch(queueDescriptor)
+        logger.info("Deleting \(queueItems.count) queue items")
+        queueItems.forEach { context.delete($0) }
+        
+        // 2. Episodes (reference podcasts)
+        let episodeDescriptor = FetchDescriptor<Episode>()
+        let episodes = try context.fetch(episodeDescriptor)
+        logger.info("Deleting \(episodes.count) episodes")
+        episodes.forEach { context.delete($0) }
+        
+        // 3. Folders (reference podcasts)
+        let folderDescriptor = FetchDescriptor<Folder>()
+        let folders = try context.fetch(folderDescriptor)
+        logger.info("Deleting \(folders.count) folders")
+        folders.forEach { context.delete($0) }
+        
+        // 4. Podcasts
+        let podcastDescriptor = FetchDescriptor<Podcast>()
+        let podcasts = try context.fetch(podcastDescriptor)
+        logger.info("Deleting \(podcasts.count) podcasts")
+        podcasts.forEach { context.delete($0) }
+        
+        // 5. Settings (keep settings, just reset to defaults)
+        // Don't delete settings, user might want to keep their preferences
+        
+        try context.save()
+        logger.info("All data deleted successfully")
+    }
+    
     // MARK: - Import
     
     /// Import from a file URL (handles both podcast-only and full exports)
     @MainActor
-    func importFromFile(_ url: URL, context: ModelContext) async throws {
+    func importFromFile(_ url: URL, context: ModelContext, replaceExisting: Bool = false) async throws {
         isImporting = true
         lastError = nil
         defer { isImporting = false }
         
-        logger.info("Starting import from: \(url.path)")
+        logger.info("Starting import from: \(url.path), replaceExisting: \(replaceExisting)")
+        
+        // Delete all existing data if requested
+        if replaceExisting {
+            try await deleteAllData(context: context)
+        }
         
         // Read the file data
         let data: Data

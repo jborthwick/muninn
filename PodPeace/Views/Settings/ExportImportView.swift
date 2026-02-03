@@ -13,6 +13,9 @@ struct ExportImportView: View {
     @State private var alertTitle = ""
     @State private var alertMessage = ""
     @State private var isProcessing = false
+    @State private var showImportOptions = false
+    @State private var selectedImportURL: URL?
+    @State private var replaceExistingData = true
     
     var body: some View {
         List {
@@ -122,7 +125,26 @@ struct ExportImportView: View {
             allowedContentTypes: [.json],
             allowsMultipleSelection: false
         ) { result in
-            handleImport(result: result)
+            handleFileSelection(result: result)
+        }
+        .confirmationDialog(
+            "Import Options",
+            isPresented: $showImportOptions,
+            titleVisibility: .visible
+        ) {
+            Button("Replace All Data") {
+                replaceExistingData = true
+                performImport()
+            }
+            Button("Merge with Existing") {
+                replaceExistingData = false
+                performImport()
+            }
+            Button("Cancel", role: .cancel) {
+                selectedImportURL = nil
+            }
+        } message: {
+            Text("Choose how to import:\n\n• Replace All: Deletes existing data first (recommended for migration)\n• Merge: Adds to existing data")
         }
         .alert(alertTitle, isPresented: $showAlert) {
             Button("OK", role: .cancel) {}
@@ -177,20 +199,33 @@ struct ExportImportView: View {
         }
     }
     
-    private func handleImport(result: Result<[URL], Error>) {
+    private func handleFileSelection(result: Result<[URL], Error>) {
+        do {
+            let urls = try result.get()
+            guard let url = urls.first else { return }
+            selectedImportURL = url
+            showImportOptions = true
+        } catch {
+            alertTitle = "File Selection Failed"
+            alertMessage = error.localizedDescription
+            showAlert = true
+        }
+    }
+    
+    private func performImport() {
+        guard let url = selectedImportURL else { return }
+        
         isProcessing = true
         Task {
             do {
-                let urls = try result.get()
-                guard let url = urls.first else { return }
-                
-                try await exportService.importFromFile(url, context: modelContext)
+                try await exportService.importFromFile(url, context: modelContext, replaceExisting: replaceExistingData)
                 
                 await MainActor.run {
                     alertTitle = "Import Successful"
                     alertMessage = exportService.lastError ?? "Your data has been imported successfully."
                     showAlert = true
                     isProcessing = false
+                    selectedImportURL = nil
                 }
             } catch {
                 await MainActor.run {
@@ -198,6 +233,7 @@ struct ExportImportView: View {
                     alertMessage = error.localizedDescription
                     showAlert = true
                     isProcessing = false
+                    selectedImportURL = nil
                 }
             }
         }
