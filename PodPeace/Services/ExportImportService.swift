@@ -1,11 +1,14 @@
 import Foundation
 import SwiftData
 import UniformTypeIdentifiers
+import os
 
 /// Service for exporting and importing app data
 @Observable
 final class ExportImportService {
     static let shared = ExportImportService()
+    
+    private let logger = Logger(subsystem: "com.personal.podpeace", category: "ExportImport")
     
     private(set) var isExporting = false
     private(set) var isImporting = false
@@ -21,17 +24,23 @@ final class ExportImportService {
         isExporting = true
         defer { isExporting = false }
         
+        logger.info("Starting podcasts-only export")
+        
         let podcastDescriptor = FetchDescriptor<Podcast>()
         let podcasts = try context.fetch(podcastDescriptor)
+        
+        logger.info("Exporting \(podcasts.count) podcasts")
         
         let exportData = PodcastOnlyExport(
             version: 1,
             exportDate: Date(),
-            appName: "Podcash", // Will work with both old and new app names
+            appName: "Pod Peace", // Updated app name
             podcasts: podcasts.map { ExportPodcast(feedURL: $0.feedURL) }
         )
         
-        return try saveExportFile(exportData, filename: "podcasts-export")
+        let url = try saveExportFile(exportData, filename: "podcasts-export")
+        logger.info("Export saved to: \(url.path)")
+        return url
     }
     
     /// Export full data including podcasts, folders, episode states, settings, queue, and downloads
@@ -57,11 +66,13 @@ final class ExportImportService {
         
         let settings = AppSettings.getOrCreate(context: context)
         
+        logger.info("Exporting full data: \(podcasts.count) podcasts, \(folders.count) folders, \(episodes.count) episodes")
+        
         // Build full export
         let exportData = FullDataExport(
             version: 1,
             exportDate: Date(),
-            appName: "Podcash",
+            appName: "Pod Peace",
             podcasts: podcasts.map { podcast in
                 ExportPodcast(
                     feedURL: podcast.feedURL,
@@ -133,20 +144,54 @@ final class ExportImportService {
         lastError = nil
         defer { isImporting = false }
         
-        // Read the file
-        guard url.startAccessingSecurityScopedResource() else {
-            throw ExportImportError.accessDenied
-        }
-        defer { url.stopAccessingSecurityScopedResource() }
+        logger.info("Starting import from: \(url.path)")
         
-        let data = try Data(contentsOf: url)
+        // Read the file data
+        let data: Data
+        
+        // Try to access the file with security-scoped resource
+        let hasAccess = url.startAccessingSecurityScopedResource()
+        defer {
+            if hasAccess {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+        
+        do {
+            // Try reading directly first
+            logger.info("Attempting direct file read")
+            data = try Data(contentsOf: url)
+            logger.info("Successfully read \(data.count) bytes")
+        } catch let readError {
+            logger.warning("Direct read failed: \(readError.localizedDescription), trying copy method")
+            // If direct read fails, try copying to temp directory first
+            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(url.lastPathComponent)
+            do {
+                try FileManager.default.copyItem(at: url, to: tempURL)
+                defer { try? FileManager.default.removeItem(at: tempURL) }
+                data = try Data(contentsOf: tempURL)
+                logger.info("Successfully read \(data.count) bytes from temp copy")
+            } catch {
+                logger.error("Failed to copy and read file: \(error.localizedDescription)")
+                throw ExportImportError.accessDenied
+            }
+        }
+        
+        // Decode the JSON
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
         
         // Try to decode as full export first
-        if let fullExport = try? JSONDecoder().decode(FullDataExport.self, from: data) {
+        if let fullExport = try? decoder.decode(FullDataExport.self, from: data) {
+            logger.info("Detected full data export from \(fullExport.appName)")
             try await importFullData(fullExport, context: context)
-        } else if let podcastExport = try? JSONDecoder().decode(PodcastOnlyExport.self, from: data) {
+            logger.info("Import completed successfully")
+        } else if let podcastExport = try? decoder.decode(PodcastOnlyExport.self, from: data) {
+            logger.info("Detected podcasts-only export from \(podcastExport.appName)")
             try await importPodcastsOnly(podcastExport, context: context)
+            logger.info("Import completed successfully")
         } else {
+            logger.error("Failed to decode export file - invalid format")
             throw ExportImportError.invalidFormat
         }
     }

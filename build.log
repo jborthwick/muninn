@@ -1,0 +1,683 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -project PodPeace.xcodeproj -scheme PodPeace -sdk iphonesimulator -destination "platform=iOS Simulator,name=iPhone 17 Pro" clean build
+
+Build settings from command line:
+    SDKROOT = iphonesimulator26.2
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  FeedKit: https://github.com/nmdias/FeedKit @ 9.1.2
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+** CLEAN SUCCEEDED **
+
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (3 targets)
+    Target 'Podcash' in project 'PodPeace'
+        ➜ Explicit dependency on target 'FeedKit' in project 'FeedKit'
+    Target 'FeedKit' in project 'FeedKit'
+        ➜ Explicit dependency on target 'FeedKit' in project 'FeedKit'
+    Target 'FeedKit' in project 'FeedKit' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.2.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --print-asset-tag-combinations --output-format xml1 /Users/apisoni/dev/podcash/Podcash/Assets.xcassets
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc --version
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --version --output-format xml1
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld -version_details
+
+Build description signature: c7eae61606559beb58de5a7acd980939
+Build description path: /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/XCBuildData/c7eae61606559beb58de5a7acd980939.xcbuilddata
+ClangStatCache /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.2.sdk /Users/apisoni/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphonesimulator26.2-23C53-7d00a8b37fbd7999ea79df8ebc024bf0.sdkstatcache
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.2.sdk -o /Users/apisoni/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphonesimulator26.2-23C53-7d00a8b37fbd7999ea79df8ebc024bf0.sdkstatcache
+
+CreateBuildDirectory /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    builtin-create-build-directory /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex
+
+CreateBuildDirectory /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Products
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    builtin-create-build-directory /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Products
+
+CreateBuildDirectory /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/ExplicitPrecompiledModules
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    builtin-create-build-directory /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/ExplicitPrecompiledModules
+
+CreateBuildDirectory /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Products/Debug-iphonesimulator
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    builtin-create-build-directory /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Products/Debug-iphonesimulator
+
+CreateBuildDirectory /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    builtin-create-build-directory /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules
+
+CreateBuildDirectory /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphonesimulator
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    builtin-create-build-directory /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphonesimulator
+
+WriteAuxiliaryFile /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/PodPeace-d9f11d7128049d1cf9eaf8da4615dd26-VFS-iphonesimulator/all-product-headers.yaml
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    write-file /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/PodPeace-d9f11d7128049d1cf9eaf8da4615dd26-VFS-iphonesimulator/all-product-headers.yaml
+
+CreateBuildDirectory /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Products/Debug-iphonesimulator/PackageFrameworks
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    builtin-create-build-directory /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Products/Debug-iphonesimulator/PackageFrameworks
+
+WriteAuxiliaryFile /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Podcash.hmap (in target 'Podcash' from project 'PodPeace')
+    cd /Users/apisoni/dev/podcash
+    write-file /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Podcash.hmap
+
+WriteAuxiliaryFile /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Podcash-project-headers.hmap (in target 'Podcash' from project 'PodPeace')
+    cd /Users/apisoni/dev/podcash
+    write-file /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Podcash-project-headers.hmap
+
+WriteAuxiliaryFile /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Podcash.DependencyStaticMetadataFileList (in target 'Podcash' from project 'PodPeace')
+    cd /Users/apisoni/dev/podcash
+    write-file /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Podcash.DependencyStaticMetadataFileList
+
+WriteAuxiliaryFile /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Podcash.DependencyMetadataFileList (in target 'Podcash' from project 'PodPeace')
+    cd /Users/apisoni/dev/podcash
+    write-file /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Podcash.DependencyMetadataFileList
+
+WriteAuxiliaryFile /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Podcash-own-target-headers.hmap (in target 'Podcash' from project 'PodPeace')
+    cd /Users/apisoni/dev/podcash
+    write-file /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Podcash-own-target-headers.hmap
+
+WriteAuxiliaryFile /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Podcash-generated-files.hmap (in target 'Podcash' from project 'PodPeace')
+    cd /Users/apisoni/dev/podcash
+    write-file /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Podcash-generated-files.hmap
+
+WriteAuxiliaryFile /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Podcash-all-target-headers.hmap (in target 'Podcash' from project 'PodPeace')
+    cd /Users/apisoni/dev/podcash
+    write-file /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Podcash-all-target-headers.hmap
+
+WriteAuxiliaryFile /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Podcash-all-non-framework-target-headers.hmap (in target 'Podcash' from project 'PodPeace')
+    cd /Users/apisoni/dev/podcash
+    write-file /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Podcash-all-non-framework-target-headers.hmap
+
+WriteAuxiliaryFile /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Podcash-DebugDylibPath-normal-arm64.txt (in target 'Podcash' from project 'PodPeace')
+    cd /Users/apisoni/dev/podcash
+    write-file /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Podcash-DebugDylibPath-normal-arm64.txt
+
+WriteAuxiliaryFile /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Podcash-DebugDylibInstallName-normal-arm64.txt (in target 'Podcash' from project 'PodPeace')
+    cd /Users/apisoni/dev/podcash
+    write-file /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Podcash-DebugDylibInstallName-normal-arm64.txt
+
+WriteAuxiliaryFile /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Objects-normal/arm64/Podcash_const_extract_protocols.json (in target 'Podcash' from project 'PodPeace')
+    cd /Users/apisoni/dev/podcash
+    write-file /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Objects-normal/arm64/Podcash_const_extract_protocols.json
+
+WriteAuxiliaryFile /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Objects-normal/arm64/Podcash.SwiftFileList (in target 'Podcash' from project 'PodPeace')
+    cd /Users/apisoni/dev/podcash
+    write-file /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Objects-normal/arm64/Podcash.SwiftFileList
+
+WriteAuxiliaryFile /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Objects-normal/arm64/Podcash.SwiftConstValuesFileList (in target 'Podcash' from project 'PodPeace')
+    cd /Users/apisoni/dev/podcash
+    write-file /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Objects-normal/arm64/Podcash.SwiftConstValuesFileList
+
+WriteAuxiliaryFile /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Objects-normal/arm64/Podcash.LinkFileList (in target 'Podcash' from project 'PodPeace')
+    cd /Users/apisoni/dev/podcash
+    write-file /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Objects-normal/arm64/Podcash.LinkFileList
+
+WriteAuxiliaryFile /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Objects-normal/arm64/Podcash-OutputFileMap.json (in target 'Podcash' from project 'PodPeace')
+    cd /Users/apisoni/dev/podcash
+    write-file /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Objects-normal/arm64/Podcash-OutputFileMap.json
+
+WriteAuxiliaryFile /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/DerivedSources/Entitlements-Simulated.plist (in target 'Podcash' from project 'PodPeace')
+    cd /Users/apisoni/dev/podcash
+    write-file /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/DerivedSources/Entitlements-Simulated.plist
+
+WriteAuxiliaryFile /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit_const_extract_protocols.json (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit
+    write-file /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit_const_extract_protocols.json
+
+WriteAuxiliaryFile /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit.SwiftFileList (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit
+    write-file /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit.SwiftFileList
+
+WriteAuxiliaryFile /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit.SwiftConstValuesFileList (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit
+    write-file /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit.SwiftConstValuesFileList
+
+WriteAuxiliaryFile /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit.LinkFileList (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit
+    write-file /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit.LinkFileList
+
+WriteAuxiliaryFile /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit-OutputFileMap.json (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit
+    write-file /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit-OutputFileMap.json
+
+WriteAuxiliaryFile /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/FeedKit.modulemap (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit
+    write-file /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/FeedKit.modulemap
+
+WriteAuxiliaryFile /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/FeedKit.DependencyStaticMetadataFileList (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit
+    write-file /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/FeedKit.DependencyStaticMetadataFileList
+
+WriteAuxiliaryFile /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/FeedKit.DependencyMetadataFileList (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit
+    write-file /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/FeedKit.DependencyMetadataFileList
+
+MkDir /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Products/Debug-iphonesimulator/Podcash.app (in target 'Podcash' from project 'PodPeace')
+    cd /Users/apisoni/dev/podcash
+    /bin/mkdir -p /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Products/Debug-iphonesimulator/Podcash.app
+
+Copy /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/FeedKit.modulemap /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/FeedKit.modulemap (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/FeedKit.modulemap /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator
+
+SwiftDriver FeedKit normal arm64 com.apple.xcode.tools.swift.compiler (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    builtin-SwiftDriver -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name FeedKit -Onone -enforce-exclusivity\=checked @/Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE -DXcode -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.2.sdk -target arm64-apple-ios12.0-simulator -g -module-cache-path /Users/apisoni/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -suppress-warnings -index-store-path /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 5 -I /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Products/Debug-iphonesimulator -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Products/Debug-iphonesimulator -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.2.sdk/Developer/Library/Frameworks -c -j8 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/apisoni/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphonesimulator26.2-23C53-7d00a8b37fbd7999ea79df8ebc024bf0.sdkstatcache -output-file-map /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/apisoni/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -sdk-module-cache-path /Users/apisoni/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/apisoni/Library/Developer/Xcode/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit_const_extract_protocols.json -Xcc -I/Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/DerivedSources-normal/arm64 -Xcc -I/Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/DerivedSources/arm64 -Xcc -I/Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit-Swift.h -working-directory /Users/apisoni/dev/podcash/PodPeace.xcodeproj -experimental-emit-module-separately -disable-cmo
+
+SwiftCompile normal arm64 Compiling\ DateSpec.swift,\ ISO8601DateFormatter.swift,\ RFC3339DateFormatter.swift,\ RFC822DateFormatter.swift,\ Array\ +\ Equatable.swift,\ Date\ +\ codingStrategy.swift,\ String\ +\ toBool.swift,\ String\ +\ toDate.swift,\ String\ +\ toDuration.swift,\ URL\ +\ replacingScheme.swift,\ AtomFeed\ +\ mapAttributes.swift,\ AtomFeed\ +\ mapCharacters.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Dates/DateSpec.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Dates/ISO8601DateFormatter.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Dates/RFC3339DateFormatter.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Dates/RFC822DateFormatter.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Extensions/Array\ +\ Equatable.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Extensions/Date\ +\ codingStrategy.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Extensions/String\ +\ toBool.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Extensions/String\ +\ toDate.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Extensions/String\ +\ toDuration.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Extensions/URL\ +\ replacingScheme.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeed\ +\ mapAttributes.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeed\ +\ mapCharacters.swift (in target 'FeedKit' from project 'FeedKit')
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Dates/DateSpec.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Dates/ISO8601DateFormatter.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Dates/RFC3339DateFormatter.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Dates/RFC822DateFormatter.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Extensions/Array\ +\ Equatable.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Extensions/Date\ +\ codingStrategy.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Extensions/String\ +\ toBool.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Extensions/String\ +\ toDate.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Extensions/String\ +\ toDuration.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Extensions/URL\ +\ replacingScheme.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeed\ +\ mapAttributes.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeed\ +\ mapCharacters.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 Compiling\ AtomFeed.swift,\ AtomFeedAuthor.swift,\ AtomFeedCategory.swift,\ AtomFeedContributor.swift,\ AtomFeedEntry.swift,\ AtomFeedEntryAuthor.swift,\ AtomFeedEntryCategory.swift,\ AtomFeedEntryContent.swift,\ AtomFeedEntryContributor.swift,\ AtomFeedEntryLink.swift,\ AtomFeedEntrySource.swift,\ AtomFeedEntrySummary.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeed.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeedAuthor.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeedCategory.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeedContributor.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeedEntry.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeedEntryAuthor.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeedEntryCategory.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeedEntryContent.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeedEntryContributor.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeedEntryLink.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeedEntrySource.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeedEntrySummary.swift (in target 'FeedKit' from project 'FeedKit')
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeed.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeedAuthor.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeedCategory.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeedContributor.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeedEntry.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeedEntryAuthor.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeedEntryCategory.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeedEntryContent.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeedEntryContributor.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeedEntryLink.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeedEntrySource.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeedEntrySummary.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 Compiling\ MediaCommunity.swift,\ MediaContent.swift,\ MediaCopyright.swift,\ MediaCredit.swift,\ MediaDescription.swift,\ MediaEmbed.swift,\ MediaGroup.swift,\ MediaHash.swift,\ MediaLicence.swift,\ MediaLocation.swift,\ MediaNamespace.swift,\ MediaParam.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaCommunity.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaContent.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaCopyright.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaCredit.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaDescription.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaEmbed.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaGroup.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaHash.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaLicence.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaLocation.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaNamespace.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaParam.swift (in target 'FeedKit' from project 'FeedKit')
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaCommunity.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaContent.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaCopyright.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaCredit.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaDescription.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaEmbed.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaGroup.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaHash.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaLicence.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaLocation.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaNamespace.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaParam.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 Compiling\ MediaPeerLink.swift,\ MediaPlayer.swift,\ MediaPrice.swift,\ MediaRating.swift,\ MediaRestriction.swift,\ MediaRights.swift,\ MediaScene.swift,\ MediaStarRating.swift,\ MediaStatistics.swift,\ MediaStatus.swift,\ MediaSubTitle.swift,\ MediaTag.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaPeerLink.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaPlayer.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaPrice.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaRating.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaRestriction.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaRights.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaScene.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaStarRating.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaStatistics.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaStatus.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaSubTitle.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaTag.swift (in target 'FeedKit' from project 'FeedKit')
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaPeerLink.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaPlayer.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaPrice.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaRating.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaRestriction.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaRights.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaScene.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaStarRating.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaStatistics.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaStatus.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaSubTitle.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaTag.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftEmitModule normal arm64 Emitting\ module\ for\ FeedKit (in target 'FeedKit' from project 'FeedKit')
+
+EmitSwiftModule normal arm64 (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 Compiling\ AtomFeedGenerator.swift,\ AtomFeedLink.swift,\ AtomFeedSubtitle.swift,\ AtomPath.swift,\ JSONFeed.swift,\ JSONFeedAttachment.swift,\ JSONFeedAuthor.swift,\ JSONFeedHub.swift,\ JSONFeedItem.swift,\ ContentNamespace.swift,\ DublinCoreNamespace.swift,\ MediaCategory.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeedGenerator.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeedLink.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeedSubtitle.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomPath.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/JSON/JSONFeed.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/JSON/JSONFeedAttachment.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/JSON/JSONFeedAuthor.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/JSON/JSONFeedHub.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/JSON/JSONFeedItem.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Content/ContentNamespace.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Dublin\ Core/DublinCoreNamespace.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaCategory.swift (in target 'FeedKit' from project 'FeedKit')
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeedGenerator.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeedLink.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomFeedSubtitle.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Atom/AtomPath.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/JSON/JSONFeed.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/JSON/JSONFeedAttachment.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/JSON/JSONFeedAuthor.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/JSON/JSONFeedHub.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/JSON/JSONFeedItem.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Content/ContentNamespace.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Dublin\ Core/DublinCoreNamespace.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaCategory.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 Compiling\ MediaText.swift,\ MediaThumbnail.swift,\ MediaTitle.swift,\ SyndicationNamespace.swift,\ SyndicationUpdatePeriod.swift,\ iTunesCategory.swift,\ iTunesImage.swift,\ iTunesNamespace.swift,\ iTunesOwner.swift,\ iTunesSubCategory.swift,\ RDFPath.swift,\ RSSFeed\ +\ mapAttributes.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaText.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaThumbnail.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaTitle.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Syndication/SyndicationNamespace.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Syndication/SyndicationUpdatePeriod.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/iTunes/iTunesCategory.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/iTunes/iTunesImage.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/iTunes/iTunesNamespace.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/iTunes/iTunesOwner.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/iTunes/iTunesSubCategory.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RDFPath.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSFeed\ +\ mapAttributes.swift (in target 'FeedKit' from project 'FeedKit')
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaText.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaThumbnail.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Media/MediaTitle.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Syndication/SyndicationNamespace.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/Syndication/SyndicationUpdatePeriod.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/iTunes/iTunesCategory.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/iTunes/iTunesImage.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/iTunes/iTunesNamespace.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/iTunes/iTunesOwner.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/Namespaces/iTunes/iTunesSubCategory.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RDFPath.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSFeed\ +\ mapAttributes.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 Compiling\ RSSFeedSkipHour.swift,\ RSSFeedTextInput.swift,\ RSSPath.swift,\ Feed.swift,\ FeedDataType.swift,\ FeedParser.swift,\ FeedParserProtocol.swift,\ JSONFeedParser.swift,\ ParserError.swift,\ XMLFeedParser.swift,\ XMLFeedType.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSFeedSkipHour.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSFeedTextInput.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSPath.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Parser/Feed.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Parser/FeedDataType.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Parser/FeedParser.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Parser/FeedParserProtocol.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Parser/JSONFeedParser.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Parser/ParserError.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Parser/XMLFeedParser.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Parser/XMLFeedType.swift (in target 'FeedKit' from project 'FeedKit')
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSFeedSkipHour.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSFeedTextInput.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSPath.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Parser/Feed.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Parser/FeedDataType.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Parser/FeedParser.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Parser/FeedParserProtocol.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Parser/JSONFeedParser.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Parser/ParserError.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Parser/XMLFeedParser.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Parser/XMLFeedType.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 Compiling\ RSSFeed\ +\ mapCharacters.swift,\ RSSFeed.swift,\ RSSFeedCategory.swift,\ RSSFeedCloud.swift,\ RSSFeedImage.swift,\ RSSFeedItem.swift,\ RSSFeedItemCategory.swift,\ RSSFeedItemEnclosure.swift,\ RSSFeedItemGUID.swift,\ RSSFeedItemSource.swift,\ RSSFeedSkipDay.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSFeed\ +\ mapCharacters.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSFeed.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSFeedCategory.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSFeedCloud.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSFeedImage.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSFeedItem.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSFeedItemCategory.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSFeedItemEnclosure.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSFeedItemGUID.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSFeedItemSource.swift /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSFeedSkipDay.swift (in target 'FeedKit' from project 'FeedKit')
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSFeed\ +\ mapCharacters.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSFeed.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSFeedCategory.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSFeedCloud.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSFeedImage.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSFeedItem.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSFeedItemCategory.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSFeedItemEnclosure.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSFeedItemGUID.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSFeedItemSource.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftCompile normal arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit/Sources/FeedKit/Models/RSS/RSSFeedSkipDay.swift (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    
+
+SwiftDriverJobDiscovery normal arm64 Emitting module for FeedKit (in target 'FeedKit' from project 'FeedKit')
+
+SwiftDriver\ Compilation\ Requirements FeedKit normal arm64 com.apple.xcode.tools.swift.compiler (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/dev/podcash/PodPeace.xcodeproj
+    builtin-Swift-Compilation-Requirements -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name FeedKit -Onone -enforce-exclusivity\=checked @/Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE -DXcode -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.2.sdk -target arm64-apple-ios12.0-simulator -g -module-cache-path /Users/apisoni/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -suppress-warnings -index-store-path /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 5 -I /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Products/Debug-iphonesimulator -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Products/Debug-iphonesimulator -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.2.sdk/Developer/Library/Frameworks -c -j8 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/apisoni/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphonesimulator26.2-23C53-7d00a8b37fbd7999ea79df8ebc024bf0.sdkstatcache -output-file-map /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/apisoni/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -sdk-module-cache-path /Users/apisoni/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/apisoni/Library/Developer/Xcode/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit_const_extract_protocols.json -Xcc -I/Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Products/Debug-iphonesimulator/include -Xcc -I/Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/DerivedSources-normal/arm64 -Xcc -I/Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/DerivedSources/arm64 -Xcc -I/Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit-Swift.h -working-directory /Users/apisoni/dev/podcash/PodPeace.xcodeproj -experimental-emit-module-separately -disable-cmo
+
+SwiftDriverJobDiscovery normal arm64 Compiling RSSFeedSkipHour.swift, RSSFeedTextInput.swift, RSSPath.swift, Feed.swift, FeedDataType.swift, FeedParser.swift, FeedParserProtocol.swift, JSONFeedParser.swift, ParserError.swift, XMLFeedParser.swift, XMLFeedType.swift (in target 'FeedKit' from project 'FeedKit')
+
+SwiftMergeGeneratedHeaders /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/FeedKit-Swift.h /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit-Swift.h (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit
+    builtin-swiftHeaderTool -arch arm64 /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit-Swift.h -o /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/GeneratedModuleMaps-iphonesimulator/FeedKit-Swift.h
+
+Copy /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Products/Debug-iphonesimulator/FeedKit.swiftmodule/arm64-apple-ios-simulator.swiftmodule /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit.swiftmodule (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit.swiftmodule /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Products/Debug-iphonesimulator/FeedKit.swiftmodule/arm64-apple-ios-simulator.swiftmodule
+
+Copy /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Products/Debug-iphonesimulator/FeedKit.swiftmodule/arm64-apple-ios-simulator.swiftdoc /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit.swiftdoc (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit.swiftdoc /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Products/Debug-iphonesimulator/FeedKit.swiftmodule/arm64-apple-ios-simulator.swiftdoc
+
+Copy /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Products/Debug-iphonesimulator/FeedKit.swiftmodule/arm64-apple-ios-simulator.abi.json /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit.abi.json (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit.abi.json /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Products/Debug-iphonesimulator/FeedKit.swiftmodule/arm64-apple-ios-simulator.abi.json
+
+Copy /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Products/Debug-iphonesimulator/FeedKit.swiftmodule/Project/arm64-apple-ios-simulator.swiftsourceinfo /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit.swiftsourceinfo (in target 'FeedKit' from project 'FeedKit')
+    cd /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/SourcePackages/checkouts/FeedKit
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/FeedKit.build/Debug-iphonesimulator/FeedKit.build/Objects-normal/arm64/FeedKit.swiftsourceinfo /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Products/Debug-iphonesimulator/FeedKit.swiftmodule/Project/arm64-apple-ios-simulator.swiftsourceinfo
+
+ProcessProductPackaging "" /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Podcash.app-Simulated.xcent (in target 'Podcash' from project 'PodPeace')
+    cd /Users/apisoni/dev/podcash
+    
+    Entitlements:
+    
+    {
+    "application-identifier" = "SHQSDJG35Q.com.personal.podcash";
+}
+    
+    builtin-productPackagingUtility -entitlements -format xml -o /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Podcash.app-Simulated.xcent
+
+ProcessProductPackagingDER /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Podcash.app-Simulated.xcent /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Podcash.app-Simulated.xcent.der (in target 'Podcash' from project 'PodPeace')
+    cd /Users/apisoni/dev/podcash
+    /usr/bin/derq query -f xml -i /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Podcash.app-Simulated.xcent -o /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/Podcash.app-Simulated.xcent.der --raw
+
+MkDir /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/assetcatalog_output/unthinned (in target 'Podcash' from project 'PodPeace')
+    cd /Users/apisoni/dev/podcash
+    /bin/mkdir -p /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/assetcatalog_output/unthinned
+
+MkDir /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/assetcatalog_output/thinned (in target 'Podcash' from project 'PodPeace')
+    cd /Users/apisoni/dev/podcash
+    /bin/mkdir -p /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/assetcatalog_output/thinned
+
+GenerateAssetSymbols /Users/apisoni/dev/podcash/Podcash/Assets.xcassets (in target 'Podcash' from project 'PodPeace')
+    cd /Users/apisoni/dev/podcash
+    /Applications/Xcode.app/Contents/Developer/usr/bin/actool /Users/apisoni/dev/podcash/Podcash/Assets.xcassets --compile /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Products/Debug-iphonesimulator/Podcash.app --output-format human-readable-text --notices --warnings --export-dependency-info /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/assetcatalog_dependencies --output-partial-info-plist /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/assetcatalog_generated_info.plist --app-icon AppIcon --compress-pngs --enable-on-demand-resources YES --development-region en --target-device iphone --minimum-deployment-target 18.0 --platform iphonesimulator --bundle-identifier com.personal.podcash --generate-swift-asset-symbol-extensions NO --generate-swift-asset-symbols /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/DerivedSources/GeneratedAssetSymbols.swift --generate-objc-asset-symbols /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/DerivedSources/GeneratedAssetSymbols.h --generate-asset-symbol-index /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/DerivedSources/GeneratedAssetSymbols-Index.plist
+/* com.apple.actool.notices */
+/Users/apisoni/dev/podcash/Podcash/Assets.xcassets: warning: Failed to read file attributes for "/Users/apisoni/dev/podcash/Podcash/Assets.xcassets"
+    Failure Reason: No such file or directory
+/* com.apple.actool.compilation-results */
+/Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/DerivedSources/GeneratedAssetSymbols-Index.plist
+/Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/DerivedSources/GeneratedAssetSymbols.h
+/Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/DerivedSources/GeneratedAssetSymbols.swift
+
+
+CompileAssetCatalogVariant thinned /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Products/Debug-iphonesimulator/Podcash.app /Users/apisoni/dev/podcash/Podcash/Assets.xcassets (in target 'Podcash' from project 'PodPeace')
+    cd /Users/apisoni/dev/podcash
+    /Applications/Xcode.app/Contents/Developer/usr/bin/actool /Users/apisoni/dev/podcash/Podcash/Assets.xcassets --compile /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/assetcatalog_output/thinned --output-format human-readable-text --notices --warnings --export-dependency-info /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/assetcatalog_dependencies_thinned --output-partial-info-plist /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/assetcatalog_generated_info.plist_thinned --app-icon AppIcon --compress-pngs --enable-on-demand-resources YES --filter-for-thinning-device-configuration iPhone18,1 --filter-for-device-os-version 26.2 --development-region en --target-device iphone --minimum-deployment-target 18.0 --platform iphonesimulator
+/* com.apple.actool.errors */
+/Users/apisoni/dev/podcash/Podcash/Assets.xcassets: error: None of the input catalogs contained a matching stickers icon set, app icon set, or icon stack named  "AppIcon".
+/* com.apple.actool.notices */
+/Users/apisoni/dev/podcash/Podcash/Assets.xcassets: warning: Failed to read file attributes for "/Users/apisoni/dev/podcash/Podcash/Assets.xcassets"
+    Failure Reason: No such file or directory
+/* com.apple.actool.compilation-results */
+/Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Intermediates.noindex/PodPeace.build/Debug-iphonesimulator/Podcash.build/assetcatalog_generated_info.plist_thinned
+
+
+SwiftDriverJobDiscovery normal arm64 Compiling MediaPeerLink.swift, MediaPlayer.swift, MediaPrice.swift, MediaRating.swift, MediaRestriction.swift, MediaRights.swift, MediaScene.swift, MediaStarRating.swift, MediaStatistics.swift, MediaStatus.swift, MediaSubTitle.swift, MediaTag.swift (in target 'FeedKit' from project 'FeedKit')
+
+SwiftDriverJobDiscovery normal arm64 Compiling AtomFeed.swift, AtomFeedAuthor.swift, AtomFeedCategory.swift, AtomFeedContributor.swift, AtomFeedEntry.swift, AtomFeedEntryAuthor.swift, AtomFeedEntryCategory.swift, AtomFeedEntryContent.swift, AtomFeedEntryContributor.swift, AtomFeedEntryLink.swift, AtomFeedEntrySource.swift, AtomFeedEntrySummary.swift (in target 'FeedKit' from project 'FeedKit')
+
+** BUILD FAILED **
+
+
+The following build commands failed:
+	CompileAssetCatalogVariant thinned /Users/apisoni/Library/Developer/Xcode/DerivedData/PodPeace-cvvfuwxalncfmzcqarigziqddjmc/Build/Products/Debug-iphonesimulator/Podcash.app /Users/apisoni/dev/podcash/Podcash/Assets.xcassets (in target 'Podcash' from project 'PodPeace')
+	Building project PodPeace with scheme PodPeace
+(2 failures)
