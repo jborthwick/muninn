@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct ExportImportView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
     @State private var exportService = ExportImportService.shared
     @State private var showExportOptions = false
     @State private var showImportPicker = false
@@ -221,9 +222,9 @@ struct ExportImportView: View {
                 try await exportService.importFromFile(url, context: modelContext, replaceExisting: replaceExistingData)
                 
                 await MainActor.run {
-                    alertTitle = "Import Successful"
+                    alertTitle = "Import Successful - Restart Required"
                     let baseMessage = exportService.lastError ?? "Your data has been imported successfully."
-                    alertMessage = baseMessage + "\n\nPlease restart the app for all episodes to appear in the All Episodes view."
+                    alertMessage = baseMessage + "\n\n⚠️ IMPORTANT: You must completely close and restart the app for episodes to appear.\n\n1. Swipe up from app switcher\n2. Reopen the app\n3. Episodes will then be visible"
                     showAlert = true
                     isProcessing = false
                     selectedImportURL = nil

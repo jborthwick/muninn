@@ -3,6 +3,10 @@ import SwiftData
 import UniformTypeIdentifiers
 import os
 
+extension Notification.Name {
+    static let dataImportCompleted = Notification.Name("dataImportCompleted")
+}
+
 /// Service for exporting and importing app data
 @Observable
 final class ExportImportService {
@@ -425,6 +429,9 @@ final class ExportImportService {
         let finalEpisodeCount = try context.fetch(FetchDescriptor<Episode>()).count
         let finalPodcastCount = try context.fetch(FetchDescriptor<Podcast>()).count
         logger.info("Import complete! Final counts - Podcasts: \(finalPodcastCount), Episodes: \(finalEpisodeCount)")
+        
+        // Post notification to trigger UI refresh
+        NotificationCenter.default.post(name: .dataImportCompleted, object: nil)
         
         if failedCount > 0 {
             lastError = "Import completed with \(failedCount) failed podcast(s). Successfully imported \(importedCount) podcast(s) with \(finalEpisodeCount) episodes."
