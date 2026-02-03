@@ -210,8 +210,18 @@ struct SettingsView: View {
                     }
                 }
 
-                // Listening Stats
-                Section {
+                // Data Management
+                Section("Data") {
+                    NavigationLink {
+                        ExportImportView()
+                    } label: {
+                        HStack {
+                            Image(systemName: "arrow.up.arrow.down.circle.fill")
+                                .foregroundStyle(.blue)
+                            Text("Export & Import")
+                        }
+                    }
+                    
                     NavigationLink {
                         StatsView()
                     } label: {

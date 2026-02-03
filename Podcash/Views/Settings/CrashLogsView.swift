@@ -3,6 +3,7 @@ import SwiftUI
 struct CrashLogsView: View {
     @State private var crashReports: [URL] = []
     @State private var selectedReport: URL?
+    @State private var showReportSheet = false
     @State private var reportContent: String = ""
     @State private var showDeleteConfirmation = false
     
@@ -28,6 +29,7 @@ struct CrashLogsView: View {
                                 Button {
                                     selectedReport = report
                                     loadReport(report)
+                                    showReportSheet = true
                                 } label: {
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text(report.lastPathComponent)
@@ -63,25 +65,28 @@ struct CrashLogsView: View {
                     }
                 }
             }
-            .sheet(item: $selectedReport) { report in
-                NavigationStack {
-                    ScrollView {
-                        Text(reportContent)
-                            .font(.system(.caption, design: .monospaced))
-                            .textSelection(.enabled)
-                            .padding()
-                    }
-                    .navigationTitle(report.lastPathComponent)
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Close") {
-                                selectedReport = nil
-                            }
+            .sheet(isPresented: $showReportSheet) {
+                if let report = selectedReport {
+                    NavigationStack {
+                        ScrollView {
+                            Text(reportContent)
+                                .font(.system(.caption, design: .monospaced))
+                                .textSelection(.enabled)
+                                .padding()
                         }
-                        
-                        ToolbarItem(placement: .primaryAction) {
-                            ShareLink(item: reportContent)
+                        .navigationTitle(report.lastPathComponent)
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Close") {
+                                    showReportSheet = false
+                                    selectedReport = nil
+                                }
+                            }
+                            
+                            ToolbarItem(placement: .primaryAction) {
+                                ShareLink(item: reportContent)
+                            }
                         }
                     }
                 }
