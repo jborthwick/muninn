@@ -265,7 +265,13 @@ final class ExportImportService {
                 // Fetch and add the podcast
                 let (podcast, episodes) = try await feedService.fetchPodcast(from: exportPodcast.feedURL)
                 context.insert(podcast)
-                episodes.forEach { context.insert($0) }
+                
+                // CRITICAL: Set the podcast relationship for each episode
+                episodes.forEach { episode in
+                    episode.podcast = podcast
+                    podcast.episodes.append(episode)
+                    context.insert(episode)
+                }
                 successCount += 1
             } catch {
                 failCount += 1
@@ -310,7 +316,11 @@ final class ExportImportService {
                     }
                     
                     context.insert(podcast)
+                    
+                    // CRITICAL: Set the podcast relationship for each episode
                     episodes.forEach { episode in
+                        episode.podcast = podcast
+                        podcast.episodes.append(episode)
                         context.insert(episode)
                     }
                     
