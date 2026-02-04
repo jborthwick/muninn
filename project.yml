@@ -14,6 +14,7 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: SHQSDJG35Q
 
 targets:
   PodPeace:
@@ -29,7 +30,6 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.personal.podpeace
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1"
-        CODE_SIGN_ENTITLEMENTS: PodPeace/PodPeace.entitlements
         MARKETING_VERSION: "0.5"
         CURRENT_PROJECT_VERSION: "1"
     info:
