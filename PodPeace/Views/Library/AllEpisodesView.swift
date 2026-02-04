@@ -431,7 +431,7 @@ struct AllEpisodesView: View {
                     loadedEpisodes = filteredForUnsorted
                     
                     // Get total count (without limit) - only count, don't load all data
-                    var countDescriptor = FetchDescriptor<Episode>(predicate: finalPredicate)
+                    let countDescriptor = FetchDescriptor<Episode>(predicate: finalPredicate)
                     let allEpisodes = try modelContext.fetch(countDescriptor)
                     totalEpisodeCount = showUnsortedOnly ? allEpisodes.filter { episode in
                         guard let feedURL = episode.podcast?.feedURL else { return false }
