@@ -23,10 +23,20 @@ struct PodPeaceApp: App {
             print("❌ ModelContainer creation failed: \(error)")
             print("❌ Error details: \(String(describing: error))")
             
-            // Try to delete the old database and start fresh
+            // Try to delete the old database and all related files
             let url = modelConfiguration.url
             print("⚠️ Attempting to delete corrupted database at: \(url)")
+            
+            // Delete main database file
             try? FileManager.default.removeItem(at: url)
+            
+            // Delete WAL and SHM files (SQLite write-ahead log and shared memory)
+            let walURL = url.deletingPathExtension().appendingPathExtension("sqlite-wal")
+            let shmURL = url.deletingPathExtension().appendingPathExtension("sqlite-shm")
+            try? FileManager.default.removeItem(at: walURL)
+            try? FileManager.default.removeItem(at: shmURL)
+            
+            print("⚠️ Deleted database files, attempting to recreate...")
             
             // Try again with fresh database
             do {
