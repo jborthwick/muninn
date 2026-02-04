@@ -33,7 +33,7 @@ final class Episode {
     // Relationships
     var podcast: Podcast?
 
-    @Relationship(deleteRule: .cascade, inverse: \QueueItem.episode)
+    @Relationship(deleteRule: .cascade)
     var queueItems: [QueueItem] = []
 
     init(

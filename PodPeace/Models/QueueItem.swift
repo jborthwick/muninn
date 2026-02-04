@@ -3,7 +3,6 @@ import SwiftData
 
 @Model
 final class QueueItem {
-    @Relationship
     var episode: Episode?
     var sortOrder: Int = 0
     var dateAdded: Date = Date()
