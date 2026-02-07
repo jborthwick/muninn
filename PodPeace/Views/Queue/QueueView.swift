@@ -112,7 +112,11 @@ struct QueueView: View {
 
         // Remove from queue and play
         modelContext.delete(item)
-        try? modelContext.save()
+        
+        // Save asynchronously to avoid blocking playback
+        Task {
+            try? modelContext.save()
+        }
 
         // Auto-download when playing
         if episode.localFilePath == nil {
@@ -127,7 +131,11 @@ struct QueueView: View {
             let item = queueItems[index]
             modelContext.delete(item)
         }
-        try? modelContext.save()
+        
+        // Save asynchronously to avoid blocking the UI
+        Task {
+            try? modelContext.save()
+        }
     }
 
     private func moveItems(from source: IndexSet, to destination: Int) {

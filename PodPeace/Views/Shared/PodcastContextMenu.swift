@@ -12,6 +12,9 @@ struct PodcastContextMenu: View {
     var onCreateFolder: ((Podcast) -> Void)?
 
     @State private var isRefreshing = false
+    
+    // Cache for fast folder membership checks
+    @State private var folderFeedURLs: [String: Set<String>] = [:]
 
     var body: some View {
         // Share (only if podcast can be shared)
@@ -62,7 +65,10 @@ struct PodcastContextMenu: View {
         // Auto-Download Toggle
         Button {
             podcast.autoDownloadNewEpisodes.toggle()
-            try? modelContext.save()
+            // Save asynchronously to avoid blocking the UI
+            Task {
+                try? modelContext.save()
+            }
         } label: {
             Label(
                 podcast.autoDownloadNewEpisodes ? "Disable Auto-Download" : "Enable Auto-Download",
@@ -153,6 +159,15 @@ struct PodcastContextMenu: View {
         } label: {
             Label("Add to Folder", systemImage: "folder.badge.plus")
         }
+        .onAppear {
+            updateFolderCache()
+        }
+    }
+    
+    private func updateFolderCache() {
+        folderFeedURLs = allFolders.reduce(into: [:]) { result, folder in
+            result[folder.id.uuidString] = Set(folder.podcasts.map { $0.feedURL })
+        }
     }
 
     // MARK: - Computed Properties
@@ -170,31 +185,56 @@ struct PodcastContextMenu: View {
     // MARK: - Actions
 
     private func isInFolder(_ folder: Folder) -> Bool {
-        folder.podcasts.contains { $0.feedURL == podcast.feedURL }
+        // Use cached Set for O(1) lookup instead of O(n) search
+        folderFeedURLs[folder.id.uuidString]?.contains(podcast.feedURL) ?? false
     }
 
     private func togglePodcastInFolder(_ folder: Folder) {
+        // Optimistically update cache for immediate UI feedback
+        var feedURLs = folderFeedURLs[folder.id.uuidString] ?? []
+        if feedURLs.contains(podcast.feedURL) {
+            feedURLs.remove(podcast.feedURL)
+        } else {
+            feedURLs.insert(podcast.feedURL)
+        }
+        folderFeedURLs[folder.id.uuidString] = feedURLs
+        
+        // Update the actual relationship
         if let index = folder.podcasts.firstIndex(where: { $0.feedURL == podcast.feedURL }) {
             folder.podcasts.remove(at: index)
         } else {
             folder.podcasts.append(podcast)
         }
-        try? modelContext.save()
+        
+        // Save asynchronously to avoid blocking the UI
+        Task {
+            try? modelContext.save()
+        }
     }
 
     private func markAllAsPlayed() {
+        // Batch update all episodes
         for episode in podcast.episodes {
             episode.isPlayed = true
         }
-        try? modelContext.save()
+        
+        // Save asynchronously to avoid blocking the UI
+        Task {
+            try? modelContext.save()
+        }
     }
 
     private func markAllAsUnplayed() {
+        // Batch update all episodes
         for episode in podcast.episodes {
             episode.isPlayed = false
             episode.playbackPosition = 0
         }
-        try? modelContext.save()
+        
+        // Save asynchronously to avoid blocking the UI
+        Task {
+            try? modelContext.save()
+        }
     }
 
     @MainActor

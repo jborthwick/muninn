@@ -60,10 +60,20 @@ final class DownloadObserver: @unchecked Sendable {
                 try context.save()
                 logger.info("Updated episode with download path: \(episode.title)")
 
-                // Enforce storage limit and per-podcast limit after download
-                DownloadCleanupService.shared.enforceStorageLimit(context: context)
-                if let podcast = episode.podcast {
-                    DownloadCleanupService.shared.enforcePerPodcastLimit(for: podcast, context: context)
+                // Run cleanup operations asynchronously to avoid blocking the main thread
+                let podcastID = episode.podcast?.persistentModelID
+                Task.detached(priority: .utility) {
+                    // Create a background context for cleanup operations
+                    let backgroundContext = ModelContext(context.container)
+                    
+                    // Enforce storage limit and per-podcast limit after download
+                    await Task { @MainActor in
+                        DownloadCleanupService.shared.enforceStorageLimit(context: backgroundContext)
+                        if let podcastID = podcastID,
+                           let podcast = backgroundContext.model(for: podcastID) as? Podcast {
+                            DownloadCleanupService.shared.enforcePerPodcastLimit(for: podcast, context: backgroundContext)
+                        }
+                    }.value
                 }
             }
         } catch {

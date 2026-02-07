@@ -409,10 +409,11 @@ extension DownloadManager: URLSessionDownloadDelegate {
 
         let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
 
-        // More aggressive throttling to prevent UI lag during downloads
+        // Aggressive throttling to prevent UI lag during downloads
+        // Update every 2 seconds instead of 1 second to reduce SwiftData notifications
         let now = Date()
         if progress < 0.99, let lastUpdate = lastProgressUpdate[url],
-           now.timeIntervalSince(lastUpdate) < 1.0 {  // Increased from 0.3 to 1.0 second
+           now.timeIntervalSince(lastUpdate) < 2.0 {
             return
         }
         lastProgressUpdate[url] = now

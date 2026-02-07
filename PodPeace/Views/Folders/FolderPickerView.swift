@@ -9,6 +9,9 @@ struct FolderPickerView: View {
     let allFolders: [Folder]
 
     @State private var showingNewFolder = false
+    
+    // Cache for fast folder membership checks
+    @State private var folderFeedURLs: [String: Set<String>] = [:]
 
     var body: some View {
         NavigationStack {
@@ -94,6 +97,15 @@ struct FolderPickerView: View {
             .sheet(isPresented: $showingNewFolder) {
                 EditFolderView(folder: nil)
             }
+            .onAppear {
+                updateFolderCache()
+            }
+        }
+    }
+    
+    private func updateFolderCache() {
+        folderFeedURLs = allFolders.reduce(into: [:]) { result, folder in
+            result[folder.id.uuidString] = Set(folder.podcasts.map { $0.feedURL })
         }
     }
 
@@ -102,25 +114,53 @@ struct FolderPickerView: View {
     }
 
     private func isInFolder(_ folder: Folder) -> Bool {
-        folder.podcasts.contains { $0.feedURL == podcast.feedURL }
+        // Use cached Set for O(1) lookup instead of O(n) search
+        folderFeedURLs[folder.id.uuidString]?.contains(podcast.feedURL) ?? false
     }
 
     private func toggleFolder(_ folder: Folder) {
+        // Optimistically update cache for immediate UI feedback
+        var feedURLs = folderFeedURLs[folder.id.uuidString] ?? []
+        if feedURLs.contains(podcast.feedURL) {
+            feedURLs.remove(podcast.feedURL)
+        } else {
+            feedURLs.insert(podcast.feedURL)
+        }
+        folderFeedURLs[folder.id.uuidString] = feedURLs
+        
+        // Update the actual relationship
         if let index = folder.podcasts.firstIndex(where: { $0.feedURL == podcast.feedURL }) {
             folder.podcasts.remove(at: index)
         } else {
             folder.podcasts.append(podcast)
         }
-        try? modelContext.save()
+        
+        // Save asynchronously to avoid blocking the UI
+        Task {
+            try? modelContext.save()
+        }
     }
 
     private func removeFromAllFolders() {
+        // Optimistically update cache for all folders
+        for folder in allFolders {
+            if var feedURLs = folderFeedURLs[folder.id.uuidString] {
+                feedURLs.remove(podcast.feedURL)
+                folderFeedURLs[folder.id.uuidString] = feedURLs
+            }
+        }
+        
+        // Update the actual relationships
         for folder in allFolders {
             if let index = folder.podcasts.firstIndex(where: { $0.feedURL == podcast.feedURL }) {
                 folder.podcasts.remove(at: index)
             }
         }
-        try? modelContext.save()
+        
+        // Save asynchronously to avoid blocking the UI
+        Task {
+            try? modelContext.save()
+        }
     }
 
     private func folderColor(_ folder: Folder) -> Color {

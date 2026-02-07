@@ -147,7 +147,11 @@ struct EditFolderView: View {
             folder.name = trimmedName
             folder.colorHex = selectedColor
             folder.autoDownloadNewEpisodes = autoDownloadEnabled
-            try? modelContext.save()
+            
+            // Save asynchronously but dismiss immediately for better UX
+            Task {
+                try? modelContext.save()
+            }
             dismiss()
         } else {
             // Create new - then show podcast picker
@@ -158,7 +162,11 @@ struct EditFolderView: View {
                 newFolder.podcasts.append(initialPodcast)
             }
             modelContext.insert(newFolder)
-            try? modelContext.save()
+            
+            // Save asynchronously but set createdFolder immediately for better UX
+            Task {
+                try? modelContext.save()
+            }
             createdFolder = newFolder
         }
     }
@@ -172,6 +180,9 @@ private struct ManageFolderPodcastsSheet: View {
 
     @Bindable var folder: Folder
     let allPodcasts: [Podcast]
+    
+    // Cache for fast membership checks
+    @State private var podcastFeedURLsInFolder: Set<String> = []
 
     var body: some View {
         NavigationStack {
@@ -227,20 +238,39 @@ private struct ManageFolderPodcastsSheet: View {
                     }
                 }
             }
+            .onAppear {
+                updateCache()
+            }
         }
+    }
+    
+    private func updateCache() {
+        podcastFeedURLsInFolder = Set(folder.podcasts.map { $0.feedURL })
     }
 
     private func isInFolder(_ podcast: Podcast) -> Bool {
-        folder.podcasts.contains { $0.feedURL == podcast.feedURL }
+        podcastFeedURLsInFolder.contains(podcast.feedURL)
     }
 
     private func togglePodcast(_ podcast: Podcast) {
+        // Optimistically update the cache for immediate UI feedback
+        if podcastFeedURLsInFolder.contains(podcast.feedURL) {
+            podcastFeedURLsInFolder.remove(podcast.feedURL)
+        } else {
+            podcastFeedURLsInFolder.insert(podcast.feedURL)
+        }
+        
+        // Update the actual relationship
         if let index = folder.podcasts.firstIndex(where: { $0.feedURL == podcast.feedURL }) {
             folder.podcasts.remove(at: index)
         } else {
             folder.podcasts.append(podcast)
         }
-        try? modelContext.save()
+        
+        // Save asynchronously to avoid blocking the UI
+        Task {
+            try? modelContext.save()
+        }
     }
 }
 

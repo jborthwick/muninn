@@ -73,10 +73,12 @@ struct ContentView: View {
                     selectedTab = settings.selectedTab
                 }
                 .onChange(of: selectedTab) { oldValue, newValue in
-                    // Save selected tab
-                    let settings = AppSettings.getOrCreate(context: modelContext)
-                    settings.selectedTab = newValue
-                    try? modelContext.save()
+                    // Save selected tab asynchronously to avoid blocking tab switch animation
+                    Task {
+                        let settings = AppSettings.getOrCreate(context: modelContext)
+                        settings.selectedTab = newValue
+                        try? modelContext.save()
+                    }
                 }
             }
             .environment(\.miniPlayerVisible, isMiniPlayerVisible)
