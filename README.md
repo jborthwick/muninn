@@ -1,6 +1,6 @@
-# Podcash
+# Muninn
 
-A personal iOS podcast player built with SwiftUI and SwiftData.
+A personal iOS podcast player built with SwiftUI and SwiftData, focused on transcripts and AI-assisted understanding of audio content.
 
 ## Features
 
@@ -35,8 +35,8 @@ A personal iOS podcast player built with SwiftUI and SwiftData.
 
 2. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/podcash.git
-   cd podcash
+   git clone https://github.com/jborthwick/muninn.git
+   cd muninn
    ```
 
 3. Generate the Xcode project:
@@ -46,11 +46,11 @@ A personal iOS podcast player built with SwiftUI and SwiftData.
 
 4. Open the project in Xcode:
    ```bash
-   open Podcash.xcodeproj
+   open muninn.xcodeproj
    ```
 
 5. Select your Development Team in Xcode:
-   - Select the Podcash target
+   - Select the Muninn target
    - Go to Signing & Capabilities
    - Select your team from the dropdown
 
@@ -61,8 +61,8 @@ A personal iOS podcast player built with SwiftUI and SwiftData.
 iCloud sync requires a paid Apple Developer account. To enable it:
 
 1. Add the iCloud capability in Xcode (Signing & Capabilities)
-2. Enable "iCloud Documents" with container `iCloud.com.personal.podcash`
-3. Create `Podcash/Podcash.entitlements` with the iCloud container identifiers
+2. Enable "iCloud Documents" with container `iCloud.com.personal.muninn`
+3. Create `Muninn/Muninn.entitlements` with the iCloud container identifiers
 
 Without iCloud, the app works fully but sync is disabled.
 
@@ -76,7 +76,7 @@ Without iCloud, the app works fully but sync is disabled.
 ## Project Structure
 
 ```
-Podcash/
+Muninn/
 ├── Models/          # SwiftData models
 ├── Services/        # Business logic (AudioPlayer, Download, Sync, etc.)
 ├── Views/           # SwiftUI views organized by feature

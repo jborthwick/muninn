@@ -12,7 +12,7 @@ extension Notification.Name {
 final class ExportImportService {
     static let shared = ExportImportService()
     
-    private let logger = Logger(subsystem: "com.personal.podpeace", category: "ExportImport")
+    private let logger = Logger(subsystem: "com.personal.muninn", category: "ExportImport")
     
     private(set) var isExporting = false
     private(set) var isImporting = false
@@ -38,7 +38,7 @@ final class ExportImportService {
         let exportData = PodcastOnlyExport(
             version: 1,
             exportDate: Date(),
-            appName: "Pod Peace", // Updated app name
+            appName: "Muninn", // Updated app name
             podcasts: podcasts.map { ExportPodcast(feedURL: $0.feedURL) }
         )
         
@@ -76,7 +76,7 @@ final class ExportImportService {
         let exportData = FullDataExport(
             version: 1,
             exportDate: Date(),
-            appName: "Pod Peace",
+            appName: "Muninn",
             podcasts: podcasts.map { podcast in
                 ExportPodcast(
                     feedURL: podcast.feedURL,

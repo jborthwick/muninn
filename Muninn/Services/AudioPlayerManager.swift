@@ -115,7 +115,9 @@ final class AudioPlayerManager {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.saveLastEpisode()
+            Task { @MainActor in
+                self?.saveLastEpisode()
+            }
         }
 
         // Save state when app is terminating
@@ -124,7 +126,9 @@ final class AudioPlayerManager {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.saveCurrentPosition()
+            Task { @MainActor in
+                self?.saveCurrentPosition()
+            }
         }
     }
 

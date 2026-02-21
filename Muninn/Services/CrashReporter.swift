@@ -4,7 +4,7 @@ import os
 /// Simple crash and error reporting utility
 final class CrashReporter {
     static let shared = CrashReporter()
-    private let logger = Logger(subsystem: "com.personal.podpeace", category: "crash")
+    private let logger = Logger(subsystem: "com.personal.muninn", category: "crash")
     
     private init() {
         setupExceptionHandler()
@@ -13,7 +13,7 @@ final class CrashReporter {
     /// Sets up NSException handler to catch Objective-C exceptions
     private func setupExceptionHandler() {
         NSSetUncaughtExceptionHandler { exception in
-            let logger = Logger(subsystem: "com.personal.podpeace", category: "crash")
+            let logger = Logger(subsystem: "com.personal.muninn", category: "crash")
             logger.critical("💥 UNCAUGHT EXCEPTION: \(exception.name.rawValue)")
             logger.critical("Reason: \(exception.reason ?? "unknown")")
             logger.critical("Stack trace: \(exception.callStackSymbols.joined(separator: "\n"))")

@@ -31,7 +31,7 @@ final class DownloadManager: NSObject {
     private override init() {
         super.init()
 
-        let config = URLSessionConfiguration.background(withIdentifier: "com.personal.podpeace.downloads")
+        let config = URLSessionConfiguration.background(withIdentifier: "com.personal.muninn.downloads")
         config.isDiscretionary = false
         config.sessionSendsLaunchEvents = true
         urlSession = URLSession(configuration: config, delegate: self, delegateQueue: nil)

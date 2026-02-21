@@ -2,7 +2,7 @@ import SwiftUI
 import SwiftData
 
 @main
-struct PodPeaceApp: App {
+struct MuninnApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Podcast.self,

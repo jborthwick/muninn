@@ -18,7 +18,7 @@ final class RefreshManager {
 
     /// Number of concurrent feed fetches
     private let concurrentFetches = 6
-    private let logger = Logger(subsystem: "com.personal.podpeace", category: "Refresh")
+    private let logger = Logger(subsystem: "com.personal.muninn", category: "Refresh")
 
     private init() {}
 

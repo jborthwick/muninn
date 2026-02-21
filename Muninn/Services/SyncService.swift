@@ -14,7 +14,7 @@ final class SyncService {
     private(set) var syncError: String?
     private(set) var isCloudAvailable = false
 
-    private let syncFileName = "PodPeaceSync.json"
+    private let syncFileName = "MuninnSync.json"
     private var metadataQuery: NSMetadataQuery?
     private var localContainer: URL?
     private var cloudContainer: URL?
@@ -60,7 +60,7 @@ final class SyncService {
         localContainer = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
 
         // Check for iCloud availability
-        if let cloudURL = FileManager.default.url(forUbiquityContainerIdentifier: "iCloud.com.personal.podpeace") {
+        if let cloudURL = FileManager.default.url(forUbiquityContainerIdentifier: "iCloud.com.personal.muninn") {
             cloudContainer = cloudURL.appendingPathComponent("Documents", isDirectory: true)
 
             // Create Documents folder if needed

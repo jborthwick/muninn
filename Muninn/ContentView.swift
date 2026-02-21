@@ -65,7 +65,7 @@ struct ContentView: View {
 
             if isMiniPlayerVisible {
                 MiniPlayerView(showNowPlaying: $showNowPlaying)
-                    .padding(.bottom, 49) // Standard tab bar height
+                    .padding(.bottom, 57) // Tab bar height (49) + spacing (8)
                     .transition(.move(edge: .bottom))
             }
 

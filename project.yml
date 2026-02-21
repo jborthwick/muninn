@@ -1,4 +1,4 @@
-name: podpeace
+name: muninn
 options:
   bundleIdPrefix: com.personal
   deploymentTarget:
@@ -17,23 +17,23 @@ settings:
     DEVELOPMENT_TEAM: SHQSDJG35Q
 
 targets:
-  PodPeace:
+  Muninn:
     type: application
     platform: iOS
     sources:
-      - PodPeace
+      - Muninn
     dependencies:
       - package: FeedKit
     settings:
       base:
-        INFOPLIST_FILE: PodPeace/Info.plist
-        PRODUCT_BUNDLE_IDENTIFIER: com.personal.podpeace
+        INFOPLIST_FILE: Muninn/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.personal.muninn
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1"
         MARKETING_VERSION: "0.5"
         CURRENT_PROJECT_VERSION: "1"
     info:
-      path: PodPeace/Info.plist
+      path: Muninn/Info.plist
       properties:
         UILaunchScreen:
           UIColorName: ""
@@ -46,12 +46,12 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-        CFBundleDisplayName: Pod Peace
+        CFBundleDisplayName: Muninn
 
 schemes:
-  PodPeace:
+  Muninn:
     build:
       targets:
-        PodPeace: all
+        Muninn: all
     run:
       config: Debug

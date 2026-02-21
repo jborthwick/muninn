@@ -22,7 +22,7 @@ final class FeedService {
 
         switch result {
         case .success(let feed):
-            var (podcast, episodes) = try parseFeed(feed, feedURL: urlString)
+            let (podcast, episodes) = try parseFeed(feed, feedURL: urlString)
 
             // If this is a private feed, try to find the public version
             if podcast.isPrivateFeed {
