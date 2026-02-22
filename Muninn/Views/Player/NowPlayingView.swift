@@ -1,5 +1,4 @@
 import SwiftUI
-import AVKit
 
 struct NowPlayingView: View {
     var playerManager = AudioPlayerManager.shared
@@ -10,12 +9,11 @@ struct NowPlayingView: View {
 
     @State private var isDragging = false
     @State private var dragTime: TimeInterval = 0
-    @State private var showSpeedPicker = false
     @State private var showTranscript = false
 
     var body: some View {
         VStack(spacing: 0) {
-            // Close button row
+            // Close / share row
             HStack {
                 Button {
                     dismiss()
@@ -27,6 +25,14 @@ struct NowPlayingView: View {
                         .frame(width: 44, height: 44)
                 }
                 Spacer()
+                if let episode = playerManager.currentEpisode, episode.canShare {
+                    ShareLink(item: episode.shareURL) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.title2)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 44, height: 44)
+                    }
+                }
             }
             .padding(.horizontal)
 
@@ -168,8 +174,34 @@ struct NowPlayingView: View {
                 // Speed, sleep timer, and actions
                 HStack(spacing: 24) {
                     // Speed picker
-                    Button {
-                        showSpeedPicker = true
+                    Menu {
+                        ForEach([0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0], id: \.self) { speed in
+                            Button {
+                                playerManager.playbackSpeed = speed
+                            } label: {
+                                HStack {
+                                    Text(formatSpeed(speed))
+                                    if abs(playerManager.effectivePlaybackSpeed - speed) < 0.01 {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                        if let podcast = episode.podcast {
+                            Divider()
+                            Button {
+                                if podcast.playbackSpeedOverride != nil {
+                                    podcast.playbackSpeedOverride = nil
+                                } else {
+                                    podcast.playbackSpeedOverride = playerManager.effectivePlaybackSpeed
+                                }
+                            } label: {
+                                Label(
+                                    podcast.playbackSpeedOverride != nil ? "Remove Speed Pin" : "Pin Speed to Podcast",
+                                    systemImage: podcast.playbackSpeedOverride != nil ? "pin.slash" : "pin"
+                                )
+                            }
+                        }
                     } label: {
                         HStack(spacing: 4) {
                             Text(formatSpeed(playerManager.effectivePlaybackSpeed))
@@ -180,12 +212,7 @@ struct NowPlayingView: View {
                         }
                         .font(.subheadline)
                         .fontWeight(.medium)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.secondary.opacity(0.2))
-                        .clipShape(Capsule())
                     }
-                    .buttonStyle(.plain)
 
                     // Sleep timer
                     Menu {
@@ -233,16 +260,8 @@ struct NowPlayingView: View {
                         }
                         .font(.subheadline)
                         .fontWeight(.medium)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(playerManager.sleepTimerEndTime != nil ? Color.indigo.opacity(0.2) : Color.secondary.opacity(0.2))
-                        .foregroundStyle(playerManager.sleepTimerEndTime != nil ? .indigo : .primary)
-                        .clipShape(Capsule())
+                        .foregroundStyle(playerManager.sleepTimerEndTime != nil ? .indigo : .secondary)
                     }
-
-                    // Audio output picker
-                    AudioRoutePickerButton()
-                        .frame(width: 28, height: 28)
 
                     // Star button
                     Button {
@@ -251,15 +270,6 @@ struct NowPlayingView: View {
                         Image(systemName: episode.isStarred ? "star.fill" : "star")
                             .font(.title2)
                             .foregroundStyle(episode.isStarred ? .yellow : .secondary)
-                    }
-
-                    // Share button (only if episode can be shared)
-                    if episode.canShare {
-                        ShareLink(item: episode.shareURL) {
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.title2)
-                                .foregroundStyle(.secondary)
-                        }
                     }
 
                     // Transcript button — always opens the transcript view
@@ -289,6 +299,26 @@ struct NowPlayingView: View {
             }
         }
         .presentationDragIndicator(.visible)
+        .presentationBackground {
+            if let episode = playerManager.currentEpisode,
+               let urlString = episode.displayArtworkURL,
+               let url = URL(string: urlString) {
+                CachedAsyncImage(url: url) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } placeholder: {
+                    Color.black
+                }
+                .ignoresSafeArea()
+                .blur(radius: 80)
+                .overlay(Color.black.opacity(0.55))
+                .ignoresSafeArea()
+            } else {
+                Color.black.ignoresSafeArea()
+            }
+        }
+        .preferredColorScheme(.dark)
         .onChange(of: playerManager.currentEpisode?.guid) { _, _ in
             // Reset transcript state when episode changes
             showTranscript = false
@@ -299,13 +329,6 @@ struct NowPlayingView: View {
             if !isTranscribing, let episode = playerManager.currentEpisode, showTranscript {
                 Task { await transcriptService.load(for: episode) }
             }
-        }
-        .sheet(isPresented: $showSpeedPicker) {
-            SpeedPickerSheet(
-                playerManager: playerManager,
-                podcast: playerManager.currentEpisode?.podcast
-            )
-            .presentationDetents([.medium])
         }
     }
 
@@ -380,140 +403,6 @@ struct NowPlayingView: View {
 
 }
 
-// MARK: - Speed Picker Sheet
-
-private struct SpeedPickerSheet: View {
-    var playerManager: AudioPlayerManager
-    var podcast: Podcast?
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var selectedSpeed: Double
-    @State private var rememberForPodcast: Bool
-    private let originalSpeed: Double
-
-    private let speeds: [Double] = [0.5, 0.75] + stride(from: 1.0, through: 2.0, by: 0.1).map { $0 } + [2.5, 3.0]
-
-    init(playerManager: AudioPlayerManager, podcast: Podcast?) {
-        self.playerManager = playerManager
-        self.podcast = podcast
-        let currentSpeed = playerManager.effectivePlaybackSpeed
-        self.originalSpeed = currentSpeed
-        // Initialize with current effective speed
-        _selectedSpeed = State(initialValue: currentSpeed)
-        // If podcast already has override, start with toggle on
-        _rememberForPodcast = State(initialValue: podcast?.playbackSpeedOverride != nil)
-    }
-
-    var body: some View {
-        NavigationStack {
-            List {
-                // Podcast-specific toggle
-                if let podcast = podcast {
-                    Section {
-                        Toggle(isOn: $rememberForPodcast) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Remember for this podcast")
-                                Text(podcast.title)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                        }
-                    } footer: {
-                        Text(rememberForPodcast
-                            ? "Speed will be saved for this podcast only"
-                            : "Speed will apply to all podcasts")
-                    }
-                }
-
-                // Speed options
-                Section("Speed") {
-                    ForEach(speeds, id: \.self) { speed in
-                        Button {
-                            selectedSpeed = speed
-                            playerManager.previewSpeed(speed)
-                        } label: {
-                            HStack {
-                                Text(formatSpeed(speed))
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                                if selectedSpeed == speed {
-                                    Image(systemName: "checkmark")
-                                        .foregroundStyle(Color.accentColor)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            .navigationTitle("Playback Speed")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        // Revert to original speed
-                        playerManager.previewSpeed(originalSpeed)
-                        dismiss()
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        saveAndDismiss()
-                    }
-                    .fontWeight(.semibold)
-                }
-            }
-            .onChange(of: rememberForPodcast) { _, newValue in
-                if !newValue {
-                    // When toggling off "remember", revert to global speed
-                    selectedSpeed = playerManager.globalPlaybackSpeed
-                    playerManager.previewSpeed(selectedSpeed)
-                }
-            }
-        }
-    }
-
-    private func saveAndDismiss() {
-        if let podcast = podcast {
-            if rememberForPodcast {
-                // Save to podcast override
-                podcast.playbackSpeedOverride = selectedSpeed
-            } else {
-                // Clear podcast override, save to global
-                podcast.playbackSpeedOverride = nil
-                playerManager.globalPlaybackSpeed = selectedSpeed
-            }
-        } else {
-            // No podcast context, save globally
-            playerManager.globalPlaybackSpeed = selectedSpeed
-        }
-
-        // Update current playback rate
-        playerManager.playbackSpeed = selectedSpeed
-        dismiss()
-    }
-
-    private func formatSpeed(_ speed: Double) -> String {
-        if speed == floor(speed) {
-            return String(format: "%.0fx", speed)
-        } else {
-            return String(format: "%.2gx", speed)
-        }
-    }
-}
-
-// MARK: - Audio Route Picker (UIKit Wrapper)
-
-private struct AudioRoutePickerButton: UIViewRepresentable {
-    func makeUIView(context: Context) -> AVRoutePickerView {
-        let picker = AVRoutePickerView()
-        picker.tintColor = .secondaryLabel
-        picker.activeTintColor = .tintColor
-        return picker
-    }
-
-    func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
-}
 
 #Preview {
     NowPlayingView()
