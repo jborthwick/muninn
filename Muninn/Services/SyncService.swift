@@ -36,6 +36,15 @@ final class SyncService {
         metadataQuery?.stop()
     }
 
+    // MARK: - Reset
+
+    /// Overwrites the iCloud sync file with empty data. Call after a full local reset
+    /// so the cloud doesn't resurrect old subscriptions on the next merge.
+    func clearSyncData() async {
+        let empty = SyncData(timestamp: Date())
+        try? await writeCloudData(empty)
+    }
+
     // MARK: - Change-Triggered Sync
 
     /// Call this when data changes to trigger a debounced sync

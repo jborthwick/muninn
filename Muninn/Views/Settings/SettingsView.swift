@@ -346,6 +346,10 @@ struct SettingsView: View {
             defaults.removeObject(forKey: key)
         }
 
+        // Overwrite the iCloud sync file with empty data so the next merge
+        // doesn't resurrect old subscriptions from the cloud.
+        Task { await SyncService.shared.clearSyncData() }
+
         updateDownloadSize()
     }
 
