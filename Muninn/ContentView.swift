@@ -31,11 +31,6 @@ struct ContentView: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             VStack(spacing: 0) {
-                // Global refresh status banner
-                if refreshManager.isRefreshing {
-                    RefreshStatusBanner()
-                }
-
                 TabView(selection: $selectedTab) {
                     LibraryView()
                         .tabItem {
