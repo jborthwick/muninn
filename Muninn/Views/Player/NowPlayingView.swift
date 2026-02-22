@@ -3,11 +3,14 @@ import AVKit
 
 struct NowPlayingView: View {
     var playerManager = AudioPlayerManager.shared
+    var transcriptService = TranscriptService.shared
     @Environment(\.dismiss) private var dismiss
 
     @State private var isDragging = false
     @State private var dragTime: TimeInterval = 0
     @State private var showSpeedPicker = false
+    @State private var showTranscript = false
+    @State private var showNoTranscriptAlert = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -27,44 +30,67 @@ struct NowPlayingView: View {
             .padding(.horizontal)
 
             if let episode = playerManager.currentEpisode {
-                Spacer()
 
-                // Artwork
-                CachedAsyncImage(url: URL(string: episode.displayArtworkURL ?? "")) { image in
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color.secondary.opacity(0.2))
-                        .overlay {
-                            Image(systemName: "mic")
-                                .font(.system(size: 60))
-                                .foregroundStyle(.secondary)
+                // Top section: artwork + title (normal) or compact header + transcript (transcript mode)
+                Group {
+                    if showTranscript {
+                        TranscriptHeaderView(episode: episode) {
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                showTranscript = false
+                            }
                         }
-                }
-                .frame(width: 280, height: 280)
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .shadow(radius: 10)
 
-                // Title and podcast
-                VStack(spacing: 4) {
-                    Text(episode.title)
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.center)
+                        TranscriptView(
+                            segments: transcriptService.segments,
+                            currentTime: playerManager.currentTime,
+                            isLoading: transcriptService.isLoading,
+                            error: transcriptService.error,
+                            onSeek: { playerManager.seek(to: $0) }
+                        )
+                    } else {
+                        Spacer()
 
-                    if let podcast = episode.podcast {
-                        Text(podcast.title)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                        // Artwork
+                        CachedAsyncImage(url: URL(string: episode.displayArtworkURL ?? "")) { image in
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                        } placeholder: {
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(Color.secondary.opacity(0.2))
+                                .overlay {
+                                    Image(systemName: "mic")
+                                        .font(.system(size: 60))
+                                        .foregroundStyle(.secondary)
+                                }
+                        }
+                        .frame(width: 280, height: 280)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .shadow(radius: 10)
+
+                        // Title and podcast
+                        VStack(spacing: 4) {
+                            Text(episode.title)
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.center)
+
+                            if let podcast = episode.podcast {
+                                Text(podcast.title)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.horizontal)
+                        .padding(.top, 24)
+
+                        Spacer()
                     }
                 }
-                .padding(.horizontal)
-                .padding(.top, 24)
+                .animation(.easeInOut(duration: 0.25), value: showTranscript)
 
-                // Progress slider
+                // Progress slider (always visible)
                 VStack(spacing: 4) {
                     Slider(
                         value: Binding(
@@ -230,10 +256,30 @@ struct NowPlayingView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+
+                    // Transcript button — always visible; dims when no transcript available
+                    Button {
+                        if episode.transcriptURL != nil {
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                showTranscript.toggle()
+                            }
+                            if showTranscript {
+                                Task { await transcriptService.load(for: episode) }
+                            }
+                        } else {
+                            showNoTranscriptAlert = true
+                        }
+                    } label: {
+                        Image(systemName: showTranscript ? "quote.bubble.fill" : "quote.bubble")
+                            .font(.title2)
+                            .foregroundStyle(
+                                showTranscript ? Color.accentColor :
+                                (episode.transcriptURL != nil ? Color.secondary : Color.secondary.opacity(0.4))
+                            )
+                    }
                 }
                 .padding(.top, 24)
-
-                Spacer()
+                .padding(.bottom, 8)
             } else {
                 Spacer()
                 ContentUnavailableView(
@@ -245,6 +291,16 @@ struct NowPlayingView: View {
             }
         }
         .presentationDragIndicator(.visible)
+        .alert("No Transcript Available", isPresented: $showNoTranscriptAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("This episode doesn't have a transcript.")
+        }
+        .onChange(of: playerManager.currentEpisode?.guid) { _, _ in
+            // Reset transcript state when episode changes
+            showTranscript = false
+            transcriptService.clear()
+        }
         .sheet(isPresented: $showSpeedPicker) {
             SpeedPickerSheet(
                 playerManager: playerManager,

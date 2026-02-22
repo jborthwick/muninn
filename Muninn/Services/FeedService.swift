@@ -13,7 +13,10 @@ final class FeedService {
             throw FeedError.invalidURL
         }
 
-        let parser = FeedParser(URL: url)
+        // Fetch raw data so we can run secondary transcript URL extraction
+        let (data, _) = try await URLSession.shared.data(from: url)
+
+        let parser = FeedParser(data: data)
         let result = await withCheckedContinuation { continuation in
             parser.parseAsync { result in
                 continuation.resume(returning: result)
@@ -23,6 +26,9 @@ final class FeedService {
         switch result {
         case .success(let feed):
             let (podcast, episodes) = try parseFeed(feed, feedURL: urlString)
+
+            // Extract podcast:transcript URLs (FeedKit doesn't parse this namespace)
+            enrichEpisodesWithTranscripts(episodes, from: data)
 
             // If this is a private feed, try to find the public version
             if podcast.isPrivateFeed {
@@ -87,6 +93,8 @@ final class FeedService {
         switch result {
         case .success(let feed):
             let (podcast, episodes) = try parseFeed(feed, feedURL: urlString)
+            // Extract podcast:transcript URLs (FeedKit doesn't parse this namespace)
+            enrichEpisodesWithTranscripts(episodes, from: data)
             return (podcast, episodes, newETag, newLastModified)
         case .failure(let error):
             throw FeedError.parsingFailed(error.localizedDescription)
@@ -337,6 +345,19 @@ final class FeedService {
         return formatter.date(from: dateString) ?? ISO8601DateFormatter().date(from: dateString)
     }
 
+    /// Enriches episodes with transcript URLs parsed from raw RSS XML.
+    /// FeedKit 9.x doesn't parse the `podcast:` namespace, so we do a secondary
+    /// XMLParser pass to extract `<podcast:transcript url="..." />` elements.
+    private func enrichEpisodesWithTranscripts(_ episodes: [Episode], from data: Data) {
+        let transcriptMap = PodcastTranscriptXMLParser.parse(data)
+        guard !transcriptMap.isEmpty else { return }
+        for episode in episodes {
+            if let url = transcriptMap[episode.guid] {
+                episode.transcriptURL = url
+            }
+        }
+    }
+
     /// Checks if a podcast is in any folder that has auto-download enabled
     private func isInAutoDownloadFolder(_ podcast: Podcast, context: ModelContext) -> Bool {
         let descriptor = FetchDescriptor<Folder>(
@@ -355,6 +376,93 @@ final class FeedService {
         }
 
         return false
+    }
+}
+
+// MARK: - Podcast Namespace Transcript URL Extractor
+
+/// Parses raw RSS XML to extract `<podcast:transcript url="...">` elements,
+/// returning a dictionary of episode GUID → transcript URL.
+/// Only the first (highest-priority) transcript URL per episode is kept,
+/// preferring VTT > JSON > SRT > other formats.
+private final class PodcastTranscriptXMLParser: NSObject, XMLParserDelegate {
+
+    // Priority order for transcript MIME types (lower = better)
+    private static let typePriority: [String: Int] = [
+        "text/vtt": 0,
+        "application/json": 1,
+        "text/srt": 2,
+        "application/srt": 2
+    ]
+
+    private var result: [String: String] = [:]     // guid → url
+    private var resultPriority: [String: Int] = [:] // guid → current best priority
+    private var currentGUID: String?
+    private var inItem = false
+    private var capturingGUID = false
+    private var guidBuffer = ""
+
+    static func parse(_ data: Data) -> [String: String] {
+        let instance = PodcastTranscriptXMLParser()
+        let xmlParser = XMLParser(data: data)
+        xmlParser.delegate = instance
+        xmlParser.parse()
+        return instance.result
+    }
+
+    func parser(_ parser: XMLParser, didStartElement elementName: String,
+                namespaceURI: String?, qualifiedName qName: String?,
+                attributes: [String: String] = [:]) {
+        let localName = elementName.lowercased()
+        let qNameLower = (qName ?? "").lowercased()
+
+        if localName == "item" || qNameLower == "item" {
+            inItem = true
+            currentGUID = nil
+            return
+        }
+
+        if inItem {
+            if localName == "guid" {
+                capturingGUID = true
+                guidBuffer = ""
+                return
+            }
+
+            // Match <podcast:transcript url="..." type="..."/> regardless of prefix
+            let isTranscript = localName == "transcript" || qNameLower.hasSuffix(":transcript")
+            if isTranscript, let url = attributes["url"] ?? attributes["URL"] {
+                if let guid = currentGUID, !url.isEmpty {
+                    let type = (attributes["type"] ?? "").lowercased()
+                    let priority = Self.typePriority[type] ?? 99
+                    let currentPriority = resultPriority[guid] ?? Int.max
+                    if priority < currentPriority {
+                        result[guid] = url
+                        resultPriority[guid] = priority
+                    }
+                }
+            }
+        }
+    }
+
+    func parser(_ parser: XMLParser, foundCharacters string: String) {
+        if capturingGUID {
+            guidBuffer += string
+        }
+    }
+
+    func parser(_ parser: XMLParser, didEndElement elementName: String,
+                namespaceURI: String?, qualifiedName qName: String?) {
+        let localName = elementName.lowercased()
+        if localName == "item" || (qName ?? "").lowercased() == "item" {
+            inItem = false
+            currentGUID = nil
+        }
+        if capturingGUID && localName == "guid" {
+            currentGUID = guidBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
+            capturingGUID = false
+            guidBuffer = ""
+        }
     }
 }
 

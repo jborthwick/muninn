@@ -62,6 +62,9 @@ final class Episode {
     // Episode link (from RSS feed, if available)
     var episodeLink: String?
 
+    // Transcript URL (from RSS <podcast:transcript> tag, if available)
+    var transcriptURL: String?
+
     /// The URL to use when sharing this episode
     var shareURL: String {
         // Prefer episode-specific link if available
