@@ -4,6 +4,7 @@ import os
 
 /// Manages a sequential queue for auto-transcribing downloaded episodes.
 /// Only one episode is transcribed at a time to avoid overwhelming the system.
+@MainActor
 @Observable
 final class AutoTranscriptionQueue {
     static let shared = AutoTranscriptionQueue()
@@ -61,15 +62,13 @@ final class AutoTranscriptionQueue {
             logger.info("Starting auto-transcription for: \(episode.title)")
             let started = await LocalTranscriptionService.shared.transcribe(episode: episode, context: context)
 
-            await MainActor.run {
-                if !started {
-                    // Service was busy (manual transcription in progress) — re-insert at front to retry
-                    self.queue.insert(episode, at: 0)
-                    logger.info("Re-queued episode (service was busy): \(episode.title)")
-                }
-                self.isProcessing = false
-                self.processNextIfNeeded()
+            if !started {
+                // Service was busy (manual transcription in progress) — re-insert at front to retry
+                self.queue.insert(episode, at: 0)
+                logger.info("Re-queued episode (service was busy): \(episode.title)")
             }
+            self.isProcessing = false
+            self.processNextIfNeeded()
         }
     }
 }

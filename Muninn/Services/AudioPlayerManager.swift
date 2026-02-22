@@ -211,7 +211,9 @@ final class AudioPlayerManager {
             object: playerItem,
             queue: .main
         ) { [weak self] _ in
-            self?.handlePlaybackEnded()
+            Task { @MainActor [weak self] in
+                self?.handlePlaybackEnded()
+            }
         }
 
         setupTimeObserver()
@@ -370,10 +372,12 @@ final class AudioPlayerManager {
         sleepTimerEndTime = Date().addingTimeInterval(TimeInterval(minutes * 60))
 
         sleepTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            if let remaining = self.sleepTimerRemaining, remaining <= 0 {
-                self.pause()
-                self.cancelSleepTimer()
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if let remaining = self.sleepTimerRemaining, remaining <= 0 {
+                    self.pause()
+                    self.cancelSleepTimer()
+                }
             }
         }
     }
@@ -427,7 +431,9 @@ final class AudioPlayerManager {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            self?.handleInterruption(notification)
+            Task { @MainActor [weak self] in
+                self?.handleInterruption(notification)
+            }
         }
 
         // Handle route changes (headphones unplugged)
@@ -436,7 +442,9 @@ final class AudioPlayerManager {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            self?.handleRouteChange(notification)
+            Task { @MainActor [weak self] in
+                self?.handleRouteChange(notification)
+            }
         }
     }
 
@@ -625,19 +633,17 @@ final class AudioPlayerManager {
         if cachedArtwork == nil || cachedArtworkURL != artworkURLString {
             if let artworkURLString = artworkURLString,
                let artworkURL = URL(string: artworkURLString) {
-                Task.detached { [weak self] in
+                Task { [weak self] in
+                    guard let self else { return }
                     if let (data, _) = try? await URLSession.shared.data(from: artworkURL),
                        let image = UIImage(data: data) {
-                        await MainActor.run {
-                            guard let self else { return }
-                            let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-                            self.cachedArtwork = artwork
-                            self.cachedArtworkURL = artworkURLString
+                        let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                        self.cachedArtwork = artwork
+                        self.cachedArtworkURL = artworkURLString
 
-                            var updatedInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
-                            updatedInfo[MPMediaItemPropertyArtwork] = artwork
-                            MPNowPlayingInfoCenter.default().nowPlayingInfo = updatedInfo
-                        }
+                        var updatedInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+                        updatedInfo[MPMediaItemPropertyArtwork] = artwork
+                        MPNowPlayingInfoCenter.default().nowPlayingInfo = updatedInfo
                     }
                 }
             }

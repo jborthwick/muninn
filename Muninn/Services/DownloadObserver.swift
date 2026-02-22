@@ -4,6 +4,7 @@ import Combine
 import os
 
 /// Observes download notifications and updates SwiftData episodes
+@MainActor
 @Observable
 final class DownloadObserver {
     static let shared = DownloadObserver()
@@ -24,21 +25,27 @@ final class DownloadObserver {
         NotificationCenter.default.publisher(for: .downloadCompleted)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] notification in
-                self?.handleDownloadCompleted(notification)
+                Task { @MainActor [weak self] in
+                    self?.handleDownloadCompleted(notification)
+                }
             }
             .store(in: &cancellables)
 
         NotificationCenter.default.publisher(for: .downloadFailed)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] notification in
-                self?.handleDownloadFailed(notification)
+                Task { @MainActor [weak self] in
+                    self?.handleDownloadFailed(notification)
+                }
             }
             .store(in: &cancellables)
 
         NotificationCenter.default.publisher(for: .episodePlaybackCompleted)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] notification in
-                self?.handleEpisodeCompleted(notification)
+                Task { @MainActor [weak self] in
+                    self?.handleEpisodeCompleted(notification)
+                }
             }
             .store(in: &cancellables)
     }
