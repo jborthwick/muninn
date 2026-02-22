@@ -75,15 +75,15 @@ struct MiniPlayerView: View {
             .padding(.vertical, 12)
             .modifier(GlassBackgroundModifier())
             .overlay(alignment: .bottom) {
-                // Progress indicator at bottom
+                // Progress indicator at bottom — inset enough to stay inside the pill's curved ends
                 GeometryReader { geometry in
                     Capsule()
                         .fill(Color.accentColor)
                         .frame(width: geometry.size.width * progress, height: 3)
                 }
                 .frame(height: 3)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 2)
+                .padding(.horizontal, 28)
+                .padding(.bottom, 4)
             }
             .onTapGesture {
                 showNowPlaying = true

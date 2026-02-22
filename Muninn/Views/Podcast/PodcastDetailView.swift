@@ -10,7 +10,8 @@ struct PodcastDetailView: View {
 
     private var networkMonitor: NetworkMonitor { NetworkMonitor.shared }
 
-    @State private var sortNewestFirst = true
+    @State private var searchText = ""
+    @State private var searchTags: [String] = []
     @State private var showStarredOnly = false
     @State private var showDownloadedOnly = false
     @State private var isRefreshing = false
@@ -33,6 +34,7 @@ struct PodcastDetailView: View {
             }
             .listRowInsets(EdgeInsets())
             .listRowBackground(Color.clear)
+            .listSectionSeparator(.hidden)
 
             // Offline indicator
             if !networkMonitor.isConnected {
@@ -52,11 +54,11 @@ struct PodcastDetailView: View {
                 HStack(spacing: 12) {
                     // Sort toggle
                     Button {
-                        sortNewestFirst.toggle()
+                        podcast.sortNewestFirst.toggle()
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "arrow.up.arrow.down")
-                            Text(sortNewestFirst ? "Newest" : "Oldest")
+                            Text(podcast.sortNewestFirst ? "Newest" : "Oldest")
                         }
                         .font(.subheadline)
                         .padding(.horizontal, 10)
@@ -100,9 +102,67 @@ struct PodcastDetailView: View {
                     .buttonStyle(.plain)
                 }
             }
+            .listSectionSeparator(.hidden, edges: .bottom)
 
             // Episodes
             Section {
+                // Search field + active filter pills
+                VStack(alignment: .leading, spacing: 8) {
+                    // Traditional iOS-style search box
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                            .font(.system(size: 15))
+
+                        TextField(searchTags.isEmpty ? "Search episodes" : "Refine filter…", text: $searchText)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                            .onSubmit { commitSearchTag() }
+
+                        if !searchText.isEmpty {
+                            Button { searchText = "" } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(Color(.tertiaryLabel))
+                                    .font(.system(size: 15))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(Color(.secondarySystemFill))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                    // Active filter pills in a scrollable row below the search box
+                    if !searchTags.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                ForEach(searchTags, id: \.self) { tag in
+                                    HStack(spacing: 4) {
+                                        Text(tag)
+                                            .font(.subheadline)
+                                            .lineLimit(1)
+                                        Button { removeSearchTag(tag) } label: {
+                                            Image(systemName: "xmark")
+                                                .font(.caption)
+                                                .fontWeight(.semibold)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(Color.accentColor.opacity(0.15))
+                                    .foregroundStyle(Color.accentColor)
+                                    .clipShape(Capsule())
+                                }
+                            }
+                        }
+                        .frame(height: 34)
+                    }
+                }
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                .listRowSeparator(.hidden)
+
                 if filteredEpisodes.isEmpty {
                     ContentUnavailableView(
                         emptyStateTitle,
@@ -269,6 +329,9 @@ struct PodcastDetailView: View {
             EpisodeDetailView(episode: episode)
         }
         .onAppear {
+            // Restore persisted search tags for this show
+            searchTags = UserDefaults.standard.stringArray(forKey: searchTagsKey) ?? []
+
             // Auto-filter to downloaded when offline
             if !networkMonitor.isConnected {
                 showDownloadedOnly = true
@@ -282,9 +345,11 @@ struct PodcastDetailView: View {
                 }
             }
         }
-        .onChange(of: sortNewestFirst) { _, _ in displayLimit = 100 }
+        .onChange(of: podcast.sortNewestFirst) { _, _ in displayLimit = 100 }
         .onChange(of: showStarredOnly) { _, _ in displayLimit = 100 }
         .onChange(of: showDownloadedOnly) { _, _ in displayLimit = 100 }
+        .onChange(of: searchText) { _, _ in displayLimit = 100 }
+        .onChange(of: searchTags) { _, _ in displayLimit = 100 }
     }
 
     /// How many more episodes to load when scrolling
@@ -301,10 +366,25 @@ struct PodcastDetailView: View {
             episodes = episodes.filter { $0.localFilePath != nil }
         }
 
+        // Persistent tag pills: show episodes matching ANY saved tag (OR logic)
+        if !searchTags.isEmpty {
+            let tags = searchTags.map { $0.lowercased() }
+            episodes = episodes.filter { episode in
+                let title = episode.title.lowercased()
+                return tags.contains { title.contains($0) }
+            }
+        }
+
+        // Live search text narrows the current result set further (AND with tags)
+        if !searchText.isEmpty {
+            let query = searchText.lowercased()
+            episodes = episodes.filter { $0.title.lowercased().contains(query) }
+        }
+
         return episodes.sorted { e1, e2 in
             let date1 = e1.publishedDate ?? .distantPast
             let date2 = e2.publishedDate ?? .distantPast
-            return sortNewestFirst ? date1 > date2 : date1 < date2
+            return podcast.sortNewestFirst ? date1 > date2 : date1 < date2
         }
     }
 
@@ -326,8 +406,33 @@ struct PodcastDetailView: View {
         }
     }
 
+    // MARK: - Search tag helpers
+
+    /// UserDefaults key scoped to this podcast so tags persist per-show.
+    private var searchTagsKey: String { "episodeSearchTags_\(podcast.feedURL)" }
+
+    /// Commits the current search text as a persistent filter pill.
+    private func commitSearchTag() {
+        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !searchTags.contains(trimmed) else {
+            searchText = ""
+            return
+        }
+        searchTags.append(trimmed)
+        searchText = ""
+        UserDefaults.standard.set(searchTags, forKey: searchTagsKey)
+    }
+
+    /// Removes a single filter pill.
+    private func removeSearchTag(_ tag: String) {
+        searchTags.removeAll { $0 == tag }
+        UserDefaults.standard.set(searchTags, forKey: searchTagsKey)
+    }
+
     private var emptyStateTitle: String {
-        if showStarredOnly && showDownloadedOnly {
+        if !searchText.isEmpty || !searchTags.isEmpty {
+            return "No Results"
+        } else if showStarredOnly && showDownloadedOnly {
             return "No Starred Downloads"
         } else if showStarredOnly {
             return "No Starred Episodes"
@@ -339,7 +444,9 @@ struct PodcastDetailView: View {
     }
 
     private var emptyStateIcon: String {
-        if showDownloadedOnly {
+        if !searchText.isEmpty || !searchTags.isEmpty {
+            return "magnifyingglass"
+        } else if showDownloadedOnly {
             return "arrow.down.circle"
         } else if showStarredOnly {
             return "star"
@@ -349,7 +456,15 @@ struct PodcastDetailView: View {
     }
 
     private var emptyStateDescription: String {
-        if showDownloadedOnly && !networkMonitor.isConnected {
+        if !searchTags.isEmpty {
+            let tagList = searchTags.joined(separator: ", ")
+            let filterWord = searchTags.count > 1 ? "filters" : "filter"
+            return searchText.isEmpty
+                ? "No episodes match the \(filterWord) \"\(tagList)\""
+                : "No episodes match \"\(searchText)\" within the active filters"
+        } else if !searchText.isEmpty {
+            return "No episodes match \"\(searchText)\""
+        } else if showDownloadedOnly && !networkMonitor.isConnected {
             return "Download episodes while online to play offline"
         } else if showStarredOnly {
             return "Star episodes to see them here"
@@ -596,8 +711,8 @@ private struct PodcastHeaderView: View {
             }
 
             if let description = podcast.podcastDescription, !description.isEmpty {
-                Text(description)
-                    .font(.caption)
+                Text(description.htmlStripped)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(3)
                     .multilineTextAlignment(.center)

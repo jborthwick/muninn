@@ -18,6 +18,7 @@ final class Podcast {
     // Per-podcast settings
     var playbackSpeedOverride: Double?  // nil = use global setting
     var autoDownloadNewEpisodes: Bool = false  // Auto-download new episodes when refreshed
+    var sortNewestFirst: Bool = true        // Episode list sort order
 
     /// Whether this podcast uses a private feed URL (Patreon, Substack, Supercast, etc.)
     var isPrivateFeed: Bool {
