@@ -106,7 +106,19 @@ struct EpisodeRowView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.borderless)
+                } else if let progress = episode.downloadProgress {
+                    // Downloading
+                    Button {
+                        DownloadManager.shared.cancelDownload(episode)
+                    } label: {
+                        CircularProgressView(progress: progress)
+                            .frame(width: 22, height: 22)
+                            .frame(width: 36, height: 36)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
                 } else if episode.localFilePath != nil {
+                    // Downloaded, not yet transcribed
                     Button {
                         showDeleteDownloadConfirmation = true
                     } label: {
@@ -117,17 +129,8 @@ struct EpisodeRowView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.borderless)
-                } else if let progress = episode.downloadProgress {
-                    Button {
-                        DownloadManager.shared.cancelDownload(episode)
-                    } label: {
-                        CircularProgressView(progress: progress)
-                            .frame(width: 22, height: 22)
-                            .frame(width: 36, height: 36)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.borderless)
                 } else {
+                    // Not downloaded
                     Button {
                         attemptDownload()
                     } label: {

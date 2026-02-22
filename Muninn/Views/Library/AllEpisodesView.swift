@@ -617,6 +617,16 @@ private struct AllEpisodesRow: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.borderless)
+                } else if let progress = episode.downloadProgress {
+                    Button {
+                        DownloadManager.shared.cancelDownload(episode)
+                    } label: {
+                        CircularProgressView(progress: progress)
+                            .frame(width: 22, height: 22)
+                            .frame(width: 36, height: 36)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
                 } else if episode.localFilePath != nil {
                     Button {
                         showDeleteDownloadConfirmation = true
@@ -624,16 +634,6 @@ private struct AllEpisodesRow: View {
                         Image(systemName: "arrow.down.circle.fill")
                             .font(.title2)
                             .foregroundStyle(.green)
-                            .frame(width: 36, height: 36)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.borderless)
-                } else if let progress = episode.downloadProgress {
-                    Button {
-                        DownloadManager.shared.cancelDownload(episode)
-                    } label: {
-                        CircularProgressView(progress: progress)
-                            .frame(width: 22, height: 22)
                             .frame(width: 36, height: 36)
                             .contentShape(Rectangle())
                     }

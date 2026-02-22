@@ -218,13 +218,13 @@ private struct QueueEpisodeRow: View {
             Spacer()
 
             // Download indicator
-            if episode.localFilePath != nil {
+            if let progress = episode.downloadProgress {
+                CircularProgressView(progress: progress)
+                    .frame(width: 16, height: 16)
+            } else if episode.localFilePath != nil {
                 Image(systemName: "arrow.down.circle.fill")
                     .font(.caption)
                     .foregroundStyle(.green)
-            } else if let progress = episode.downloadProgress {
-                CircularProgressView(progress: progress)
-                    .frame(width: 16, height: 16)
             }
         }
         .contentShape(Rectangle())
