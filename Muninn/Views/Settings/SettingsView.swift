@@ -14,6 +14,7 @@ struct SettingsView: View {
     @State private var repairResult: String?
     @State private var showRepairResult = false
     @State private var showDeleteConfirmation = false
+    @State private var showResetConfirmation = false
     @State private var downloadSize: Int64 = 0
 
     private let skipIntervalOptions: [Double] = [5, 10, 15, 30, 45, 60, 90]
@@ -244,6 +245,17 @@ struct SettingsView: View {
                             Text("Crash Logs")
                         }
                     }
+
+                    Button(role: .destructive) {
+                        showResetConfirmation = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "trash.fill")
+                                .foregroundStyle(.red)
+                            Text("Reset All Data")
+                                .foregroundStyle(.red)
+                        }
+                    }
                 }
 
                 // About
@@ -278,6 +290,18 @@ struct SettingsView: View {
             } message: {
                 Text("This will delete all downloaded episodes except starred and queued ones.")
             }
+            .confirmationDialog(
+                "Reset All Data?",
+                isPresented: $showResetConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Reset Everything", role: .destructive) {
+                    resetAllData()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This permanently deletes all subscriptions, episodes, downloads, folders, and settings. This cannot be undone.")
+            }
         }
     }
 
@@ -287,6 +311,41 @@ struct SettingsView: View {
 
     private func deleteAllDownloads() {
         DownloadCleanupService.shared.deleteAllUnprotectedDownloads(context: modelContext)
+        updateDownloadSize()
+    }
+
+    private func resetAllData() {
+        // Stop playback
+        playerManager.stop()
+
+        // Delete all downloaded audio files
+        DownloadManager.shared.deleteAllDownloads(context: modelContext)
+
+        // Delete local transcripts
+        let transcriptsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Transcripts")
+        try? FileManager.default.removeItem(at: transcriptsDir)
+
+        // Delete all SwiftData records — Podcast cascade-deletes its Episodes
+        func deleteAll<T: PersistentModel>(_ type: T.Type) {
+            if let models = try? modelContext.fetch(FetchDescriptor<T>()) {
+                models.forEach { modelContext.delete($0) }
+            }
+        }
+        deleteAll(Podcast.self)       // cascade-deletes Episodes
+        deleteAll(Folder.self)
+        deleteAll(QueueItem.self)
+        deleteAll(AppSettings.self)
+        deleteAll(ListeningSession.self)
+        try? modelContext.save()
+
+        // Clear UserDefaults keys written by AudioPlayerManager
+        let defaults = UserDefaults.standard
+        for key in ["playbackSpeed", "skipForwardInterval", "skipBackwardInterval",
+                    "lastEpisodeGuid", "lastPlaybackPosition", "simulateOffline"] {
+            defaults.removeObject(forKey: key)
+        }
+
         updateDownloadSize()
     }
 
