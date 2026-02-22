@@ -448,8 +448,102 @@ final class ExportImportService {
         }
     }
     
+    // MARK: - OPML Import
+
+    /// Imports podcast subscriptions from a parsed OPML feed list.
+    ///
+    /// - Parameters:
+    ///   - feeds: Feeds from `OPMLParser.parse(_:)`.
+    ///   - context: The SwiftData model context to insert into.
+    ///   - onProgress: Called on the main actor after each feed attempt.
+    ///                 Parameters: (processedCount, totalCount, currentFeedTitle)
+    /// - Returns: A summary of the import.
+    @MainActor
+    func importFromOPML(
+        feeds: [OPMLFeed],
+        context: ModelContext,
+        onProgress: @MainActor @escaping (Int, Int, String) -> Void
+    ) async -> OPMLImportResult {
+        let feedService = FeedService.shared
+
+        // Build the set of already-subscribed feed URLs upfront.
+        let existingURLs: Set<String>
+        if let existing = try? context.fetch(FetchDescriptor<Podcast>()) {
+            existingURLs = Set(existing.map { $0.feedURL })
+        } else {
+            existingURLs = []
+        }
+
+        // Cache folders by name so we don't create duplicates.
+        var folderCache: [String: Folder] = [:]
+        // Pre-populate with existing folders.
+        if let existingFolders = try? context.fetch(FetchDescriptor<Folder>()) {
+            for folder in existingFolders {
+                folderCache[folder.name] = folder
+            }
+        }
+
+        var imported = 0
+        var skipped = 0
+        var failed = 0
+
+        for (index, feed) in feeds.enumerated() {
+            onProgress(index, feeds.count, feed.title)
+            let feedURL = feed.feedURL  // local let required by #Predicate
+
+            // Already subscribed — still assign to folder if needed.
+            if existingURLs.contains(feedURL) {
+                if let groupName = feed.groupName,
+                   let existing = try? context.fetch(
+                       FetchDescriptor<Podcast>(predicate: #Predicate { $0.feedURL == feedURL })
+                   ).first {
+                    let folder = findOrCreate(folderName: groupName, cache: &folderCache, context: context)
+                    if !existing.folders.contains(where: { $0.persistentModelID == folder.persistentModelID }) {
+                        existing.folders.append(folder)
+                    }
+                }
+                skipped += 1
+                continue
+            }
+
+            do {
+                let (podcast, episodes) = try await feedService.fetchPodcast(from: feedURL)
+                context.insert(podcast)
+                for episode in episodes {
+                    episode.podcast = podcast
+                    podcast.episodes.append(episode)
+                    context.insert(episode)
+                }
+
+                if let groupName = feed.groupName {
+                    let folder = findOrCreate(folderName: groupName, cache: &folderCache, context: context)
+                    podcast.folders.append(folder)
+                }
+
+                try? context.save()
+                imported += 1
+            } catch {
+                logger.warning("OPML import: failed to fetch \(feed.feedURL): \(error)")
+                failed += 1
+            }
+        }
+
+        onProgress(feeds.count, feeds.count, "")
+        return OPMLImportResult(imported: imported, skipped: skipped, failed: failed)
+    }
+
+    private func findOrCreate(folderName: String, cache: inout [String: Folder], context: ModelContext) -> Folder {
+        if let existing = cache[folderName] {
+            return existing
+        }
+        let folder = Folder(name: folderName)
+        context.insert(folder)
+        cache[folderName] = folder
+        return folder
+    }
+
     // MARK: - Helper Methods
-    
+
     private func saveExportFile<T: Encodable>(_ data: T, filename: String) throws -> URL {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -463,6 +557,22 @@ final class ExportImportService {
         
         try jsonData.write(to: fileURL)
         return fileURL
+    }
+}
+
+// MARK: - OPML Import Result
+
+struct OPMLImportResult {
+    let imported: Int
+    let skipped: Int   // already subscribed
+    let failed: Int
+
+    var summary: String {
+        var parts: [String] = []
+        if imported > 0 { parts.append("\(imported) added") }
+        if skipped > 0  { parts.append("\(skipped) already subscribed") }
+        if failed > 0   { parts.append("\(failed) failed") }
+        return parts.isEmpty ? "Nothing to import" : parts.joined(separator: ", ")
     }
 }
 

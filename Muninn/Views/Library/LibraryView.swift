@@ -9,6 +9,8 @@ struct LibraryView: View {
 
     @State private var showingAddPodcast = false
     @State private var showingAddFolder = false
+    @State private var showingOPMLPicker = false
+    @State private var opmlImportURL: URL?
     @State private var folderToEdit: Folder?
     @State private var podcastToUnsubscribe: Podcast?
     @State private var podcastForNewFolder: Podcast?
@@ -116,6 +118,12 @@ struct LibraryView: View {
                         }
 
                         Button {
+                            showingOPMLPicker = true
+                        } label: {
+                            Label("Import from OPML", systemImage: "arrow.down.doc.fill")
+                        }
+
+                        Button {
                             showingAddFolder = true
                         } label: {
                             Label("New Folder", systemImage: "folder.badge.plus")
@@ -132,6 +140,23 @@ struct LibraryView: View {
                 podcastForNewFolder = nil
             }) {
                 EditFolderView(folder: nil, initialPodcast: podcastForNewFolder)
+            }
+            .fileImporter(
+                isPresented: $showingOPMLPicker,
+                allowedContentTypes: [.xml, .plainText],
+                allowsMultipleSelection: false
+            ) { result in
+                if case .success(let urls) = result, let url = urls.first {
+                    opmlImportURL = url
+                }
+            }
+            .sheet(isPresented: Binding(
+                get: { opmlImportURL != nil },
+                set: { if !$0 { opmlImportURL = nil } }
+            )) {
+                if let url = opmlImportURL {
+                    OPMLImportView(fileURL: url)
+                }
             }
             .sheet(item: $folderToEdit) { folder in
                 EditFolderView(folder: folder)

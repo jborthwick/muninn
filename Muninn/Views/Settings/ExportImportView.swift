@@ -8,6 +8,8 @@ struct ExportImportView: View {
     @State private var exportService = ExportImportService.shared
     @State private var showExportOptions = false
     @State private var showImportPicker = false
+    @State private var showOPMLPicker = false
+    @State private var opmlImportURL: URL?
     @State private var showShareSheet = false
     @State private var exportedFileURL: URL?
     @State private var showAlert = false
@@ -64,6 +66,23 @@ struct ExportImportView: View {
             
             Section("Import") {
                 Button {
+                    showOPMLPicker = true
+                } label: {
+                    HStack {
+                        Image(systemName: "arrow.down.doc.fill")
+                            .foregroundStyle(.teal)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Import from OPML")
+                                .foregroundStyle(.primary)
+                            Text("Migrate from Overcast, Pocket Casts, Castro, and others")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .disabled(isProcessing)
+
+                Button {
                     showImportPicker = true
                 } label: {
                     HStack {
@@ -72,7 +91,7 @@ struct ExportImportView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Import from File")
                                 .foregroundStyle(.primary)
-                            Text("Restore from a previous export")
+                            Text("Restore from a previous Muninn export")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -127,6 +146,23 @@ struct ExportImportView: View {
             allowsMultipleSelection: false
         ) { result in
             handleFileSelection(result: result)
+        }
+        .fileImporter(
+            isPresented: $showOPMLPicker,
+            allowedContentTypes: [.xml, .plainText],
+            allowsMultipleSelection: false
+        ) { result in
+            if case .success(let urls) = result, let url = urls.first {
+                opmlImportURL = url
+            }
+        }
+        .sheet(isPresented: Binding(
+            get: { opmlImportURL != nil },
+            set: { if !$0 { opmlImportURL = nil } }
+        )) {
+            if let url = opmlImportURL {
+                OPMLImportView(fileURL: url)
+            }
         }
         .confirmationDialog(
             "Import Options",
