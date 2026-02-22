@@ -62,12 +62,38 @@ struct TranscriptView: View {
     let onTranscribe: () -> Void
     let onSeek: (TimeInterval) -> Void
 
-    // Track which segment is active to avoid re-scrolling on every 0.5s tick
-    @State private var activeSegmentID: UUID?
+    // Track which group is active to avoid re-scrolling on every 0.5s tick
+    @State private var activeGroupID: UUID?
 
     private var currentSegment: TranscriptSegment? {
         segments.last(where: { currentTime >= $0.startTime && currentTime < $0.endTime })
             ?? (currentTime > 0 ? segments.last(where: { currentTime >= $0.startTime }) : nil)
+    }
+
+    /// Segments grouped into paragraph-sized chunks, breaking on sentence-ending
+    /// punctuation or when a chunk exceeds ~200 characters.
+    private var segmentGroups: [[TranscriptSegment]] {
+        var groups: [[TranscriptSegment]] = []
+        var current: [TranscriptSegment] = []
+        var charCount = 0
+        for seg in segments {
+            current.append(seg)
+            charCount += seg.text.count
+            let trimmed = seg.text.trimmingCharacters(in: .whitespaces)
+            let endsSentence = trimmed.hasSuffix(".") || trimmed.hasSuffix("?")
+                || trimmed.hasSuffix("!") || trimmed.hasSuffix("…")
+            if endsSentence || charCount >= 200 {
+                groups.append(current)
+                current = []
+                charCount = 0
+            }
+        }
+        if !current.isEmpty { groups.append(current) }
+        return groups
+    }
+
+    private func groupContaining(_ segment: TranscriptSegment) -> [TranscriptSegment]? {
+        segmentGroups.first(where: { $0.contains(where: { $0.id == segment.id }) })
     }
 
     var body: some View {
@@ -92,27 +118,31 @@ struct TranscriptView: View {
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 2) {
-                            ForEach(segments) { segment in
-                                segmentRow(segment)
-                                    .id(segment.id)
+                        LazyVStack(alignment: .leading, spacing: 4) {
+                            ForEach(segmentGroups, id: \.first?.id) { group in
+                                segmentGroupView(group)
+                                    .id(group.first?.id)
                             }
                         }
                         .padding(.horizontal)
                         .padding(.vertical, 8)
                     }
                     .onChange(of: currentTime) { _, _ in
-                        guard let seg = currentSegment, seg.id != activeSegmentID else { return }
-                        activeSegmentID = seg.id
+                        guard let seg = currentSegment,
+                              let group = groupContaining(seg),
+                              let groupID = group.first?.id,
+                              groupID != activeGroupID else { return }
+                        activeGroupID = groupID
                         withAnimation(.easeInOut(duration: 0.4)) {
-                            proxy.scrollTo(seg.id, anchor: .center)
+                            proxy.scrollTo(groupID, anchor: .center)
                         }
                     }
-                    // Scroll to current position when transcript first opens
                     .onAppear {
-                        if let seg = currentSegment {
-                            activeSegmentID = seg.id
-                            proxy.scrollTo(seg.id, anchor: .center)
+                        if let seg = currentSegment,
+                           let group = groupContaining(seg),
+                           let groupID = group.first?.id {
+                            activeGroupID = groupID
+                            proxy.scrollTo(groupID, anchor: .center)
                         }
                     }
                 }
@@ -204,38 +234,58 @@ struct TranscriptView: View {
         }
     }
 
-    // MARK: - Segment Row
+    // MARK: - Segment Group View
 
     @ViewBuilder
-    private func segmentRow(_ segment: TranscriptSegment) -> some View {
-        let isCurrent = segment.id == currentSegment?.id
-        let isPast = segment.endTime < currentTime
+    private func segmentGroupView(_ group: [TranscriptSegment]) -> some View {
+        let groupHasCurrent = group.contains(where: { $0.id == currentSegment?.id })
+        let speaker = group.first?.speaker
 
         Button {
-            onSeek(segment.startTime)
+            onSeek(group.first?.startTime ?? 0)
         } label: {
             VStack(alignment: .leading, spacing: 2) {
-                if let speaker = segment.speaker {
+                if let speaker {
                     Text(speaker)
                         .font(.caption2)
                         .fontWeight(.semibold)
                         .foregroundStyle(.tint)
                         .textCase(.uppercase)
                 }
-                Text(segment.text)
-                    .font(isCurrent ? .body.weight(.medium) : .body)
-                    .foregroundStyle(isCurrent ? Color.primary : (isPast ? Color.secondary.opacity(0.6) : Color.secondary))
+                Text(groupAttributedString(for: group))
+                    .font(.body)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 6)
                     .background(
-                        isCurrent
+                        groupHasCurrent
                             ? RoundedRectangle(cornerRadius: 6).fill(Color.accentColor.opacity(0.12))
                             : nil
                     )
             }
         }
         .buttonStyle(.plain)
+    }
+
+    /// Builds an AttributedString for a group, colouring each segment by playback state.
+    private func groupAttributedString(for group: [TranscriptSegment]) -> AttributedString {
+        var result = AttributedString()
+        for (i, segment) in group.enumerated() {
+            let text = i < group.count - 1 ? segment.text + " " : segment.text
+            var span = AttributedString(text)
+            let isCurrent = segment.id == currentSegment?.id
+            let isPast = segment.endTime < currentTime
+            if isCurrent {
+                span.foregroundColor = .primary
+                span.font = .body.weight(.semibold)
+            } else if isPast {
+                span.foregroundColor = Color(UIColor.tertiaryLabel)
+            } else {
+                span.foregroundColor = Color(UIColor.secondaryLabel)
+            }
+            result += span
+        }
+        return result
     }
 }
