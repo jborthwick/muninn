@@ -181,9 +181,7 @@ struct LibraryView: View {
             ) {
                 Button("Unsubscribe", role: .destructive) {
                     if let podcast = podcastToUnsubscribe {
-                        DownloadManager.shared.deleteDownloads(for: podcast)
-                        modelContext.delete(podcast)
-                        try? modelContext.save()
+                        removePodcast(podcast)
                     }
                     podcastToUnsubscribe = nil
                 }
@@ -196,14 +194,32 @@ struct LibraryView: View {
         }
     }
 
+    private func removePodcast(_ podcast: Podcast) {
+        // Stop playback if the current episode belongs to this podcast.
+        if let current = AudioPlayerManager.shared.currentEpisode,
+           current.podcast?.persistentModelID == podcast.persistentModelID {
+            AudioPlayerManager.shared.stop()
+        }
+
+        // Delete local transcript files for every episode.
+        for episode in podcast.episodes {
+            if let url = episode.localTranscriptURL {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+
+        // Delete downloaded audio files.
+        DownloadManager.shared.deleteDownloads(for: podcast)
+
+        // Delete the podcast record — cascades to episodes and their queue items.
+        modelContext.delete(podcast)
+        try? modelContext.save()
+    }
+
     private func deletePodcasts(at offsets: IndexSet) {
         for index in offsets {
-            let podcast = podcasts[index]
-            // Delete downloads first
-            DownloadManager.shared.deleteDownloads(for: podcast)
-            modelContext.delete(podcast)
+            removePodcast(podcasts[index])
         }
-        try? modelContext.save()
     }
 
     private func deleteFolders(at offsets: IndexSet) {
