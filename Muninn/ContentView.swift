@@ -19,6 +19,10 @@ struct ContentView: View {
     private var networkMonitor = NetworkMonitor.shared
     @Query(sort: \QueueItem.sortOrder) private var queueItems: [QueueItem]
     @State private var showNowPlaying = false
+    @State private var selectedTab = 0
+
+    /// Index of the Settings tab in the TabView below
+    private let settingsTabIndex = 4
 
     private var isMiniPlayerVisible: Bool {
         playerManager.currentEpisode != nil
@@ -32,32 +36,37 @@ struct ContentView: View {
                     RefreshStatusBanner()
                 }
 
-                TabView {
+                TabView(selection: $selectedTab) {
                     LibraryView()
                         .tabItem {
                             Label("Library", systemImage: "books.vertical")
                         }
+                        .tag(0)
 
                     DownloadsView()
                         .tabItem {
                             Label("Downloads", systemImage: "arrow.down.circle")
                         }
+                        .tag(1)
 
                     StarredView()
                         .tabItem {
                             Label("Starred", systemImage: "star")
                         }
+                        .tag(2)
 
                     QueueView()
                         .tabItem {
                             Label("Queue", systemImage: "list.bullet")
                         }
                         .badge(queueItems.count)
+                        .tag(3)
 
                     SettingsView()
                         .tabItem {
                             Label("Settings", systemImage: "gear")
                         }
+                        .tag(4)
                 }
                 .tabViewStyle(.tabBarOnly)
             }
@@ -70,19 +79,31 @@ struct ContentView: View {
             }
 
             // Offline indicator
+            // When simulate offline is active the badge is tappable and navigates to
+            // Settings so the user can easily turn it off.
             if !networkMonitor.isConnected {
-                HStack(spacing: 4) {
-                    Image(systemName: "wifi.slash")
-                        .font(.caption2)
-                    Text("Offline")
-                        .font(.caption2)
-                        .fontWeight(.medium)
+                let isSimulated = networkMonitor.simulateOffline
+                Button {
+                    if isSimulated {
+                        selectedTab = settingsTabIndex
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "wifi.slash")
+                            .font(.caption2)
+                        Text(isSimulated ? "Simulated Offline — Tap to disable" : "Offline")
+                            .font(.caption2)
+                            .fontWeight(.medium)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(isSimulated ? AnyShapeStyle(Color.orange.opacity(0.85)) : AnyShapeStyle(.ultraThinMaterial))
+                    .foregroundStyle(isSimulated ? .white : .primary)
+                    .clipShape(Capsule())
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .background(.ultraThinMaterial)
-                .clipShape(Capsule())
+                .buttonStyle(.plain)
                 .padding(.bottom, isMiniPlayerVisible ? 105 : 55)
+                .animation(.default, value: isSimulated)
             }
         }
         .ignoresSafeArea(.keyboard)

@@ -10,8 +10,11 @@ final class NetworkMonitor {
     private var actuallyConnected = true
     private(set) var connectionType: ConnectionType = .unknown
 
-    /// Simulated offline mode for testing
-    var simulateOffline = false
+    /// Simulated offline mode – persisted across launches so the toggle state is always
+    /// intentional and the user can find it in Settings if they need to turn it off.
+    var simulateOffline: Bool = UserDefaults.standard.bool(forKey: "simulateOffline") {
+        didSet { UserDefaults.standard.set(simulateOffline, forKey: "simulateOffline") }
+    }
 
     /// Returns true if connected (respects simulated offline mode)
     var isConnected: Bool {
