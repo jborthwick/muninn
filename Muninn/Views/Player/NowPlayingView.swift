@@ -10,6 +10,7 @@ struct NowPlayingView: View {
     @State private var isDragging = false
     @State private var dragTime: TimeInterval = 0
     @State private var showTranscript = false
+    @State private var dominantColor: Color = .accentColor
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,20 +22,23 @@ struct NowPlayingView: View {
                     Image(systemName: "chevron.down")
                         .font(.title2)
                         .fontWeight(.semibold)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.primary)
                         .frame(width: 44, height: 44)
+                        .modifier(GlassCircleModifier())
                 }
                 Spacer()
                 if let episode = playerManager.currentEpisode, episode.canShare {
                     ShareLink(item: episode.shareURL) {
                         Image(systemName: "square.and.arrow.up")
                             .font(.title2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.primary)
                             .frame(width: 44, height: 44)
+                            .modifier(GlassCircleModifier())
                     }
                 }
             }
             .padding(.horizontal)
+            .padding(.top, 16)
 
             if let episode = playerManager.currentEpisode {
 
@@ -119,7 +123,6 @@ struct NowPlayingView: View {
                             }
                         }
                     )
-                    .tint(.accentColor)
 
                     HStack {
                         Text(displayTime.formattedTimestamp)
@@ -283,7 +286,7 @@ struct NowPlayingView: View {
                     } label: {
                         Image(systemName: showTranscript ? "quote.bubble.fill" : "quote.bubble")
                             .font(.title2)
-                            .foregroundStyle(showTranscript ? Color.accentColor : Color.secondary)
+                            .foregroundStyle(showTranscript ? dominantColor : Color.secondary)
                     }
                 }
                 .padding(.top, 24)
@@ -298,7 +301,17 @@ struct NowPlayingView: View {
                 Spacer()
             }
         }
+        .tint(dominantColor)
         .presentationDragIndicator(.visible)
+        .task(id: playerManager.currentEpisode?.guid) {
+            guard let urlString = playerManager.currentEpisode?.displayArtworkURL,
+                  let url = URL(string: urlString) else { return }
+            if let color = await extractDominantColor(from: url) {
+                withAnimation(.easeInOut(duration: 0.6)) {
+                    dominantColor = color
+                }
+            }
+        }
         .presentationBackground {
             if let episode = playerManager.currentEpisode,
                let urlString = episode.displayArtworkURL,
@@ -401,8 +414,66 @@ struct NowPlayingView: View {
         }
     }
 
+    // MARK: - Artwork Color Extraction
+
+    /// Samples pixels from a downscaled copy of the artwork and returns the
+    /// average hue of colorful (saturated, mid-brightness) pixels, boosted
+    /// slightly in saturation so it works well as a UI tint.
+    private func extractDominantColor(from url: URL) async -> Color? {
+        guard let (data, _) = try? await URLSession.shared.data(from: url),
+              let uiImage = UIImage(data: data),
+              let cgImage = uiImage.cgImage else { return nil }
+
+        let size = 32
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        var pixels = [UInt8](repeating: 0, count: size * size * 4)
+        guard let ctx = CGContext(
+            data: &pixels,
+            width: size, height: size,
+            bitsPerComponent: 8, bytesPerRow: size * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: size, height: size))
+
+        var rSum: CGFloat = 0, gSum: CGFloat = 0, bSum: CGFloat = 0, count: CGFloat = 0
+        for i in stride(from: 0, to: pixels.count, by: 4) {
+            let r = CGFloat(pixels[i]) / 255
+            let g = CGFloat(pixels[i + 1]) / 255
+            let b = CGFloat(pixels[i + 2]) / 255
+            let maxC = max(r, g, b), minC = min(r, g, b)
+            let saturation = maxC == 0 ? 0 : (maxC - minC) / maxC
+            // Skip near-grey, near-black, and near-white pixels
+            guard saturation > 0.25, maxC > 0.2, maxC < 0.92 else { continue }
+            rSum += r; gSum += g; bSum += b; count += 1
+        }
+
+        guard count > 20 else { return nil }
+
+        // Boost saturation slightly so the extracted color pops as a tint
+        let avg = UIColor(
+            red: rSum / count, green: gSum / count, blue: bSum / count, alpha: 1
+        )
+        var h: CGFloat = 0, s: CGFloat = 0, v: CGFloat = 0, a: CGFloat = 0
+        avg.getHue(&h, saturation: &s, brightness: &v, alpha: &a)
+        return Color(hue: h, saturation: min(s * 1.3, 1.0), brightness: min(v * 1.1, 1.0))
+    }
+
 }
 
+
+// MARK: - Glass Circle Button Background
+
+private struct GlassCircleModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.glassEffect(.regular.interactive(), in: .circle)
+        } else {
+            content.background(.ultraThinMaterial, in: Circle())
+        }
+    }
+}
 
 #Preview {
     NowPlayingView()
