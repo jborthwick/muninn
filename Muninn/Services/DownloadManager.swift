@@ -181,6 +181,25 @@ final class DownloadManager: NSObject {
             }
         }
 
+        // Delete the transcript file if one exists.
+        // A fresh download may have different ad insertion, so timestamps in the old
+        // transcript would be wrong — safer to discard it and let the user re-transcribe.
+        if let transcriptFilename = episode.localTranscriptPath {
+            let transcriptURL = FileManager.default
+                .urls(for: .documentDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("Transcripts", isDirectory: true)
+                .appendingPathComponent(transcriptFilename)
+            if fileManager.fileExists(atPath: transcriptURL.path) {
+                do {
+                    try fileManager.removeItem(at: transcriptURL)
+                    logger.info("Deleted transcript for episode: \(episode.title)")
+                } catch {
+                    logger.error("Failed to delete transcript file: \(error.localizedDescription)")
+                }
+            }
+            episode.localTranscriptPath = nil
+        }
+
         // Always clear the model properties. All callers are on the main thread so
         // the dispatch is unnecessary – update synchronously for reliable save ordering.
         episode.localFilePath = nil

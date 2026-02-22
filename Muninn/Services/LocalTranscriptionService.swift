@@ -22,7 +22,7 @@ final class LocalTranscriptionService {
     // MARK: - Availability
 
     /// True on iOS 26+ with a device that supports SpeechTranscriber.
-    static var isSupported: Bool {
+    nonisolated static var isSupported: Bool {
         if #available(iOS 26, *) {
             return SpeechTranscriber.isAvailable
         }
@@ -33,25 +33,29 @@ final class LocalTranscriptionService {
 
     /// Transcribes the episode's downloaded audio file using SpeechAnalyzer (iOS 26+).
     /// Saves the result to disk and sets `episode.localTranscriptPath`.
-    func transcribe(episode: Episode, context: ModelContext) async {
+    /// Returns `false` if transcription was skipped (already in progress or unavailable).
+    @discardableResult
+    func transcribe(episode: Episode, context: ModelContext) async -> Bool {
         guard #available(iOS 26, *) else {
             error = "On-device transcription requires iOS 26 or later."
-            return
+            return false
         }
         guard let audioURL = episode.localFileURL else {
             error = "Episode must be downloaded before it can be transcribed."
-            return
+            return false
         }
-        guard !isTranscribing else { return }
+        guard !isTranscribing else { return false }
 
         isTranscribing = true
         progress = 0
         error = nil
         transcribingEpisodeGUID = episode.guid
+        episode.transcriptionProgress = 0
 
         defer {
             isTranscribing = false
             transcribingEpisodeGUID = nil
+            progress = 0
         }
 
         // Request speech recognition authorization
@@ -62,34 +66,53 @@ final class LocalTranscriptionService {
         }
         guard authStatus == .authorized else {
             error = "Speech recognition permission is required. Please enable it in Settings > Muninn."
-            return
+            episode.transcriptionProgress = nil
+            return false
         }
 
         do {
             let segments = try await runSpeechAnalyzer(
                 audioURL: audioURL,
-                estimatedDuration: episode.duration ?? 3600
+                estimatedDuration: episode.duration ?? 3600,
+                onProgress: { [weak self] p in
+                    self?.progress = p
+                    episode.transcriptionProgress = p
+                }
             )
 
             guard !segments.isEmpty else {
                 error = "No speech was detected in this episode."
-                return
+                episode.transcriptionProgress = nil
+                return false
             }
 
-            let filename = try saveTranscriptToDisk(segments: segments, guid: episode.guid)
+            // Save transcript off main thread — JSON encode + file write can be slow
+            let guid = episode.guid
+            let filename = try await Task.detached { [self] in
+                try self.saveTranscriptToDisk(segments: segments, guid: guid)
+            }.value
+
             episode.localTranscriptPath = filename
+            episode.transcriptionProgress = nil
             try? context.save()
             logger.info("Transcript saved: \(filename) (\(segments.count) segments)")
+            return true
         } catch {
             logger.error("Transcription failed: \(error.localizedDescription)")
             self.error = "Transcription failed: \(error.localizedDescription)"
+            episode.transcriptionProgress = nil
+            return false
         }
     }
 
     // MARK: - SpeechAnalyzer (iOS 26+)
 
     @available(iOS 26, *)
-    private func runSpeechAnalyzer(audioURL: URL, estimatedDuration: TimeInterval) async throws -> [TranscriptSegment] {
+    nonisolated private func runSpeechAnalyzer(
+        audioURL: URL,
+        estimatedDuration: TimeInterval,
+        onProgress: @escaping @MainActor (Double) -> Void
+    ) async throws -> [TranscriptSegment] {
         // Verify device support and locale
         guard SpeechTranscriber.isAvailable else {
             throw TranscriptionError.notAvailable
@@ -115,8 +138,14 @@ final class LocalTranscriptionService {
 
         // Consume results concurrently — transcriber.results is an AsyncSequence
         // that terminates when the analyzer is finalized.
-        let resultsTask = Task { [self] () -> [TranscriptSegment] in
+        //
+        // NOTE: No [self] or Episode capture here — those are @MainActor-bound and
+        // capturing them would pull this Task onto the main actor, starving the UI.
+        // Progress is delivered via the @MainActor `onProgress` callback instead.
+        let resultsTask = Task { () -> [TranscriptSegment] in
             var segments: [TranscriptSegment] = []
+            var lastReportedProgress: Double = 0
+
             for try await result in transcriber.results {
                 let attrText = result.text
                 let plainText = String(attrText.characters)
@@ -145,8 +174,15 @@ final class LocalTranscriptionService {
                     speaker: nil
                 ))
 
+                // Throttle: only hop to main actor when progress advances by ≥1%.
+                // This prevents hundreds of SwiftData writes and SwiftUI re-renders
+                // per second from starving gesture and navigation processing.
                 if endSecs > 0, estimatedDuration > 0 {
-                    progress = min(endSecs / estimatedDuration, 0.99)
+                    let newProgress = min(endSecs / estimatedDuration, 0.99)
+                    if newProgress - lastReportedProgress >= 0.01 {
+                        lastReportedProgress = newProgress
+                        await MainActor.run { onProgress(newProgress) }
+                    }
                 }
             }
             return segments
@@ -164,7 +200,7 @@ final class LocalTranscriptionService {
         }
 
         let segments = try await resultsTask.value
-        progress = 1.0
+        await MainActor.run { onProgress(1.0) }
         return segments
     }
 
@@ -186,7 +222,7 @@ final class LocalTranscriptionService {
 
     // MARK: - Disk Persistence
 
-    private func transcriptsDirectory() throws -> URL {
+    nonisolated private func transcriptsDirectory() throws -> URL {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let dir = docs.appendingPathComponent("Transcripts", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -194,7 +230,7 @@ final class LocalTranscriptionService {
     }
 
     /// Saves segments in Podcast Index JSON format so `TranscriptService.parsePodcastIndexJSON` can load them.
-    private func saveTranscriptToDisk(segments: [TranscriptSegment], guid: String) throws -> String {
+    nonisolated private func saveTranscriptToDisk(segments: [TranscriptSegment], guid: String) throws -> String {
         struct JSONTranscript: Encodable {
             struct JSONSegment: Encodable {
                 let startTime: TimeInterval
@@ -215,7 +251,7 @@ final class LocalTranscriptionService {
         return filename
     }
 
-    private func sanitizedFilename(for guid: String) -> String {
+    nonisolated private func sanitizedFilename(for guid: String) -> String {
         let allowed = CharacterSet.alphanumerics.union(.init(charactersIn: "-_"))
         return String(
             guid.unicodeScalars

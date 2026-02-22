@@ -65,6 +65,14 @@ final class DownloadObserver {
                 if let podcast = episode.podcast {
                     DownloadCleanupService.shared.enforcePerPodcastLimit(for: podcast, context: context)
                 }
+
+                // Trigger transcription if: global auto-transcribe is on, OR user explicitly
+                // requested transcription by tapping "Transcribe" before the download finished.
+                let settings = AppSettings.getOrCreate(context: context)
+                let userRequested = AutoTranscriptionQueue.shared.consumeTranscribeRequest(guid: guid)
+                if (settings.autoTranscribeEnabled || userRequested) && LocalTranscriptionService.isSupported {
+                    AutoTranscriptionQueue.shared.enqueue(episode: episode, context: context)
+                }
             }
         } catch {
             logger.error("Failed to update episode after download: \(error.localizedDescription)")
