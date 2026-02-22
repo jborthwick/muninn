@@ -22,13 +22,17 @@ DerivedData
 *.xcscmblueprint
 *.xcworkspace
 !default.xcworkspace
+!muninn.xcodeproj/project.xcworkspace/
+muninn.xcodeproj/project.xcworkspace/**
+!muninn.xcodeproj/project.xcworkspace/xcshareddata/
+muninn.xcodeproj/project.xcworkspace/xcshareddata/**
+!muninn.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+!muninn.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 
 # Swift Package Manager
 .build/
 Packages/
 Package.pins
-Package.resolved
-*.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
 
 # CocoaPods (if used)
 Pods/
