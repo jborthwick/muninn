@@ -12,33 +12,34 @@ struct MuninnApp: App {
             AppSettings.self,
             ListeningSession.self
         ])
-        let modelConfiguration = ModelConfiguration(
-            schema: schema,
-            isStoredInMemoryOnly: false
-        )
+
+        // Use an explicit store name ("muninn.store") so the URL is deterministic
+        // and doesn't conflict with any old "default.store" from a previous module name.
+        let appSupportDir = FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let storeURL = appSupportDir.appendingPathComponent("muninn.store")
+
+        // Ensure directory exists before ModelConfiguration is created
+        try? FileManager.default.createDirectory(at: appSupportDir, withIntermediateDirectories: true)
+
+        // cloudKitDatabase: .none — prevents SwiftData from automatically enabling CloudKit
+        // sync when iCloud entitlements are present. This app uses its own JSON-based
+        // iCloud sync via SyncService and does not want SwiftData's CloudKit integration.
+        let modelConfiguration = ModelConfiguration(schema: schema, url: storeURL, cloudKitDatabase: .none)
 
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])
         } catch {
             print("❌ ModelContainer creation failed: \(error)")
-            print("❌ Error details: \(String(describing: error))")
-            
-            // Try to delete the old database and all related files
-            let url = modelConfiguration.url
-            print("⚠️ Attempting to delete corrupted database at: \(url)")
-            
-            // Delete main database file
-            try? FileManager.default.removeItem(at: url)
-            
-            // Delete WAL and SHM files (SQLite write-ahead log and shared memory)
-            let walURL = url.deletingPathExtension().appendingPathExtension("sqlite-wal")
-            let shmURL = url.deletingPathExtension().appendingPathExtension("sqlite-shm")
-            try? FileManager.default.removeItem(at: walURL)
-            try? FileManager.default.removeItem(at: shmURL)
-            
-            print("⚠️ Deleted database files, attempting to recreate...")
-            
-            // Try again with fresh database
+
+            // Delete the store and its WAL/SHM sidecar files, then retry.
+            // SQLite WAL convention: "muninn.store" → "muninn.store-wal" / "muninn.store-shm"
+            for url in [storeURL,
+                        URL(fileURLWithPath: storeURL.path + "-wal"),
+                        URL(fileURLWithPath: storeURL.path + "-shm")] {
+                try? FileManager.default.removeItem(at: url)
+            }
+
             do {
                 return try ModelContainer(for: schema, configurations: [modelConfiguration])
             } catch {

@@ -75,7 +75,7 @@ Muninn/
 - **Deployment target:** iOS 18.0
 - **Swift version:** 5.9
 - **Development team:** set in `project.yml` → `DEVELOPMENT_TEAM`
-- **iCloud:** disabled by default (`.entitlements.disabled`). To enable, rename to `Muninn.entitlements` and configure in Xcode
+- **iCloud:** enabled via `Muninn/Muninn.entitlements` (container: `iCloud.com.personal.muninn`). Requires a paid Apple Developer account with the iCloud container registered in the portal. SwiftData uses `cloudKitDatabase: .none` — sync is handled independently by `SyncService` via JSON files in iCloud Drive, not CloudKit.
 
 ## Common Tasks
 

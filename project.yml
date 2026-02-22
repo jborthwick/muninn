@@ -28,6 +28,7 @@ targets:
       base:
         INFOPLIST_FILE: Muninn/Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: com.personal.muninn
+        CODE_SIGN_ENTITLEMENTS: Muninn/Muninn.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1"
         MARKETING_VERSION: "0.5"

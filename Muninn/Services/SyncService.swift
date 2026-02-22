@@ -60,7 +60,8 @@ final class SyncService {
         localContainer = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
 
         // Check for iCloud availability
-        if let cloudURL = FileManager.default.url(forUbiquityContainerIdentifier: "iCloud.com.personal.muninn") {
+        // Using nil uses the first iCloud container in your entitlements
+        if let cloudURL = FileManager.default.url(forUbiquityContainerIdentifier: nil) {
             cloudContainer = cloudURL.appendingPathComponent("Documents", isDirectory: true)
 
             // Create Documents folder if needed
