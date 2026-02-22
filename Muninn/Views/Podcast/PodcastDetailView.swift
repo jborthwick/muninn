@@ -250,6 +250,11 @@ struct PodcastDetailView: View {
                                 .tint(.blue)
                             }
                         }
+                        .listRowBackground(
+                            selectedEpisodeGUIDs.contains(episode.guid) && isSelecting
+                                ? Color.accentColor.opacity(0.08)
+                                : nil
+                        )
                     }
 
                     // Loading indicator at bottom
@@ -276,17 +281,23 @@ struct PodcastDetailView: View {
         }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Button(isSelecting ? "Cancel" : "Select") {
-                    if isSelecting {
+                if isSelecting {
+                    Button("Cancel") {
                         exitSelectionMode()
-                    } else {
-                        enterSelectionMode()
                     }
                 }
             }
             ToolbarItem(placement: .primaryAction) {
                 if !isSelecting {
                     Menu {
+                        Button {
+                            enterSelectionMode()
+                        } label: {
+                            Label("Select Episodes", systemImage: "checkmark.circle")
+                        }
+
+                        Divider()
+
                         Button {
                             Task { await prepareAndShare() }
                         } label: {
@@ -314,7 +325,7 @@ struct PodcastDetailView: View {
                         if isPreparingShare {
                             ProgressView()
                         } else {
-                            Image(systemName: "ellipsis.circle")
+                            Image(systemName: "ellipsis")
                         }
                     }
                 }

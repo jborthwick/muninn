@@ -34,12 +34,20 @@ struct EpisodeRowView: View {
             .clipShape(RoundedRectangle(cornerRadius: 6))
 
             VStack(alignment: .leading, spacing: 4) {
-                // Title
-                Text(episode.title)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.9)
-                    .foregroundStyle(episode.isPlayed ? .secondary : .primary)
+                // Title with optional star indicator
+                HStack(alignment: .top, spacing: 4) {
+                    if episode.isStarred {
+                        Image(systemName: "star.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.yellow)
+                            .padding(.top, 2)
+                    }
+                    Text(episode.title)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.9)
+                        .foregroundStyle(episode.isPlayed ? .secondary : .primary)
+                }
 
                 // Metadata row
                 HStack(spacing: 6) {
@@ -78,30 +86,6 @@ struct EpisodeRowView: View {
                     .frame(width: 36, height: 36)
             } else {
                 HStack(spacing: 8) {
-                    // Star button
-                    Button {
-                        episode.isStarred.toggle()
-                        // Auto-download when starring (respects auto-download preference)
-                        if episode.isStarred && episode.localFilePath == nil {
-                            let result = DownloadManager.shared.checkDownloadAllowed(episode, isAutoDownload: true, context: modelContext)
-                            switch result {
-                            case .started:
-                                DownloadManager.shared.download(episode)
-                            case .needsConfirmation:
-                                showCellularConfirmation = true
-                            case .blocked, .alreadyDownloaded, .alreadyDownloading:
-                                break
-                            }
-                        }
-                    } label: {
-                        Image(systemName: episode.isStarred ? "star.fill" : "star")
-                            .font(.title2)
-                            .foregroundStyle(episode.isStarred ? .yellow : .secondary)
-                            .frame(width: 36, height: 36)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.borderless)
-
                     // Playing indicator or download button
                     if isCurrentlyPlaying {
                         Button {
@@ -154,7 +138,6 @@ struct EpisodeRowView: View {
             }
         }
         .padding(.vertical, 4)
-        .background(isSelected && isSelecting ? Color.accentColor.opacity(0.08) : Color.clear)
         .contentShape(Rectangle())
         .opacity(episode.isPlayed ? 0.7 : 1.0)
         .alert("Download on Cellular?", isPresented: $showCellularConfirmation) {
