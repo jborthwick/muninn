@@ -110,13 +110,9 @@ struct LibraryView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    ProgressView()
-                        .opacity(refreshManager.isRefreshing ? 1 : 0)
-                        .scaleEffect(refreshManager.isRefreshing ? 1 : 0.2)
-                        .animation(
-                            .spring(response: 0.35, dampingFraction: 0.65),
-                            value: refreshManager.isRefreshing
-                        )
+                    if refreshManager.isRefreshing {
+                        ProgressView()
+                    }
                 }
 
                 ToolbarItem(placement: .primaryAction) {
