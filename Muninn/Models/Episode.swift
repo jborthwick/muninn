@@ -21,6 +21,7 @@ final class Episode {
     // Download state
     var localFilePath: String?      // nil = not downloaded, stores just filename (not full path)
     var downloadProgress: Double?   // nil = not downloading, 0-1 = in progress
+    var transcriptionProgress: Double?  // nil = not transcribing, 0-1 = in progress
 
     /// Returns the full file URL for the downloaded episode
     var localFileURL: URL? {

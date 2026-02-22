@@ -32,6 +32,9 @@ final class AppSettings {
     // Refresh tracking
     var lastGlobalRefresh: Date?
 
+    // Transcription settings
+    var autoTranscribeEnabledRaw: Int = 1  // 1 = true (default enabled), 0 = false
+
     init() {}
 
     var downloadPreference: DownloadPreference {
@@ -42,6 +45,11 @@ final class AppSettings {
     var autoDownloadPreference: DownloadPreference {
         get { DownloadPreference(rawValue: autoDownloadPreferenceRaw) ?? .wifiOnly }
         set { autoDownloadPreferenceRaw = newValue.rawValue }
+    }
+
+    var autoTranscribeEnabled: Bool {
+        get { autoTranscribeEnabledRaw == 1 }
+        set { autoTranscribeEnabledRaw = newValue ? 1 : 0 }
     }
 
     /// Storage limit in bytes (0 = unlimited)
