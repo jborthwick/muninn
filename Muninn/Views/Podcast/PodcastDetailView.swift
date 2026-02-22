@@ -711,7 +711,7 @@ private struct PodcastHeaderView: View {
             }
 
             if let description = podcast.podcastDescription, !description.isEmpty {
-                Text(description.htmlStripped)
+                Text(description.htmlTagsStripped)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(3)

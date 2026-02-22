@@ -185,10 +185,15 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
         loadingURL = url
 
         if let cachedImage = await ImageCache.shared.image(for: url) {
-            // Only update if URL hasn't changed
+            // Only update if URL hasn't changed.
+            // Use an explicit transaction so the image load doesn't inherit (and
+            // interrupt) whatever SwiftUI transaction is active at the call site —
+            // most importantly the navigation slide animation.
             if loadingURL == url {
                 await MainActor.run {
-                    self.image = cachedImage
+                    withTransaction(.init(animation: .easeIn(duration: 0.15))) {
+                        self.image = cachedImage
+                    }
                 }
             }
         }
