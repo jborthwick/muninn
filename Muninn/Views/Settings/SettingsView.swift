@@ -181,6 +181,36 @@ struct SettingsView: View {
                     }
                 }
 
+                // Transcription section
+                Section("Transcription") {
+                    Toggle(isOn: Binding(
+                        get: { appSettings.autoTranscribeEnabled },
+                        set: { appSettings.autoTranscribeEnabled = $0; try? modelContext.save() }
+                    )) {
+                        HStack {
+                            Image(systemName: "waveform.and.mic")
+                                .foregroundStyle(.blue)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Auto-Transcribe")
+                                Text("Transcribe episodes automatically after download")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .disabled(!LocalTranscriptionService.isSupported)
+
+                    if !LocalTranscriptionService.isSupported {
+                        HStack {
+                            Image(systemName: "info.circle")
+                                .foregroundStyle(.secondary)
+                            Text("On-device transcription requires iOS 26+ with Apple Intelligence")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
                 // Storage management section
                 Section {
                     Button(role: .destructive) {

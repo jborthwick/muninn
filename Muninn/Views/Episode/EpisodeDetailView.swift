@@ -160,6 +160,15 @@ struct EpisodeDetailView: View {
                     Divider()
                         .padding(.horizontal)
 
+                    // Transcript section (only on supported devices)
+                    if LocalTranscriptionService.isSupported {
+                        transcriptSection
+                            .padding(.horizontal)
+
+                        Divider()
+                            .padding(.horizontal)
+                    }
+
                     // Description
                     if let description = episode.episodeDescription, !description.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
@@ -247,7 +256,22 @@ struct EpisodeDetailView: View {
 
     @ViewBuilder
     private var downloadButton: some View {
-        if episode.localFilePath != nil {
+        if let progress = episode.downloadProgress {
+            // Actively downloading — tap to cancel
+            Button {
+                DownloadManager.shared.cancelDownload(episode)
+            } label: {
+                VStack(spacing: 4) {
+                    CircularProgressView(progress: progress)
+                        .frame(width: 28, height: 28)
+                    Text("\(Int(progress * 100))%")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .buttonStyle(.plain)
+        } else if episode.localFilePath != nil {
+            // Downloaded — tap to delete
             Button {
                 showDeleteDownloadConfirmation = true
             } label: {
@@ -261,20 +285,8 @@ struct EpisodeDetailView: View {
                 }
             }
             .buttonStyle(.plain)
-        } else if let progress = episode.downloadProgress {
-            Button {
-                DownloadManager.shared.cancelDownload(episode)
-            } label: {
-                VStack(spacing: 4) {
-                    CircularProgressView(progress: progress)
-                        .frame(width: 28, height: 28)
-                    Text("\(Int(progress * 100))%")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .buttonStyle(.plain)
         } else {
+            // Not downloaded — tap to download
             Button {
                 attemptDownload(isAutoDownload: false)
             } label: {
@@ -289,6 +301,52 @@ struct EpisodeDetailView: View {
             }
             .buttonStyle(.plain)
         }
+    }
+
+    // MARK: - Transcript Section
+
+    @ViewBuilder
+    private var transcriptSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Transcript")
+                .font(.headline)
+
+            if let progress = episode.transcriptionProgress {
+                // Actively transcribing — show progress bar
+                VStack(alignment: .leading, spacing: 6) {
+                    ProgressView(value: progress)
+                        .tint(.purple)
+                    Text("Transcribing… \(Int(progress * 100))%")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+            } else if episode.localTranscriptPath != nil {
+                // Done
+                Label("Transcribed", systemImage: "quote.bubble.fill")
+                    .font(.subheadline)
+                    .foregroundStyle(.blue)
+
+            } else if let (position, total) = AutoTranscriptionQueue.shared.queuePosition(for: episode.guid) {
+                // Waiting in queue — show position out of total
+                Label("\(position) of \(total) queued for transcription", systemImage: "list.number")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+            } else if episode.localFilePath != nil {
+                // Downloaded but not queued (auto-transcribe off, or transcription failed)
+                Label("Not yet transcribed", systemImage: "waveform.and.mic")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+            } else {
+                // Not downloaded — instruct rather than act
+                Text("Download to generate transcription")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Computed Properties
