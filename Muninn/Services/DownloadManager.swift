@@ -157,27 +157,43 @@ final class DownloadManager: NSObject {
         }
     }
 
-    /// Deletes a downloaded episode
-    func deleteDownload(_ episode: Episode) {
-        guard let fileURL = episode.localFileURL else { return }
-
-        do {
-            try fileManager.removeItem(at: fileURL)
-            logger.info("Deleted download for episode: \(episode.title)")
-        } catch {
-            logger.error("Failed to delete download file: \(error.localizedDescription)")
+    /// Deletes a downloaded episode.
+    ///
+    /// - Parameters:
+    ///   - episode: The episode whose download should be deleted.
+    ///   - context: Optional `ModelContext` used to persist the `localFilePath` change
+    ///     immediately. Pass `nil` when a save will happen shortly afterwards (e.g. as
+    ///     part of a broader podcast-unsubscribe that already calls `context.save()`).
+    func deleteDownload(_ episode: Episode, context: ModelContext? = nil) {
+        // Remove the file from disk only if it actually exists.
+        // Stale localFilePath records (file already gone) are not an error –
+        // just clear the model property below and move on.
+        if let fileURL = episode.localFileURL {
+            if fileManager.fileExists(atPath: fileURL.path) {
+                do {
+                    try fileManager.removeItem(at: fileURL)
+                    logger.info("Deleted download for episode: \(episode.title)")
+                } catch {
+                    logger.error("Failed to delete download file: \(error.localizedDescription)")
+                }
+            } else {
+                logger.debug("Download file already absent, clearing record: \(episode.title)")
+            }
         }
 
-        DispatchQueue.main.async {
-            episode.localFilePath = nil
-            episode.downloadProgress = nil
-        }
+        // Always clear the model properties. All callers are on the main thread so
+        // the dispatch is unnecessary – update synchronously for reliable save ordering.
+        episode.localFilePath = nil
+        episode.downloadProgress = nil
+
+        // Persist immediately when a context is supplied.
+        try? context?.save()
     }
 
     /// Deletes all downloads for a podcast
-    func deleteDownloads(for podcast: Podcast) {
+    func deleteDownloads(for podcast: Podcast, context: ModelContext? = nil) {
         for episode in podcast.episodes {
-            deleteDownload(episode)
+            deleteDownload(episode, context: context)
         }
     }
 
@@ -189,7 +205,7 @@ final class DownloadManager: NSObject {
 
         if let episodes = try? context.fetch(descriptor) {
             for episode in episodes {
-                deleteDownload(episode)
+                deleteDownload(episode, context: context)
             }
         }
     }

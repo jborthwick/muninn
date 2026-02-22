@@ -120,7 +120,7 @@ struct DownloadsView: View {
                                     }
                                     .swipeActions(edge: .trailing) {
                                         Button(role: .destructive) {
-                                            DownloadManager.shared.deleteDownload(episode)
+                                            DownloadManager.shared.deleteDownload(episode, context: modelContext)
                                         } label: {
                                             Label("Delete", systemImage: "trash")
                                         }
@@ -202,6 +202,7 @@ struct DownloadsView: View {
 private struct DownloadedEpisodeRow: View {
     let episode: Episode
 
+    @Environment(\.modelContext) private var modelContext
     @State private var showDeleteDownloadConfirmation = false
 
     private var isCurrentlyPlaying: Bool {
@@ -304,7 +305,7 @@ private struct DownloadedEpisodeRow: View {
         .opacity(episode.isPlayed ? 0.7 : 1.0)
         .alert("Delete Download?", isPresented: $showDeleteDownloadConfirmation) {
             Button("Delete", role: .destructive) {
-                DownloadManager.shared.deleteDownload(episode)
+                DownloadManager.shared.deleteDownload(episode, context: modelContext)
             }
             Button("Cancel", role: .cancel) {}
         } message: {

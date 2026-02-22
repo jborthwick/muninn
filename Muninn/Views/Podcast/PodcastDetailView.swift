@@ -396,6 +396,7 @@ struct PodcastDetailView: View {
         // Delete downloads first
         DownloadManager.shared.deleteDownloads(for: podcast)
         modelContext.delete(podcast)
+        try? modelContext.save()
         dismiss()
     }
 

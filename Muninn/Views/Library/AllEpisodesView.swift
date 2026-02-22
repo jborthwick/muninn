@@ -154,6 +154,7 @@ struct AllEpisodesView: View {
                 if let podcast = podcastToUnsubscribe {
                     DownloadManager.shared.deleteDownloads(for: podcast)
                     modelContext.delete(podcast)
+                    try? modelContext.save()
                 }
                 podcastToUnsubscribe = nil
             }
@@ -654,7 +655,7 @@ private struct AllEpisodesRow: View {
         .opacity(episode.isPlayed ? 0.7 : 1.0)
         .alert("Delete Download?", isPresented: $showDeleteDownloadConfirmation) {
             Button("Delete", role: .destructive) {
-                DownloadManager.shared.deleteDownload(episode)
+                DownloadManager.shared.deleteDownload(episode, context: modelContext)
             }
             Button("Cancel", role: .cancel) {}
         } message: {

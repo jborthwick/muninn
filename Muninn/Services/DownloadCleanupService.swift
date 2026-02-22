@@ -23,7 +23,7 @@ final class DownloadCleanupService {
 
         // Delete the download
         if episode.localFilePath != nil {
-            DownloadManager.shared.deleteDownload(episode)
+            DownloadManager.shared.deleteDownload(episode, context: context)
             logger.info("Auto-deleted completed episode: \(episode.title)")
         }
 
@@ -79,7 +79,7 @@ final class DownloadCleanupService {
                 if let size = try? fileManager.attributesOfItem(atPath: fileURL.path)[.size] as? Int64 {
                     freedBytes += size
                 }
-                DownloadManager.shared.deleteDownload(episode)
+                DownloadManager.shared.deleteDownload(episode, context: context)
                 logger.info("Deleted to free space: \(episode.title)")
             }
         }
@@ -113,7 +113,7 @@ final class DownloadCleanupService {
 
             if keptCount > limit {
                 // Delete this download
-                DownloadManager.shared.deleteDownload(episode)
+                DownloadManager.shared.deleteDownload(episode, context: context)
                 logger.info("Deleted to enforce per-podcast limit: \(episode.title)")
             }
         }
@@ -124,7 +124,7 @@ final class DownloadCleanupService {
         let deletableEpisodes = getDeletableEpisodes(context: context)
 
         for episode in deletableEpisodes {
-            DownloadManager.shared.deleteDownload(episode)
+            DownloadManager.shared.deleteDownload(episode, context: context)
         }
 
         logger.info("Deleted \(deletableEpisodes.count) unprotected downloads")

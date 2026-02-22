@@ -59,6 +59,7 @@ struct LibraryView: View {
 
                                         Button(role: .destructive) {
                                             modelContext.delete(folder)
+                                            try? modelContext.save()
                                         } label: {
                                             Label("Delete Folder", systemImage: "trash")
                                         }
@@ -147,6 +148,7 @@ struct LibraryView: View {
                     if let podcast = podcastToUnsubscribe {
                         DownloadManager.shared.deleteDownloads(for: podcast)
                         modelContext.delete(podcast)
+                        try? modelContext.save()
                     }
                     podcastToUnsubscribe = nil
                 }
@@ -166,12 +168,14 @@ struct LibraryView: View {
             DownloadManager.shared.deleteDownloads(for: podcast)
             modelContext.delete(podcast)
         }
+        try? modelContext.save()
     }
 
     private func deleteFolders(at offsets: IndexSet) {
         for index in offsets {
             modelContext.delete(folders[index])
         }
+        try? modelContext.save()
     }
 }
 

@@ -74,7 +74,7 @@ struct EpisodeContextMenu: View {
         // Download actions
         if episode.localFilePath != nil {
             Button(role: .destructive) {
-                DownloadManager.shared.deleteDownload(episode)
+                DownloadManager.shared.deleteDownload(episode, context: modelContext)
             } label: {
                 Label("Delete Download", systemImage: "trash")
             }

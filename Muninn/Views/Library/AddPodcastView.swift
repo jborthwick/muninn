@@ -246,6 +246,11 @@ struct AddPodcastView: View {
     }
 
     private func addPodcast(feedURL: String, itunesID: String? = nil) async throws {
+        // Flush any pending deletions before checking subscription status.
+        // SwiftData's fetch includes objects staged for deletion (not yet committed),
+        // which causes a false "already subscribed" error immediately after unsubscribing.
+        try? modelContext.save()
+
         // Check if already subscribed
         let descriptor = FetchDescriptor<Podcast>(
             predicate: #Predicate { $0.feedURL == feedURL }

@@ -154,7 +154,7 @@ struct EpisodeRowView: View {
         }
         .alert("Delete Download?", isPresented: $showDeleteDownloadConfirmation) {
             Button("Delete", role: .destructive) {
-                DownloadManager.shared.deleteDownload(episode)
+                DownloadManager.shared.deleteDownload(episode, context: modelContext)
             }
             Button("Cancel", role: .cancel) {}
         } message: {
