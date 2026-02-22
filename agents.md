@@ -10,6 +10,10 @@ xcodegen generate
 
 # Open in Xcode
 open muninn.xcodeproj
+
+# Build check from terminal (no Xcode required)
+xcodebuild -scheme Muninn -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+  -configuration Debug build 2>&1 | grep -E "(error:|BUILD SUCCEEDED|BUILD FAILED)"
 ```
 
 Build and run from Xcode. There is no separate test suite — verify features manually on device/simulator.
@@ -58,8 +62,10 @@ Muninn/
 | `SyncService` | iCloud Drive JSON sync |
 | `RefreshManager` | Background feed refresh |
 | `NetworkMonitor` | NWPathMonitor, offline state |
-| `ImageCache` | Async podcast artwork cache |
+| `ImageCache` | Async podcast artwork cache (memory + disk) |
 | `StatsService` | Listening stats tracking |
+| `LocalTranscriptionService` | iOS 26+ on-device transcription via SpeechAnalyzer; one episode at a time |
+| `AutoTranscriptionQueue` | FIFO queue for post-download auto-transcription; must be registered in MuninnApp |
 
 ## Key Conventions
 
@@ -68,6 +74,16 @@ Muninn/
 - SwiftData `@Model` classes; `@Query` in views; no manual CoreData
 - Swift 6 concurrency — use `@MainActor` where needed, avoid data races
 - `AudioPlayerManager` and `NetworkMonitor` are singletons accessed via `.shared`
+
+## Gotchas
+
+- **`htmlStripped` is slow** — uses NSAttributedString/WebKit on the main thread (~200ms). Never call it in a SwiftUI `body`. Use `htmlTagsStripped` (regex, defined in `String+HTML.swift`) for UI previews; reserve `htmlStripped` for async `.task` contexts.
+- **`@MainActor` Task capture** — `Task { [self] }` inside a `nonisolated` method where `self` is `@MainActor` silently pulls the whole task onto the main actor, starving the UI. Remove the capture; pass data via `@escaping @MainActor` callbacks instead.
+- **SwiftUI transaction leak** — async state updates (e.g. image loads in `CachedAsyncImage`) inherit the active SwiftUI transaction. Wrap with `withTransaction(.init(animation: .easeIn(duration: 0.15))) { self.state = value }` to decouple from in-flight navigation animations.
+- **SwiftData Bool** — store Boolean settings as `Int` (0/1) with a `Bool` computed wrapper; raw `Bool` properties can cause issues across SwiftData migrations.
+- **App icon** — must be 8-bit RGB, no alpha channel. Alpha causes `CompileAssetCatalogVariant` failure at build time. Fix: `sips -s format jpeg icon.png --out /tmp/t.jpg && sips -s format png /tmp/t.jpg --out icon.png`
+- **BGTask registration** — `BGTaskSchedulerPermittedIdentifiers` in `Info.plist` must list every task ID string. `UIBackgroundModes` needs both `fetch` and `processing`.
+- **iOS 26 APIs** — `SpeechTranscriber` / `SpeechAnalyzer` require `#available(iOS 26, *)` guards and `nonisolated` on helpers called from `Task.detached`.
 
 ## Config
 
@@ -84,6 +100,8 @@ Muninn/
 **Add a SwiftData model:** Add `@Model` class to `Models/`, add to model container in `MuninnApp.swift`.
 
 **Add a new setting:** Add property to `AppSettings` model, expose in `SettingsView`.
+
+**Add a new singleton service:** Call `.shared.setModelContext(context)` in the `modelContainer` `.onAppear` block in `MuninnApp.swift`, alongside existing registrations.
 
 **iCloud sync fields:** Update `SyncService` encode/decode when adding syncable model properties.
 
