@@ -121,7 +121,7 @@ struct MiniPlayerView: View {
 }
 // MARK: - Glass Background Modifier
 
-private struct GlassBackgroundModifier: ViewModifier {
+struct GlassBackgroundModifier: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
             content

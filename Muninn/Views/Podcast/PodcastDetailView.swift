@@ -24,6 +24,12 @@ struct PodcastDetailView: View {
     @State private var selectedEpisode: Episode?
     @State private var displayLimit = 100  // Start with 100, load more on scroll
 
+    // Multi-select state
+    @State private var isSelecting = false
+    @State private var selectedEpisodeGUIDs: Set<String> = []
+    @State private var showBatchCellularConfirmation = false
+    @State private var episodesPendingBatchDownload: [Episode] = []
+
     var body: some View {
         List {
             // Header section
@@ -184,18 +190,27 @@ struct PodcastDetailView: View {
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
 
                     ForEach(Array(filteredEpisodes.enumerated()), id: \.element.guid) { index, episode in
-                        EpisodeRowView(episode: episode)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
+                        EpisodeRowView(
+                            episode: episode,
+                            isSelecting: isSelecting,
+                            isSelected: selectedEpisodeGUIDs.contains(episode.guid)
+                        )
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            if isSelecting {
+                                toggleEpisodeSelection(episode)
+                            } else {
                                 selectedEpisode = episode
                             }
-                            .onAppear {
-                                // Load more when approaching the end
-                                if index >= filteredEpisodes.count - 10 && hasMoreEpisodes {
-                                    loadMoreEpisodes()
-                                }
+                        }
+                        .onAppear {
+                            // Load more when approaching the end
+                            if index >= filteredEpisodes.count - 10 && hasMoreEpisodes {
+                                loadMoreEpisodes()
                             }
-                            .contextMenu {
+                        }
+                        .contextMenu {
+                            if !isSelecting {
                                 EpisodeContextMenu(
                                     episode: episode,
                                     onDownloadNeedsConfirmation: {
@@ -204,7 +219,9 @@ struct PodcastDetailView: View {
                                     }
                                 )
                             }
-                            .swipeActions(edge: .leading) {
+                        }
+                        .swipeActions(edge: .leading) {
+                            if !isSelecting {
                                 Button {
                                     toggleStar(episode)
                                 } label: {
@@ -215,7 +232,9 @@ struct PodcastDetailView: View {
                                 }
                                 .tint(.yellow)
                             }
-                            .swipeActions(edge: .trailing) {
+                        }
+                        .swipeActions(edge: .trailing) {
+                            if !isSelecting {
                                 Button {
                                     QueueManager.shared.addToQueue(episode)
                                 } label: {
@@ -230,6 +249,7 @@ struct PodcastDetailView: View {
                                 }
                                 .tint(.blue)
                             }
+                        }
                     }
 
                     // Loading indicator at bottom
@@ -255,40 +275,58 @@ struct PodcastDetailView: View {
             await refreshPodcast()
         }
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button(isSelecting ? "Cancel" : "Select") {
+                    if isSelecting {
+                        exitSelectionMode()
+                    } else {
+                        enterSelectionMode()
+                    }
+                }
+            }
             ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: 16) {
-                    // Share button
-                    Button {
-                        Task {
-                            await prepareAndShare()
+                if !isSelecting {
+                    Menu {
+                        Button {
+                            Task { await prepareAndShare() }
+                        } label: {
+                            Label("Share", systemImage: "square.and.arrow.up")
+                        }
+                        .disabled(isPreparingShare)
+
+                        Button {
+                            showFolderPicker = true
+                        } label: {
+                            Label(
+                                podcast.folders.isEmpty ? "Add to Folder" : "Manage Folders",
+                                systemImage: podcast.folders.isEmpty ? "folder.badge.plus" : "folder.fill"
+                            )
+                        }
+
+                        Divider()
+
+                        Button(role: .destructive) {
+                            showUnsubscribeConfirmation = true
+                        } label: {
+                            Label("Unsubscribe", systemImage: "minus.circle")
                         }
                     } label: {
                         if isPreparingShare {
                             ProgressView()
                         } else {
-                            Image(systemName: "square.and.arrow.up")
+                            Image(systemName: "ellipsis.circle")
                         }
-                    }
-                    .disabled(isPreparingShare)
-
-                    // Folder button
-                    Button {
-                        showFolderPicker = true
-                    } label: {
-                        Image(systemName: podcast.folders.isEmpty ? "folder.badge.plus" : "folder.fill")
-                            .foregroundStyle(podcast.folders.isEmpty ? Color.secondary : Color.accentColor)
-                    }
-
-                    // Subscribed toggle
-                    Button {
-                        showUnsubscribeConfirmation = true
-                    } label: {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
                     }
                 }
             }
         }
+        .safeAreaInset(edge: .bottom) {
+            if isSelecting {
+                selectionActionBar
+            }
+        }
+        .preference(key: EpisodeSelectionActivePreference.self, value: isSelecting)
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isSelecting)
         .sheet(isPresented: Binding(
             get: { shareText != nil },
             set: { if !$0 { shareText = nil } }
@@ -324,6 +362,19 @@ struct PodcastDetailView: View {
             }
         } message: {
             Text("You're on cellular data. Download anyway?")
+        }
+        .alert("Download on Cellular?", isPresented: $showBatchCellularConfirmation) {
+            Button("Download") {
+                for episode in episodesPendingBatchDownload {
+                    DownloadManager.shared.download(episode)
+                }
+                episodesPendingBatchDownload = []
+            }
+            Button("Cancel", role: .cancel) {
+                episodesPendingBatchDownload = []
+            }
+        } message: {
+            Text("You're on cellular data. Download \(episodesPendingBatchDownload.count) episode\(episodesPendingBatchDownload.count == 1 ? "" : "s") anyway?")
         }
         .sheet(item: $selectedEpisode) { episode in
             EpisodeDetailView(episode: episode)
@@ -495,6 +546,193 @@ struct PodcastDetailView: View {
         if episode.isStarred && episode.localFilePath == nil {
             DownloadManager.shared.download(episode)
         }
+    }
+
+    // MARK: - Multi-Select
+
+    private var selectedEpisodes: [Episode] {
+        allFilteredEpisodes.filter { selectedEpisodeGUIDs.contains($0.guid) }
+    }
+
+    private func enterSelectionMode() {
+        isSelecting = true
+        selectedEpisodeGUIDs = []
+    }
+
+    private func exitSelectionMode() {
+        isSelecting = false
+        selectedEpisodeGUIDs = []
+    }
+
+    private func toggleEpisodeSelection(_ episode: Episode) {
+        if selectedEpisodeGUIDs.contains(episode.guid) {
+            selectedEpisodeGUIDs.remove(episode.guid)
+        } else {
+            selectedEpisodeGUIDs.insert(episode.guid)
+        }
+    }
+
+    private func selectAll() {
+        selectedEpisodeGUIDs = Set(allFilteredEpisodes.map(\.guid))
+    }
+
+    private func batchPlayNext() {
+        for episode in selectedEpisodes.reversed() {
+            QueueManager.shared.playNext(episode)
+        }
+        exitSelectionMode()
+    }
+
+    private func batchAddToQueue() {
+        for episode in selectedEpisodes {
+            QueueManager.shared.addToQueue(episode)
+        }
+        exitSelectionMode()
+    }
+
+    private func batchDownload() {
+        var toConfirm: [Episode] = []
+        for episode in selectedEpisodes where episode.localFilePath == nil && episode.downloadProgress == nil {
+            let result = DownloadManager.shared.checkDownloadAllowed(episode, isAutoDownload: false, context: modelContext)
+            switch result {
+            case .started:
+                DownloadManager.shared.download(episode)
+            case .needsConfirmation:
+                toConfirm.append(episode)
+            default:
+                break
+            }
+        }
+        if !toConfirm.isEmpty {
+            episodesPendingBatchDownload = toConfirm
+            showBatchCellularConfirmation = true
+        }
+        exitSelectionMode()
+    }
+
+    private func batchDeleteDownloads() {
+        for episode in selectedEpisodes where episode.localFilePath != nil {
+            DownloadManager.shared.deleteDownload(episode, context: modelContext)
+        }
+        exitSelectionMode()
+    }
+
+    private func batchMarkPlayed(_ played: Bool) {
+        for episode in selectedEpisodes {
+            episode.isPlayed = played
+        }
+        exitSelectionMode()
+    }
+
+    private func batchStar(_ starred: Bool) {
+        for episode in selectedEpisodes {
+            episode.isStarred = starred
+            if starred && episode.localFilePath == nil {
+                DownloadManager.shared.downloadWithCheck(episode, isAutoDownload: true, context: modelContext)
+            }
+        }
+        exitSelectionMode()
+    }
+
+    private var selectionActionBar: some View {
+        let allSelected = !allFilteredEpisodes.isEmpty && selectedEpisodeGUIDs.count == allFilteredEpisodes.count
+        let hasSelection = !selectedEpisodeGUIDs.isEmpty
+        let hasUndownloaded = selectedEpisodes.contains { $0.localFilePath == nil && $0.downloadProgress == nil }
+        let hasDownloaded = selectedEpisodes.contains { $0.localFilePath != nil }
+
+        return HStack(spacing: 0) {
+            // Left: selection indicator + select-all toggle
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    if allSelected { selectedEpisodeGUIDs = [] } else { selectAll() }
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: allSelected ? "checkmark.circle.fill"
+                                    : (hasSelection ? "minus.circle.fill" : "circle"))
+                        .font(.title3)
+                        .foregroundStyle(hasSelection ? Color.accentColor : .secondary)
+                        .contentTransition(.symbolEffect(.replace))
+                    Text(hasSelection ? "\(selectedEpisodeGUIDs.count) Selected" : "Select episodes")
+                        .font(.subheadline.weight(.medium))
+                        .animation(nil, value: selectedEpisodeGUIDs.count)
+                }
+            }
+            .buttonStyle(.plain)
+
+            Spacer(minLength: 8)
+
+            // Right: action buttons
+            HStack(spacing: 2) {
+                Button {
+                    batchPlayNext()
+                } label: {
+                    Image(systemName: "text.line.first.and.arrowtriangle.forward")
+                        .font(.title3)
+                        .frame(width: 40, height: 40)
+                }
+                .disabled(!hasSelection)
+
+                Button {
+                    batchAddToQueue()
+                } label: {
+                    Image(systemName: "text.badge.plus")
+                        .font(.title3)
+                        .frame(width: 40, height: 40)
+                }
+                .disabled(!hasSelection)
+
+                Menu {
+                    if hasUndownloaded {
+                        Button {
+                            batchDownload()
+                        } label: {
+                            Label("Download", systemImage: "arrow.down.circle")
+                        }
+                    }
+                    if hasDownloaded {
+                        Button(role: .destructive) {
+                            batchDeleteDownloads()
+                        } label: {
+                            Label("Delete Downloads", systemImage: "trash")
+                        }
+                    }
+                    Divider()
+                    Button {
+                        batchMarkPlayed(true)
+                    } label: {
+                        Label("Mark as Played", systemImage: "checkmark.circle")
+                    }
+                    Button {
+                        batchMarkPlayed(false)
+                    } label: {
+                        Label("Mark as Unplayed", systemImage: "circle")
+                    }
+                    Divider()
+                    Button {
+                        batchStar(true)
+                    } label: {
+                        Label("Star", systemImage: "star")
+                    }
+                    Button {
+                        batchStar(false)
+                    } label: {
+                        Label("Unstar", systemImage: "star.slash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.title3)
+                        .frame(width: 40, height: 40)
+                }
+                .disabled(!hasSelection)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        .modifier(GlassBackgroundModifier())
+        .padding(.horizontal, 16)
+        .padding(.bottom, 4)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
     private func refreshPodcast() async {

@@ -4,6 +4,8 @@ import SwiftData
 struct EpisodeRowView: View {
     @Environment(\.modelContext) private var modelContext
     let episode: Episode
+    var isSelecting: Bool = false
+    var isSelected: Bool = false
 
     @State private var showCellularConfirmation = false
     @State private var showDeleteDownloadConfirmation = false
@@ -68,83 +70,91 @@ struct EpisodeRowView: View {
 
             Spacer()
 
-            // Action buttons
-            HStack(spacing: 8) {
-                // Star button
-                Button {
-                    episode.isStarred.toggle()
-                    // Auto-download when starring (respects auto-download preference)
-                    if episode.isStarred && episode.localFilePath == nil {
-                        let result = DownloadManager.shared.checkDownloadAllowed(episode, isAutoDownload: true, context: modelContext)
-                        switch result {
-                        case .started:
-                            DownloadManager.shared.download(episode)
-                        case .needsConfirmation:
-                            showCellularConfirmation = true
-                        case .blocked, .alreadyDownloaded, .alreadyDownloading:
-                            break
+            // Action buttons or selection checkmark
+            if isSelecting {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.title2)
+                    .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                    .frame(width: 36, height: 36)
+            } else {
+                HStack(spacing: 8) {
+                    // Star button
+                    Button {
+                        episode.isStarred.toggle()
+                        // Auto-download when starring (respects auto-download preference)
+                        if episode.isStarred && episode.localFilePath == nil {
+                            let result = DownloadManager.shared.checkDownloadAllowed(episode, isAutoDownload: true, context: modelContext)
+                            switch result {
+                            case .started:
+                                DownloadManager.shared.download(episode)
+                            case .needsConfirmation:
+                                showCellularConfirmation = true
+                            case .blocked, .alreadyDownloaded, .alreadyDownloading:
+                                break
+                            }
                         }
+                    } label: {
+                        Image(systemName: episode.isStarred ? "star.fill" : "star")
+                            .font(.title2)
+                            .foregroundStyle(episode.isStarred ? .yellow : .secondary)
+                            .frame(width: 36, height: 36)
+                            .contentShape(Rectangle())
                     }
-                } label: {
-                    Image(systemName: episode.isStarred ? "star.fill" : "star")
-                        .font(.title2)
-                        .foregroundStyle(episode.isStarred ? .yellow : .secondary)
-                        .frame(width: 36, height: 36)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.borderless)
+                    .buttonStyle(.borderless)
 
-                // Playing indicator or download button
-                if isCurrentlyPlaying {
-                    Button {
-                        AudioPlayerManager.shared.togglePlayPause()
-                    } label: {
-                        Image(systemName: AudioPlayerManager.shared.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(Color.accentColor)
-                            .frame(width: 36, height: 36)
-                            .contentShape(Rectangle())
+                    // Playing indicator or download button
+                    if isCurrentlyPlaying {
+                        Button {
+                            AudioPlayerManager.shared.togglePlayPause()
+                        } label: {
+                            Image(systemName: AudioPlayerManager.shared.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                                .font(.title2)
+                                .foregroundStyle(Color.accentColor)
+                                .frame(width: 36, height: 36)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.borderless)
+                    } else if let progress = episode.downloadProgress {
+                        // Downloading
+                        Button {
+                            DownloadManager.shared.cancelDownload(episode)
+                        } label: {
+                            CircularProgressView(progress: progress)
+                                .frame(width: 22, height: 22)
+                                .frame(width: 36, height: 36)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.borderless)
+                    } else if episode.localFilePath != nil {
+                        // Downloaded
+                        Button {
+                            showDeleteDownloadConfirmation = true
+                        } label: {
+                            Image(systemName: "arrow.down.circle.fill")
+                                .font(.title2)
+                                .foregroundStyle(.green)
+                                .frame(width: 36, height: 36)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.borderless)
+                    } else {
+                        // Not downloaded
+                        Button {
+                            attemptDownload()
+                        } label: {
+                            Image(systemName: "arrow.down.circle")
+                                .font(.title2)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 36, height: 36)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.borderless)
                     }
-                    .buttonStyle(.borderless)
-                } else if let progress = episode.downloadProgress {
-                    // Downloading
-                    Button {
-                        DownloadManager.shared.cancelDownload(episode)
-                    } label: {
-                        CircularProgressView(progress: progress)
-                            .frame(width: 22, height: 22)
-                            .frame(width: 36, height: 36)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.borderless)
-                } else if episode.localFilePath != nil {
-                    // Downloaded, not yet transcribed
-                    Button {
-                        showDeleteDownloadConfirmation = true
-                    } label: {
-                        Image(systemName: "arrow.down.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(.green)
-                            .frame(width: 36, height: 36)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.borderless)
-                } else {
-                    // Not downloaded
-                    Button {
-                        attemptDownload()
-                    } label: {
-                        Image(systemName: "arrow.down.circle")
-                            .font(.title2)
-                            .foregroundStyle(.secondary)
-                            .frame(width: 36, height: 36)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.borderless)
                 }
             }
         }
         .padding(.vertical, 4)
+        .background(isSelected && isSelecting ? Color.accentColor.opacity(0.08) : Color.clear)
         .contentShape(Rectangle())
         .opacity(episode.isPlayed ? 0.7 : 1.0)
         .alert("Download on Cellular?", isPresented: $showCellularConfirmation) {
