@@ -4,6 +4,8 @@ import AVKit
 struct NowPlayingView: View {
     var playerManager = AudioPlayerManager.shared
     var transcriptService = TranscriptService.shared
+    var localTranscriptionService = LocalTranscriptionService.shared
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     @State private var isDragging = false
@@ -45,6 +47,10 @@ struct NowPlayingView: View {
                             currentTime: playerManager.currentTime,
                             isLoading: transcriptService.isLoading,
                             error: transcriptService.error,
+                            isTranscribing: localTranscriptionService.isTranscribing,
+                            transcriptionProgress: localTranscriptionService.progress,
+                            canTranscribe: canTranscribeCurrentEpisode,
+                            onTranscribe: { startLocalTranscription() },
                             onSeek: { playerManager.seek(to: $0) }
                         )
                     } else {
@@ -257,9 +263,10 @@ struct NowPlayingView: View {
                         }
                     }
 
-                    // Transcript button — always visible; dims when no transcript available
+                    // Transcript button — always visible
                     Button {
-                        if episode.transcriptURL != nil {
+                        let hasTranscript = episode.transcriptURL != nil || episode.localTranscriptPath != nil
+                        if hasTranscript || canTranscribeCurrentEpisode {
                             withAnimation(.easeInOut(duration: 0.25)) {
                                 showTranscript.toggle()
                             }
@@ -270,11 +277,13 @@ struct NowPlayingView: View {
                             showNoTranscriptAlert = true
                         }
                     } label: {
+                        let hasTranscript = episode.transcriptURL != nil || episode.localTranscriptPath != nil
+                        let isActive = hasTranscript || canTranscribeCurrentEpisode
                         Image(systemName: showTranscript ? "quote.bubble.fill" : "quote.bubble")
                             .font(.title2)
                             .foregroundStyle(
                                 showTranscript ? Color.accentColor :
-                                (episode.transcriptURL != nil ? Color.secondary : Color.secondary.opacity(0.4))
+                                (isActive ? Color.secondary : Color.secondary.opacity(0.4))
                             )
                     }
                 }
@@ -294,12 +303,22 @@ struct NowPlayingView: View {
         .alert("No Transcript Available", isPresented: $showNoTranscriptAlert) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("This episode doesn't have a transcript.")
+            if #available(iOS 26, *) {
+                Text("Download this episode to enable on-device transcription.")
+            } else {
+                Text("This episode doesn't have a transcript. On-device transcription requires iOS 26 or later.")
+            }
         }
         .onChange(of: playerManager.currentEpisode?.guid) { _, _ in
             // Reset transcript state when episode changes
             showTranscript = false
             transcriptService.clear()
+        }
+        .onChange(of: localTranscriptionService.isTranscribing) { _, isTranscribing in
+            // When transcription finishes, reload the transcript
+            if !isTranscribing, let episode = playerManager.currentEpisode, showTranscript {
+                Task { await transcriptService.load(for: episode) }
+            }
         }
         .sheet(isPresented: $showSpeedPicker) {
             SpeedPickerSheet(
@@ -357,6 +376,26 @@ struct NowPlayingView: View {
             return "gobackward.\(interval)"
         }
         return "gobackward.15"
+    }
+
+    // MARK: - Local Transcription
+
+    /// True when the current episode can be transcribed on-device:
+    /// it must be downloaded and the OS must support SpeechAnalyzer.
+    private var canTranscribeCurrentEpisode: Bool {
+        guard let episode = playerManager.currentEpisode else { return false }
+        guard episode.localFilePath != nil else { return false }
+        guard LocalTranscriptionService.isSupported else { return false }
+        // Already has a transcript — no need to offer transcription
+        guard episode.transcriptURL == nil, episode.localTranscriptPath == nil else { return false }
+        return true
+    }
+
+    private func startLocalTranscription() {
+        guard let episode = playerManager.currentEpisode else { return }
+        Task {
+            await localTranscriptionService.transcribe(episode: episode, context: modelContext)
+        }
     }
 
 }

@@ -30,6 +30,17 @@ final class Episode {
         return downloadsPath.appendingPathComponent(filename)
     }
 
+    // Local transcript (from on-device transcription)
+    var localTranscriptPath: String?  // nil = no local transcript, stores just filename
+
+    /// Returns the full file URL for the locally-generated transcript JSON
+    var localTranscriptURL: URL? {
+        guard let filename = localTranscriptPath else { return nil }
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let transcriptsPath = documentsPath.appendingPathComponent("Transcripts", isDirectory: true)
+        return transcriptsPath.appendingPathComponent(filename)
+    }
+
     // Relationships
     var podcast: Podcast?
 

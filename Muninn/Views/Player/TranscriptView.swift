@@ -56,6 +56,10 @@ struct TranscriptView: View {
     let currentTime: TimeInterval
     let isLoading: Bool
     let error: String?
+    let isTranscribing: Bool
+    let transcriptionProgress: Double   // 0.0 – 1.0
+    let canTranscribe: Bool             // episode is downloaded + iOS 26+
+    let onTranscribe: () -> Void
     let onSeek: (TimeInterval) -> Void
 
     // Track which segment is active to avoid re-scrolling on every 0.5s tick
@@ -71,6 +75,8 @@ struct TranscriptView: View {
             if isLoading {
                 ProgressView("Loading transcript…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if isTranscribing {
+                transcribingView
             } else if let error {
                 ContentUnavailableView(
                     "Transcript Unavailable",
@@ -78,11 +84,11 @@ struct TranscriptView: View {
                     description: Text(error)
                 )
             } else if segments.isEmpty {
-                ContentUnavailableView(
-                    "No Transcript",
-                    systemImage: "quote.bubble",
-                    description: Text("No transcript segments found.")
-                )
+                if canTranscribe {
+                    transcribePromptView
+                } else {
+                    noTranscriptView
+                }
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -113,6 +119,86 @@ struct TranscriptView: View {
             }
         }
     }
+
+    // MARK: - Empty State Views
+
+    private var transcribingView: some View {
+        VStack(spacing: 20) {
+            ProgressView(value: transcriptionProgress)
+                .progressViewStyle(.linear)
+                .padding(.horizontal, 40)
+
+            Text(transcriptionProgress > 0
+                 ? "Transcribing… \(Int(transcriptionProgress * 100))%"
+                 : "Starting transcription…")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            Text("This may take a few minutes.\nYou can keep listening while it runs.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+    }
+
+    private var transcribePromptView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "waveform.and.mic")
+                .font(.system(size: 48))
+                .foregroundStyle(.secondary)
+
+            Text("No Transcript Available")
+                .font(.headline)
+
+            Text("Transcribe this episode on-device using Apple Intelligence. Audio stays private and never leaves your device.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+
+            Button(action: onTranscribe) {
+                Label("Transcribe Episode", systemImage: "waveform.and.mic")
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
+            }
+            .buttonStyle(.borderedProminent)
+            .padding(.top, 4)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+    }
+
+    private var noTranscriptView: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "quote.bubble")
+                .font(.system(size: 48))
+                .foregroundStyle(.secondary)
+
+            Text("No Transcript")
+                .font(.headline)
+
+            if #available(iOS 26, *) {
+                Text("Download this episode to enable on-device transcription.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+            } else {
+                Text("On-device transcription requires iOS 26 or later.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+    }
+
+    // MARK: - Segment Row
 
     @ViewBuilder
     private func segmentRow(_ segment: TranscriptSegment) -> some View {

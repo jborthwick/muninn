@@ -17,6 +17,20 @@ final class TranscriptService {
     // MARK: - Public API
 
     func load(for episode: Episode) async {
+        // Tier 1: locally-generated transcript on disk (from on-device transcription)
+        if let localURL = episode.localTranscriptURL,
+           FileManager.default.fileExists(atPath: localURL.path),
+           let data = try? Data(contentsOf: localURL) {
+            let parsed = parsePodcastIndexJSON(data)
+            if !parsed.isEmpty {
+                segments = parsed
+                error = nil
+                isLoading = false
+                return
+            }
+        }
+
+        // Tier 2: RSS-provided transcript URL
         guard let urlString = episode.transcriptURL, let url = URL(string: urlString) else {
             segments = []
             error = nil
@@ -167,7 +181,7 @@ final class TranscriptService {
 
     // MARK: - Podcast Index JSON Parser
 
-    private func parsePodcastIndexJSON(_ data: Data) -> [TranscriptSegment] {
+    func parsePodcastIndexJSON(_ data: Data) -> [TranscriptSegment] {
         struct JSONTranscript: Decodable {
             let segments: [JSONSegment]?
         }
