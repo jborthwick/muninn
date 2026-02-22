@@ -280,15 +280,12 @@ struct PodcastDetailView: View {
             await refreshPodcast()
         }
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
+            ToolbarItem(placement: .primaryAction) {
                 if isSelecting {
                     Button("Cancel") {
                         exitSelectionMode()
                     }
-                }
-            }
-            ToolbarItem(placement: .primaryAction) {
-                if !isSelecting {
+                } else {
                     Menu {
                         Button {
                             enterSelectionMode()
