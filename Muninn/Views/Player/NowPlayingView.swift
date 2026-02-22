@@ -12,7 +12,6 @@ struct NowPlayingView: View {
     @State private var dragTime: TimeInterval = 0
     @State private var showSpeedPicker = false
     @State private var showTranscript = false
-    @State private var showNoTranscriptAlert = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -263,28 +262,18 @@ struct NowPlayingView: View {
                         }
                     }
 
-                    // Transcript button — always visible
+                    // Transcript button — always opens the transcript view
                     Button {
-                        let hasTranscript = episode.transcriptURL != nil || episode.localTranscriptPath != nil
-                        if hasTranscript || canTranscribeCurrentEpisode {
-                            withAnimation(.easeInOut(duration: 0.25)) {
-                                showTranscript.toggle()
-                            }
-                            if showTranscript {
-                                Task { await transcriptService.load(for: episode) }
-                            }
-                        } else {
-                            showNoTranscriptAlert = true
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            showTranscript.toggle()
+                        }
+                        if showTranscript {
+                            Task { await transcriptService.load(for: episode) }
                         }
                     } label: {
-                        let hasTranscript = episode.transcriptURL != nil || episode.localTranscriptPath != nil
-                        let isActive = hasTranscript || canTranscribeCurrentEpisode
                         Image(systemName: showTranscript ? "quote.bubble.fill" : "quote.bubble")
                             .font(.title2)
-                            .foregroundStyle(
-                                showTranscript ? Color.accentColor :
-                                (isActive ? Color.secondary : Color.secondary.opacity(0.4))
-                            )
+                            .foregroundStyle(showTranscript ? Color.accentColor : Color.secondary)
                     }
                 }
                 .padding(.top, 24)
@@ -300,15 +289,6 @@ struct NowPlayingView: View {
             }
         }
         .presentationDragIndicator(.visible)
-        .alert("No Transcript Available", isPresented: $showNoTranscriptAlert) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            if #available(iOS 26, *) {
-                Text("Download this episode to enable on-device transcription.")
-            } else {
-                Text("This episode doesn't have a transcript. On-device transcription requires iOS 26 or later.")
-            }
-        }
         .onChange(of: playerManager.currentEpisode?.guid) { _, _ in
             // Reset transcript state when episode changes
             showTranscript = false

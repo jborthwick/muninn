@@ -180,22 +180,28 @@ struct TranscriptView: View {
             Text("No Transcript")
                 .font(.headline)
 
-            if #available(iOS 26, *) {
-                Text("Download this episode to enable on-device transcription.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
-            } else {
-                Text("On-device transcription requires iOS 26 or later.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
-            }
+            Text(noTranscriptMessage)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
+    }
+
+    private var noTranscriptMessage: String {
+        if #available(iOS 26, *) {
+            if LocalTranscriptionService.isSupported {
+                // iOS 26, Apple Intelligence available, but episode not downloaded
+                return "Download this episode to enable on-device transcription."
+            } else {
+                // Simulator or device without Apple Intelligence
+                return "On-device transcription requires a device with Apple Intelligence."
+            }
+        } else {
+            return "On-device transcription requires iOS 26 or later."
+        }
     }
 
     // MARK: - Segment Row

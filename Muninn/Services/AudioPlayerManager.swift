@@ -83,7 +83,7 @@ final class AudioPlayerManager {
     // MARK: - Private Properties
 
     private var player: AVPlayer?
-    private var timeObserver: Any?
+    private var timeObserverTask: Task<Void, Never>?
     private var statusObserver: NSKeyValueObservation?
     private var didFinishObserver: NSObjectProtocol?
     private var cachedArtwork: MPMediaItemArtwork?
@@ -515,28 +515,25 @@ final class AudioPlayerManager {
     // MARK: - Time Observer
 
     private func setupTimeObserver() {
-        // Remove existing observer
-        if let observer = timeObserver, let player = player {
-            player.removeTimeObserver(observer)
-        }
-
-        // Add periodic time observer
-        let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
-        timeObserver = player?.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-            guard let self else { return }
-            let newTime = time.seconds
-            // Validate time before updating
-            if !newTime.isNaN && !newTime.isInfinite && newTime >= 0 {
-                self.currentTime = newTime
+        timeObserverTask?.cancel()
+        // Poll player.currentTime() on a plain async loop instead of addPeriodicTimeObserver.
+        // This avoids CoreAudio AudioDeviceGetCurrentTime calls that flood the simulator console.
+        timeObserverTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                if let self, let player = self.player {
+                    let newTime = player.currentTime().seconds
+                    if !newTime.isNaN && !newTime.isInfinite && newTime >= 0 {
+                        self.currentTime = newTime
+                    }
+                }
+                try? await Task.sleep(for: .seconds(0.5))
             }
         }
     }
 
     private func clearObservers() {
-        if let observer = timeObserver, let player = player {
-            player.removeTimeObserver(observer)
-            timeObserver = nil
-        }
+        timeObserverTask?.cancel()
+        timeObserverTask = nil
         statusObserver?.invalidate()
         statusObserver = nil
         if let observer = didFinishObserver {
