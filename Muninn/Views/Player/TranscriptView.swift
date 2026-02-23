@@ -177,21 +177,21 @@ struct TranscriptView: View {
                         if isSeek {
                             // Scrub / skip: cancel any previous pending scroll and
                             // wait a short beat so rapid skip-button presses don't
-                            // thrash the view, then snap in quickly.
+                            // thrash the view.
                             pendingScrollTask?.cancel()
                             pendingScrollTask = Task {
                                 try? await Task.sleep(for: .milliseconds(150))
                                 guard !Task.isCancelled else { return }
                                 activeGroupID = groupID
-                                withAnimation(.easeOut(duration: 0.2)) {
+                                withAnimation(.easeOut(duration: 0.35)) {
                                     proxy.scrollTo(groupID, anchor: .center)
                                 }
                             }
                         } else {
-                            // Normal playback tick: scroll immediately.
+                            // Normal playback tick.
                             pendingScrollTask?.cancel()
                             activeGroupID = groupID
-                            withAnimation(.easeInOut(duration: 0.4)) {
+                            withAnimation(.easeInOut(duration: 0.45)) {
                                 proxy.scrollTo(groupID, anchor: .center)
                             }
                         }
@@ -321,9 +321,9 @@ struct TranscriptView: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 6)
                     .background(
-                        groupHasCurrent
-                            ? RoundedRectangle(cornerRadius: 6).fill(playerManager.nowPlayingDominantColor.opacity(0.18))
-                            : nil
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(playerManager.nowPlayingDominantColor.opacity(groupHasCurrent ? 0.18 : 0))
+                            .animation(.easeInOut(duration: 0.3), value: groupHasCurrent)
                     )
             }
         }
@@ -341,7 +341,6 @@ struct TranscriptView: View {
             let isPast = segment.endTime < currentTime
             if isCurrent {
                 span.foregroundColor = .primary
-                span.font = .body.weight(.semibold)
             } else if isPast {
                 span.foregroundColor = Color(UIColor.tertiaryLabel)
             } else {

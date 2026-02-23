@@ -7,7 +7,7 @@ struct NowPlayingView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
-    @State private var showTranscript = false
+    @AppStorage("nowPlaying.showTranscript") private var showTranscript = false
     @State private var showMarkPlayedConfirmation = false
     /// Decoupled from player state so the text appears *after* the Menu closes,
     /// avoiding the clip-during-close-animation artifact.
