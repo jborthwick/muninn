@@ -7,8 +7,6 @@ struct NowPlayingView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
-    @State private var isDragging = false
-    @State private var dragTime: TimeInterval = 0
     @State private var showTranscript = false
     @State private var showMarkPlayedConfirmation = false
     /// Decoupled from player state so the text appears *after* the Menu closes,
@@ -172,41 +170,10 @@ struct NowPlayingView: View {
     }
 
     /// Scrubber + elapsed / remaining time labels.
+    /// Extracted into its own struct so that isDragging/dragTime state changes
+    /// only re-render this view, not the full NowPlayingView (and TranscriptView).
     private var progressSection: some View {
-        VStack(spacing: 4) {
-            Slider(
-                value: Binding(
-                    get: { isDragging ? dragTime : playerManager.currentTime },
-                    set: { newValue in
-                        dragTime = newValue
-                        isDragging = true
-                    }
-                ),
-                in: 0...max(playerManager.duration, 1),
-                onEditingChanged: { editing in
-                    if !editing {
-                        playerManager.seek(to: dragTime)
-                        isDragging = false
-                    }
-                }
-            )
-
-            HStack {
-                Text(displayTime.formattedTimestamp)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-
-                Spacer()
-
-                Text(remainingTime.formattedRemaining)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
-        }
-        .padding(.horizontal)
-        .padding(.top, 24)
+        ProgressSectionView()
     }
 
     /// Skip-back / play-pause / skip-forward buttons.
@@ -429,14 +396,6 @@ struct NowPlayingView: View {
 
     // MARK: - Helpers
 
-    private var displayTime: TimeInterval {
-        isDragging ? dragTime : playerManager.currentTime
-    }
-
-    private var remainingTime: TimeInterval {
-        playerManager.duration - displayTime
-    }
-
     private func formatSpeed(_ speed: Double) -> String {
         if speed == floor(speed) {
             return String(format: "%.0fx", speed)
@@ -477,6 +436,58 @@ struct NowPlayingView: View {
     }
 }
 
+
+// MARK: - Progress Section
+
+/// Scrubber and time labels. Owns isDragging/dragTime as local state so that
+/// rapid slider updates only re-render this view, not NowPlayingView or TranscriptView.
+private struct ProgressSectionView: View {
+    var playerManager = AudioPlayerManager.shared
+
+    @State private var isDragging = false
+    @State private var dragTime: TimeInterval = 0
+
+    private var displayTime: TimeInterval {
+        isDragging ? dragTime : playerManager.currentTime
+    }
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Slider(
+                value: Binding(
+                    get: { isDragging ? dragTime : playerManager.currentTime },
+                    set: { newValue in
+                        dragTime = newValue
+                        isDragging = true
+                    }
+                ),
+                in: 0...max(playerManager.duration, 1),
+                onEditingChanged: { editing in
+                    if !editing {
+                        playerManager.seek(to: dragTime)
+                        isDragging = false
+                    }
+                }
+            )
+
+            HStack {
+                Text(displayTime.formattedTimestamp)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+
+                Spacer()
+
+                Text((playerManager.duration - displayTime).formattedRemaining)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+        }
+        .padding(.horizontal)
+        .padding(.top, 24)
+    }
+}
 
 // MARK: - Glass Circle Button Background
 
