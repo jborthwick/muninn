@@ -52,18 +52,38 @@ struct TranscriptHeaderView: View {
 // MARK: - Transcript Body
 
 struct TranscriptView: View {
-    let segments: [TranscriptSegment]
-    let currentTime: TimeInterval
-    let isLoading: Bool
-    let error: String?
-    let isTranscribing: Bool
-    let transcriptionProgress: Double   // 0.0 – 1.0
-    let canTranscribe: Bool             // episode is downloaded + iOS 26+
+    /// Called when the user taps "Transcribe Episode". Needs to be a closure
+    /// because the caller holds the SwiftData modelContext.
     let onTranscribe: () -> Void
-    let onSeek: (TimeInterval) -> Void
+
+    // Services accessed directly — TranscriptView is always showing the
+    // currently-playing episode, so there is no value in passing these through.
+    private var transcriptService: TranscriptService { TranscriptService.shared }
+    private var localTranscriptionService: LocalTranscriptionService { LocalTranscriptionService.shared }
+    private var playerManager: AudioPlayerManager { AudioPlayerManager.shared }
 
     // Track which group is active to avoid re-scrolling on every 0.5s tick
-    @State private var activeGroupID: UUID?
+    @State private var activeGroupID: UUID? = nil
+    // Cancellable scroll task — lets us debounce rapid seeks/scrubs
+    @State private var pendingScrollTask: Task<Void, Never>? = nil
+
+    // MARK: - Derived from services
+
+    private var segments: [TranscriptSegment] { transcriptService.segments }
+    private var currentTime: TimeInterval { playerManager.currentTime }
+    private var isLoading: Bool { transcriptService.isLoading }
+    private var error: String? { transcriptService.error }
+    private var isTranscribing: Bool { localTranscriptionService.isTranscribing }
+    private var transcriptionProgress: Double { localTranscriptionService.progress }
+
+    private var canTranscribe: Bool {
+        guard let episode = playerManager.currentEpisode else { return false }
+        guard episode.localFilePath != nil else { return false }
+        guard LocalTranscriptionService.isSupported else { return false }
+        // Already has a transcript — no need to offer transcription
+        guard episode.transcriptURL == nil, episode.localTranscriptPath == nil else { return false }
+        return true
+    }
 
     private var currentSegment: TranscriptSegment? {
         segments.last(where: { currentTime >= $0.startTime && currentTime < $0.endTime })
@@ -127,14 +147,33 @@ struct TranscriptView: View {
                         .padding(.horizontal)
                         .padding(.vertical, 8)
                     }
-                    .onChange(of: currentTime) { _, _ in
+                    .onChange(of: currentTime) { oldTime, newTime in
                         guard let seg = currentSegment,
                               let group = groupContaining(seg),
                               let groupID = group.first?.id,
                               groupID != activeGroupID else { return }
-                        activeGroupID = groupID
-                        withAnimation(.easeInOut(duration: 0.4)) {
-                            proxy.scrollTo(groupID, anchor: .center)
+
+                        let isSeek = abs(newTime - oldTime) > 2.0
+
+                        if isSeek {
+                            // Scrub / skip: cancel any previous pending scroll and
+                            // wait a beat so rapid slider changes don't thrash the view.
+                            pendingScrollTask?.cancel()
+                            pendingScrollTask = Task {
+                                try? await Task.sleep(for: .milliseconds(600))
+                                guard !Task.isCancelled else { return }
+                                activeGroupID = groupID
+                                withAnimation(.easeInOut(duration: 0.5)) {
+                                    proxy.scrollTo(groupID, anchor: .center)
+                                }
+                            }
+                        } else {
+                            // Normal playback tick: scroll immediately.
+                            pendingScrollTask?.cancel()
+                            activeGroupID = groupID
+                            withAnimation(.easeInOut(duration: 0.4)) {
+                                proxy.scrollTo(groupID, anchor: .center)
+                            }
                         }
                     }
                     .onAppear {
@@ -223,10 +262,8 @@ struct TranscriptView: View {
     private var noTranscriptMessage: String {
         if #available(iOS 26, *) {
             if LocalTranscriptionService.isSupported {
-                // iOS 26, Apple Intelligence available, but episode not downloaded
                 return "Download this episode to enable on-device transcription."
             } else {
-                // Simulator or device without Apple Intelligence
                 return "On-device transcription requires a device with Apple Intelligence."
             }
         } else {
@@ -242,7 +279,7 @@ struct TranscriptView: View {
         let speaker = group.first?.speaker
 
         Button {
-            onSeek(group.first?.startTime ?? 0)
+            playerManager.seek(to: group.first?.startTime ?? 0)
         } label: {
             VStack(alignment: .leading, spacing: 2) {
                 if let speaker {
@@ -260,7 +297,7 @@ struct TranscriptView: View {
                     .padding(.vertical, 6)
                     .background(
                         groupHasCurrent
-                            ? RoundedRectangle(cornerRadius: 6).fill(Color.accentColor.opacity(0.12))
+                            ? RoundedRectangle(cornerRadius: 6).fill(playerManager.nowPlayingDominantColor.opacity(0.18))
                             : nil
                     )
             }

@@ -10,7 +10,16 @@ struct NowPlayingView: View {
     @State private var isDragging = false
     @State private var dragTime: TimeInterval = 0
     @State private var showTranscript = false
-    @State private var dominantColor: Color = .accentColor
+    @State private var showMarkPlayedConfirmation = false
+    /// Decoupled from player state so the text appears *after* the Menu closes,
+    /// avoiding the clip-during-close-animation artifact.
+    @State private var speedLabelActive = false
+    @State private var sleepLabelActive = false
+
+    /// Backed by AudioPlayerManager so the color is pre-computed before the sheet opens.
+    private var dominantColor: Color { playerManager.nowPlayingDominantColor }
+
+    // MARK: - Body
 
     var body: some View {
         VStack(spacing: 0) {
@@ -41,256 +50,11 @@ struct NowPlayingView: View {
             .padding(.top, 16)
 
             if let episode = playerManager.currentEpisode {
-
-                // Top section: artwork + title (normal) or compact header + transcript (transcript mode)
-                Group {
-                    if showTranscript {
-                        TranscriptHeaderView(episode: episode) {
-                            withAnimation(.easeInOut(duration: 0.25)) {
-                                showTranscript = false
-                            }
-                        }
-
-                        TranscriptView(
-                            segments: transcriptService.segments,
-                            currentTime: playerManager.currentTime,
-                            isLoading: transcriptService.isLoading,
-                            error: transcriptService.error,
-                            isTranscribing: localTranscriptionService.isTranscribing,
-                            transcriptionProgress: localTranscriptionService.progress,
-                            canTranscribe: canTranscribeCurrentEpisode,
-                            onTranscribe: { startLocalTranscription() },
-                            onSeek: { playerManager.seek(to: $0) }
-                        )
-                    } else {
-                        Spacer()
-
-                        // Artwork
-                        CachedAsyncImage(url: URL(string: episode.displayArtworkURL ?? "")) { image in
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                        } placeholder: {
-                            RoundedRectangle(cornerRadius: 16)
-                                .fill(Color.secondary.opacity(0.2))
-                                .overlay {
-                                    Image(systemName: "mic")
-                                        .font(.system(size: 60))
-                                        .foregroundStyle(.secondary)
-                                }
-                        }
-                        .frame(width: 280, height: 280)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-                        .shadow(radius: 10)
-
-                        // Title and podcast
-                        VStack(spacing: 4) {
-                            Text(episode.title)
-                                .font(.title3)
-                                .fontWeight(.semibold)
-                                .lineLimit(2)
-                                .multilineTextAlignment(.center)
-
-                            if let podcast = episode.podcast {
-                                Text(podcast.title)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .padding(.horizontal)
-                        .padding(.top, 24)
-
-                        Spacer()
-                    }
-                }
-                .animation(.easeInOut(duration: 0.25), value: showTranscript)
-
-                // Progress slider (always visible)
-                VStack(spacing: 4) {
-                    Slider(
-                        value: Binding(
-                            get: { isDragging ? dragTime : playerManager.currentTime },
-                            set: { newValue in
-                                dragTime = newValue
-                                isDragging = true
-                            }
-                        ),
-                        in: 0...max(playerManager.duration, 1),
-                        onEditingChanged: { editing in
-                            if !editing {
-                                playerManager.seek(to: dragTime)
-                                isDragging = false
-                            }
-                        }
-                    )
-
-                    HStack {
-                        Text(displayTime.formattedTimestamp)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-
-                        Spacer()
-
-                        Text(remainingTime.formattedRemaining)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
-                }
-                .padding(.horizontal)
-                .padding(.top, 24)
-
-                // Playback controls
-                HStack(spacing: 40) {
-                    Button {
-                        playerManager.skipBackward()
-                    } label: {
-                        Image(systemName: skipBackwardIcon)
-                            .font(.system(size: 32))
-                    }
-
-                    Button {
-                        playerManager.togglePlayPause()
-                    } label: {
-                        Image(systemName: playerManager.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                            .font(.system(size: 72))
-                    }
-
-                    Button {
-                        playerManager.skipForward()
-                    } label: {
-                        Image(systemName: skipForwardIcon)
-                            .font(.system(size: 32))
-                    }
-                    .contextMenu {
-                        Button {
-                            playerManager.markPlayedAndAdvance()
-                        } label: {
-                            Label("Mark as Played", systemImage: "checkmark.circle")
-                        }
-                    }
-                }
-                .foregroundStyle(.primary)
-                .padding(.top, 24)
-
-                // Speed, sleep timer, and actions
-                HStack(spacing: 24) {
-                    // Speed picker
-                    Menu {
-                        ForEach([0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0], id: \.self) { speed in
-                            Button {
-                                playerManager.playbackSpeed = speed
-                            } label: {
-                                HStack {
-                                    Text(formatSpeed(speed))
-                                    if abs(playerManager.effectivePlaybackSpeed - speed) < 0.01 {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-                        }
-                        if let podcast = episode.podcast {
-                            Divider()
-                            Button {
-                                if podcast.playbackSpeedOverride != nil {
-                                    podcast.playbackSpeedOverride = nil
-                                } else {
-                                    podcast.playbackSpeedOverride = playerManager.effectivePlaybackSpeed
-                                }
-                            } label: {
-                                Label(
-                                    podcast.playbackSpeedOverride != nil ? "Remove Speed Pin" : "Pin Speed to Podcast",
-                                    systemImage: podcast.playbackSpeedOverride != nil ? "pin.slash" : "pin"
-                                )
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Text(formatSpeed(playerManager.effectivePlaybackSpeed))
-                            if episode.podcast?.playbackSpeedOverride != nil {
-                                Image(systemName: "pin.fill")
-                                    .font(.caption2)
-                            }
-                        }
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                    }
-
-                    // Sleep timer
-                    Menu {
-                        Button {
-                            playerManager.cancelSleepTimer()
-                        } label: {
-                            HStack {
-                                Text("Off")
-                                if playerManager.sleepTimerEndTime == nil {
-                                    Image(systemName: "checkmark")
-                                }
-                            }
-                        }
-
-                        Divider()
-
-                        ForEach([5, 10, 15, 30, 45, 60], id: \.self) { minutes in
-                            Button {
-                                playerManager.setSleepTimer(minutes: minutes)
-                            } label: {
-                                Text("\(minutes) min")
-                            }
-                        }
-
-                        Divider()
-
-                        Button {
-                            playerManager.setSleepTimerEndOfEpisode()
-                        } label: {
-                            HStack {
-                                Text("End of Episode")
-                                if playerManager.isSleepTimerEndOfEpisode {
-                                    Image(systemName: "checkmark")
-                                }
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "moon.zzz.fill")
-                            if let remaining = playerManager.sleepTimerRemaining {
-                                Text(formatSleepTimer(remaining))
-                            } else if playerManager.isSleepTimerEndOfEpisode {
-                                Text("EP")
-                            }
-                        }
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundStyle(playerManager.sleepTimerEndTime != nil ? .indigo : .secondary)
-                    }
-
-                    // Star button
-                    Button {
-                        episode.isStarred.toggle()
-                    } label: {
-                        Image(systemName: episode.isStarred ? "star.fill" : "star")
-                            .font(.title2)
-                            .foregroundStyle(episode.isStarred ? .yellow : .secondary)
-                    }
-
-                    // Transcript button — always opens the transcript view
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.25)) {
-                            showTranscript.toggle()
-                        }
-                        if showTranscript {
-                            Task { await transcriptService.load(for: episode) }
-                        }
-                    } label: {
-                        Image(systemName: showTranscript ? "quote.bubble.fill" : "quote.bubble")
-                            .font(.title2)
-                            .foregroundStyle(showTranscript ? dominantColor : Color.secondary)
-                    }
-                }
-                .padding(.top, 24)
-                .padding(.bottom, 8)
+                topSection(for: episode)
+                    .animation(.easeInOut(duration: 0.25), value: showTranscript)
+                progressSection
+                playbackControls
+                actionsRow(for: episode)
             } else {
                 Spacer()
                 ContentUnavailableView(
@@ -302,36 +66,47 @@ struct NowPlayingView: View {
             }
         }
         .tint(dominantColor)
+        .animation(.easeInOut(duration: 0.6), value: playerManager.nowPlayingDominantColor)
         .presentationDragIndicator(.visible)
-        .task(id: playerManager.currentEpisode?.guid) {
-            guard let urlString = playerManager.currentEpisode?.displayArtworkURL,
-                  let url = URL(string: urlString) else { return }
-            if let color = await extractDominantColor(from: url) {
-                withAnimation(.easeInOut(duration: 0.6)) {
-                    dominantColor = color
-                }
-            }
-        }
-        .presentationBackground {
-            if let episode = playerManager.currentEpisode,
-               let urlString = episode.displayArtworkURL,
-               let url = URL(string: urlString) {
-                CachedAsyncImage(url: url) { image in
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    Color.black
-                }
-                .ignoresSafeArea()
-                .blur(radius: 80)
-                .overlay(Color.black.opacity(0.55))
-                .ignoresSafeArea()
-            } else {
-                Color.black.ignoresSafeArea()
-            }
-        }
+        .presentationBackground { presentationBackground }
         .preferredColorScheme(.dark)
+        .alert("Mark as Played?", isPresented: $showMarkPlayedConfirmation) {
+            Button("Mark as Played", role: .destructive) {
+                playerManager.markPlayedAndAdvance()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Marks this episode as played and advances to the next item in your queue.")
+        }
+        .onAppear {
+            // Initialise label state to match current player state without animation
+            speedLabelActive = abs(playerManager.effectivePlaybackSpeed - 1.0) > 0.01
+            sleepLabelActive = playerManager.sleepTimerEndTime != nil
+        }
+        .onChange(of: playerManager.effectivePlaybackSpeed) { _, newSpeed in
+            let active = abs(newSpeed - 1.0) > 0.01
+            if active && !speedLabelActive {
+                // Delay until the Menu's close animation finishes (~0.35 s) so the
+                // label expansion happens outside any active clip animation.
+                Task {
+                    try? await Task.sleep(for: .milliseconds(350))
+                    speedLabelActive = true
+                }
+            } else if !active {
+                speedLabelActive = false   // going inactive: snap is fine
+            }
+        }
+        .onChange(of: playerManager.sleepTimerEndTime) { _, newEndTime in
+            let active = newEndTime != nil
+            if active && !sleepLabelActive {
+                Task {
+                    try? await Task.sleep(for: .milliseconds(350))
+                    sleepLabelActive = true
+                }
+            } else if !active {
+                sleepLabelActive = false
+            }
+        }
         .onChange(of: playerManager.currentEpisode?.guid) { _, _ in
             // Reset transcript state when episode changes
             showTranscript = false
@@ -345,6 +120,315 @@ struct NowPlayingView: View {
         }
     }
 
+    // MARK: - Sub-views
+
+    /// Artwork + title in normal mode, or compact header + transcript scroll in transcript mode.
+    /// The `.animation` for showTranscript is applied at the call site in body.
+    @ViewBuilder
+    private func topSection(for episode: Episode) -> some View {
+        if showTranscript {
+            TranscriptHeaderView(episode: episode) {
+                withAnimation(.easeInOut(duration: 0.25)) { showTranscript = false }
+            }
+            TranscriptView(onTranscribe: startLocalTranscription)
+        } else {
+            Spacer()
+
+            CachedAsyncImage(url: URL(string: episode.displayArtworkURL ?? "")) { image in
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } placeholder: {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.secondary.opacity(0.2))
+                    .overlay {
+                        Image(systemName: "mic")
+                            .font(.system(size: 60))
+                            .foregroundStyle(.secondary)
+                    }
+            }
+            .frame(width: 280, height: 280)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .shadow(radius: 10)
+
+            VStack(spacing: 4) {
+                Text(episode.title)
+                    .font(.title3)
+                    .fontWeight(.semibold)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+
+                if let podcast = episode.podcast {
+                    Text(podcast.title)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal)
+            .padding(.top, 24)
+
+            Spacer()
+        }
+    }
+
+    /// Scrubber + elapsed / remaining time labels.
+    private var progressSection: some View {
+        VStack(spacing: 4) {
+            Slider(
+                value: Binding(
+                    get: { isDragging ? dragTime : playerManager.currentTime },
+                    set: { newValue in
+                        dragTime = newValue
+                        isDragging = true
+                    }
+                ),
+                in: 0...max(playerManager.duration, 1),
+                onEditingChanged: { editing in
+                    if !editing {
+                        playerManager.seek(to: dragTime)
+                        isDragging = false
+                    }
+                }
+            )
+
+            HStack {
+                Text(displayTime.formattedTimestamp)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+
+                Spacer()
+
+                Text(remainingTime.formattedRemaining)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+        }
+        .padding(.horizontal)
+        .padding(.top, 24)
+    }
+
+    /// Skip-back / play-pause / skip-forward buttons.
+    private var playbackControls: some View {
+        HStack(spacing: 40) {
+            Button {
+                playerManager.skipBackward()
+            } label: {
+                Image(systemName: skipBackwardIcon)
+                    .font(.system(size: 32))
+            }
+
+            Button {
+                playerManager.togglePlayPause()
+            } label: {
+                Image(systemName: playerManager.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                    .font(.system(size: 72))
+            }
+
+            Button {
+                playerManager.skipForward()
+            } label: {
+                Image(systemName: skipForwardIcon)
+                    .font(.system(size: 32))
+            }
+            .contextMenu {
+                Button {
+                    playerManager.markPlayedAndAdvance()
+                } label: {
+                    Label("Mark as Played", systemImage: "checkmark.circle")
+                }
+            }
+        }
+        .foregroundStyle(.primary)
+        .padding(.top, 24)
+    }
+
+    /// Speed, sleep, star, mark-played, and transcript buttons.
+    @ViewBuilder
+    private func actionsRow(for episode: Episode) -> some View {
+        HStack(spacing: 24) {
+            speedMenu(for: episode)
+            sleepMenu
+            starButton(for: episode)
+            markPlayedButton
+            transcriptButton(for: episode)
+        }
+        .padding(.top, 24)
+        .padding(.bottom, 8)
+    }
+
+    @ViewBuilder
+    private func speedMenu(for episode: Episode) -> some View {
+        Menu {
+            ForEach([0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0], id: \.self) { speed in
+                Button {
+                    playerManager.playbackSpeed = speed
+                } label: {
+                    HStack {
+                        Text(formatSpeed(speed))
+                        if abs(playerManager.effectivePlaybackSpeed - speed) < 0.01 {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+            if let podcast = episode.podcast {
+                Divider()
+                Button {
+                    if podcast.playbackSpeedOverride != nil {
+                        podcast.playbackSpeedOverride = nil
+                    } else {
+                        podcast.playbackSpeedOverride = playerManager.effectivePlaybackSpeed
+                    }
+                } label: {
+                    Label(
+                        podcast.playbackSpeedOverride != nil ? "Remove Speed Pin" : "Pin Speed to Podcast",
+                        systemImage: podcast.playbackSpeedOverride != nil ? "pin.slash" : "pin"
+                    )
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "gauge.with.dots.needle.67percent")
+                    .font(.title2)
+                if speedLabelActive {
+                    Text(formatSpeed(playerManager.effectivePlaybackSpeed))
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .transition(.scale(scale: 0.8, anchor: .leading)
+                            .combined(with: .opacity))
+                }
+                if episode.podcast?.playbackSpeedOverride != nil {
+                    Image(systemName: "pin.fill")
+                        .font(.caption2)
+                }
+            }
+            .foregroundStyle(
+                !speedLabelActive && episode.podcast?.playbackSpeedOverride == nil
+                    ? Color.secondary : dominantColor
+            )
+            .animation(.spring(duration: 0.35, bounce: 0.15), value: speedLabelActive)
+        }
+    }
+
+    private var sleepMenu: some View {
+        Menu {
+            Button {
+                playerManager.cancelSleepTimer()
+            } label: {
+                HStack {
+                    Text("Off")
+                    if playerManager.sleepTimerEndTime == nil {
+                        Image(systemName: "checkmark")
+                    }
+                }
+            }
+
+            Divider()
+
+            ForEach([5, 10, 15, 30, 45, 60], id: \.self) { minutes in
+                Button {
+                    playerManager.setSleepTimer(minutes: minutes)
+                } label: {
+                    Text("\(minutes) min")
+                }
+            }
+
+            Divider()
+
+            Button {
+                playerManager.setSleepTimerEndOfEpisode()
+            } label: {
+                HStack {
+                    Text("End of Episode")
+                    if playerManager.isSleepTimerEndOfEpisode {
+                        Image(systemName: "checkmark")
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "moon.zzz.fill")
+                    .font(.title2)
+                    // Suppress animation on the icon only — prevents the moon
+                    // disappear glitch while still letting the text animate
+                    .animation(nil, value: playerManager.sleepTimerEndTime != nil)
+                if sleepLabelActive {
+                    let timerText: String = playerManager.isSleepTimerEndOfEpisode ? "EP" :
+                        playerManager.sleepTimerRemaining.map { formatSleepTimer($0) } ?? ""
+                    Text(timerText)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .monospacedDigit()
+                        .transition(.scale(scale: 0.8, anchor: .leading)
+                            .combined(with: .opacity))
+                }
+            }
+            .foregroundStyle(sleepLabelActive ? dominantColor : .secondary)
+            .animation(.spring(duration: 0.35, bounce: 0.15), value: sleepLabelActive)
+        }
+    }
+
+    private func starButton(for episode: Episode) -> some View {
+        Button {
+            episode.isStarred.toggle()
+        } label: {
+            Image(systemName: episode.isStarred ? "star.fill" : "star")
+                .font(.title2)
+                .foregroundStyle(episode.isStarred ? .yellow : .secondary)
+        }
+    }
+
+    private var markPlayedButton: some View {
+        Button {
+            showMarkPlayedConfirmation = true
+        } label: {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.title2)
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(Color.secondary)
+        }
+    }
+
+    private func transcriptButton(for episode: Episode) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                showTranscript.toggle()
+            }
+            if showTranscript {
+                Task { await transcriptService.load(for: episode) }
+            }
+        } label: {
+            Image(systemName: showTranscript ? "quote.bubble.fill" : "quote.bubble")
+                .font(.title2)
+                .foregroundStyle(showTranscript ? dominantColor : Color.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var presentationBackground: some View {
+        if let episode = playerManager.currentEpisode,
+           let urlString = episode.displayArtworkURL,
+           let url = URL(string: urlString) {
+            CachedAsyncImage(url: url) { image in
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } placeholder: {
+                Color.black
+            }
+            .ignoresSafeArea()
+            .blur(radius: 80)
+            .overlay(Color.black.opacity(0.72))
+            .ignoresSafeArea()
+        } else {
+            Color.black.ignoresSafeArea()
+        }
+    }
+
+    // MARK: - Helpers
+
     private var displayTime: TimeInterval {
         isDragging ? dragTime : playerManager.currentTime
     }
@@ -352,9 +436,6 @@ struct NowPlayingView: View {
     private var remainingTime: TimeInterval {
         playerManager.duration - displayTime
     }
-
-    // 0.5, 0.75, then 0.1 increments from 1.0 to 2.0, then 2.5, 3.0
-    private let playbackSpeeds: [Double] = [0.5, 0.75] + stride(from: 1.0, through: 2.0, by: 0.1).map { $0 } + [2.5, 3.0]
 
     private func formatSpeed(_ speed: Double) -> String {
         if speed == floor(speed) {
@@ -376,36 +457,17 @@ struct NowPlayingView: View {
 
     private var skipForwardIcon: String {
         let interval = Int(playerManager.skipForwardInterval)
-        // SF Symbols has goforward.5, .10, .15, .30, .45, .60, .75, .90
         let validIntervals = [5, 10, 15, 30, 45, 60, 75, 90]
-        if validIntervals.contains(interval) {
-            return "goforward.\(interval)"
-        }
-        return "goforward.30"
+        return validIntervals.contains(interval) ? "goforward.\(interval)" : "goforward.30"
     }
 
     private var skipBackwardIcon: String {
         let interval = Int(playerManager.skipBackwardInterval)
-        // SF Symbols has gobackward.5, .10, .15, .30, .45, .60, .75, .90
         let validIntervals = [5, 10, 15, 30, 45, 60, 75, 90]
-        if validIntervals.contains(interval) {
-            return "gobackward.\(interval)"
-        }
-        return "gobackward.15"
+        return validIntervals.contains(interval) ? "gobackward.\(interval)" : "gobackward.15"
     }
 
     // MARK: - Local Transcription
-
-    /// True when the current episode can be transcribed on-device:
-    /// it must be downloaded and the OS must support SpeechAnalyzer.
-    private var canTranscribeCurrentEpisode: Bool {
-        guard let episode = playerManager.currentEpisode else { return false }
-        guard episode.localFilePath != nil else { return false }
-        guard LocalTranscriptionService.isSupported else { return false }
-        // Already has a transcript — no need to offer transcription
-        guard episode.transcriptURL == nil, episode.localTranscriptPath == nil else { return false }
-        return true
-    }
 
     private func startLocalTranscription() {
         guard let episode = playerManager.currentEpisode else { return }
@@ -413,53 +475,6 @@ struct NowPlayingView: View {
             await localTranscriptionService.transcribe(episode: episode, context: modelContext)
         }
     }
-
-    // MARK: - Artwork Color Extraction
-
-    /// Samples pixels from a downscaled copy of the artwork and returns the
-    /// average hue of colorful (saturated, mid-brightness) pixels, boosted
-    /// slightly in saturation so it works well as a UI tint.
-    private func extractDominantColor(from url: URL) async -> Color? {
-        guard let (data, _) = try? await URLSession.shared.data(from: url),
-              let uiImage = UIImage(data: data),
-              let cgImage = uiImage.cgImage else { return nil }
-
-        let size = 32
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        var pixels = [UInt8](repeating: 0, count: size * size * 4)
-        guard let ctx = CGContext(
-            data: &pixels,
-            width: size, height: size,
-            bitsPerComponent: 8, bytesPerRow: size * 4,
-            space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return nil }
-
-        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: size, height: size))
-
-        var rSum: CGFloat = 0, gSum: CGFloat = 0, bSum: CGFloat = 0, count: CGFloat = 0
-        for i in stride(from: 0, to: pixels.count, by: 4) {
-            let r = CGFloat(pixels[i]) / 255
-            let g = CGFloat(pixels[i + 1]) / 255
-            let b = CGFloat(pixels[i + 2]) / 255
-            let maxC = max(r, g, b), minC = min(r, g, b)
-            let saturation = maxC == 0 ? 0 : (maxC - minC) / maxC
-            // Skip near-grey, near-black, and near-white pixels
-            guard saturation > 0.25, maxC > 0.2, maxC < 0.92 else { continue }
-            rSum += r; gSum += g; bSum += b; count += 1
-        }
-
-        guard count > 20 else { return nil }
-
-        // Boost saturation slightly so the extracted color pops as a tint
-        let avg = UIColor(
-            red: rSum / count, green: gSum / count, blue: bSum / count, alpha: 1
-        )
-        var h: CGFloat = 0, s: CGFloat = 0, v: CGFloat = 0, a: CGFloat = 0
-        avg.getHue(&h, saturation: &s, brightness: &v, alpha: &a)
-        return Color(hue: h, saturation: min(s * 1.3, 1.0), brightness: min(v * 1.1, 1.0))
-    }
-
 }
 
 

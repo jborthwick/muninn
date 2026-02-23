@@ -78,7 +78,11 @@ final class AudioPlayerManager {
 
     // Sleep timer
     private(set) var sleepTimerEndTime: Date?
+    private(set) var sleepTimerRemaining: TimeInterval?
     private var sleepTimer: Timer?
+
+    // Now Playing accent color — pre-computed from artwork so it's ready before the sheet opens
+    private(set) var nowPlayingDominantColor: Color = .accentColor
 
     // MARK: - Private Properties
 
@@ -189,6 +193,7 @@ final class AudioPlayerManager {
         StatsService.shared.startListening(episode: episode)
 
         currentEpisode = episode
+        updateArtworkColor(for: episode)
         isLoading = true
 
         // Activate audio session when starting playback
@@ -358,25 +363,23 @@ final class AudioPlayerManager {
 
     // MARK: - Sleep Timer
 
-    var sleepTimerRemaining: TimeInterval? {
-        guard let endTime = sleepTimerEndTime else { return nil }
-        let remaining = endTime.timeIntervalSinceNow
-        return remaining > 0 ? remaining : nil
-    }
-
     func setSleepTimer(minutes: Int) {
         cancelSleepTimer()
 
         if minutes <= 0 { return }
 
         sleepTimerEndTime = Date().addingTimeInterval(TimeInterval(minutes * 60))
+        sleepTimerRemaining = TimeInterval(minutes * 60)
 
         sleepTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self else { return }
-                if let remaining = self.sleepTimerRemaining, remaining <= 0 {
+                guard let self, let endTime = self.sleepTimerEndTime else { return }
+                let remaining = endTime.timeIntervalSinceNow
+                if remaining <= 0 {
                     self.pause()
                     self.cancelSleepTimer()
+                } else {
+                    self.sleepTimerRemaining = remaining
                 }
             }
         }
@@ -393,6 +396,7 @@ final class AudioPlayerManager {
         sleepTimer?.invalidate()
         sleepTimer = nil
         sleepTimerEndTime = nil
+        sleepTimerRemaining = nil
     }
 
     var isSleepTimerEndOfEpisode: Bool {
@@ -704,6 +708,7 @@ final class AudioPlayerManager {
 
         // Restore episode state (without playing)
         currentEpisode = episode
+        updateArtworkColor(for: episode)
 
         // Restore position from either UserDefaults or episode's saved position
         let savedPosition = UserDefaults.standard.double(forKey: Keys.lastPlaybackPosition)
@@ -716,6 +721,70 @@ final class AudioPlayerManager {
         updateNowPlayingInfo()
 
         logger.info("Restored last episode: \(episode.title)")
+    }
+
+    // MARK: - Artwork Color
+
+    /// Updates `nowPlayingDominantColor` from the episode's artwork.
+    /// Uses the in-memory ImageCache so the result is available synchronously
+    /// if the image was already loaded (e.g. by the mini player).
+    private func updateArtworkColor(for episode: Episode) {
+        guard let urlString = episode.displayArtworkURL,
+              let url = URL(string: urlString) else { return }
+
+        // Synchronous memory-cache hit — no async needed, color is ready immediately
+        if let cached = ImageCache.shared.cachedImage(for: url),
+           let color = Self.extractDominantColor(from: cached) {
+            nowPlayingDominantColor = color
+            return
+        }
+
+        // Not in memory cache yet — load async from disk / network
+        Task { [weak self] in
+            guard let self else { return }
+            if let image = await ImageCache.shared.image(for: url),
+               let color = Self.extractDominantColor(from: image) {
+                self.nowPlayingDominantColor = color
+            }
+        }
+    }
+
+    /// Samples pixels from a downscaled copy of the artwork and returns the
+    /// average hue of colorful (saturated, mid-brightness) pixels, boosted
+    /// slightly in saturation so it works well as a UI tint.
+    private static func extractDominantColor(from image: UIImage) -> Color? {
+        guard let cgImage = image.cgImage else { return nil }
+
+        let size = 32
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        var pixels = [UInt8](repeating: 0, count: size * size * 4)
+        guard let ctx = CGContext(
+            data: &pixels,
+            width: size, height: size,
+            bitsPerComponent: 8, bytesPerRow: size * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: size, height: size))
+
+        var rSum: CGFloat = 0, gSum: CGFloat = 0, bSum: CGFloat = 0, count: CGFloat = 0
+        for i in stride(from: 0, to: pixels.count, by: 4) {
+            let r = CGFloat(pixels[i]) / 255
+            let g = CGFloat(pixels[i + 1]) / 255
+            let b = CGFloat(pixels[i + 2]) / 255
+            let maxC = max(r, g, b), minC = min(r, g, b)
+            let saturation = maxC == 0 ? 0 : (maxC - minC) / maxC
+            guard saturation > 0.25, maxC > 0.2, maxC < 0.92 else { continue }
+            rSum += r; gSum += g; bSum += b; count += 1
+        }
+
+        guard count > 20 else { return nil }
+
+        let avg = UIColor(red: rSum / count, green: gSum / count, blue: bSum / count, alpha: 1)
+        var h: CGFloat = 0, s: CGFloat = 0, v: CGFloat = 0, a: CGFloat = 0
+        avg.getHue(&h, saturation: &s, brightness: &v, alpha: &a)
+        return Color(hue: h, saturation: min(s * 1.3, 1.0), brightness: min(v * 1.1, 1.0))
     }
 
     // MARK: - Playback Ended

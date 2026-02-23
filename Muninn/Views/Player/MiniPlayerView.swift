@@ -85,6 +85,7 @@ struct MiniPlayerView: View {
                 .padding(.horizontal, 28)
                 .padding(.bottom, 4)
             }
+            .contentShape(Rectangle())
             .onTapGesture {
                 showNowPlaying = true
             }
@@ -125,7 +126,7 @@ struct GlassBackgroundModifier: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
             content
-                .glassEffect(.regular.interactive(), in: .capsule)
+                .glassEffect(.regular, in: .capsule)
         } else {
             content
                 .background(.ultraThinMaterial, in: Capsule())
