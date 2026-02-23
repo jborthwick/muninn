@@ -67,6 +67,14 @@ struct TranscriptView: View {
     // Cancellable scroll task — lets us debounce rapid seeks/scrubs
     @State private var pendingScrollTask: Task<Void, Never>? = nil
 
+    // Cached to avoid O(n) recomputation on every render.
+    // segmentGroups is expensive to build and never changes during playback —
+    // only when the transcript loads. currentSegmentID is updated via
+    // onChange(of: currentTime) at most every 0.5 s, not during every render.
+    // This makes the render path O(1) so scrubbing the slider stays responsive.
+    @State private var cachedSegmentGroups: [[TranscriptSegment]] = []
+    @State private var currentSegmentID: UUID? = nil
+
     // MARK: - Derived from services
 
     private var segments: [TranscriptSegment] { transcriptService.segments }
@@ -85,14 +93,16 @@ struct TranscriptView: View {
         return true
     }
 
-    private var currentSegment: TranscriptSegment? {
-        segments.last(where: { currentTime >= $0.startTime && currentTime < $0.endTime })
-            ?? (currentTime > 0 ? segments.last(where: { currentTime >= $0.startTime }) : nil)
+    // MARK: - Cache helpers
+
+    /// Rebuilds cachedSegmentGroups from the current segments and syncs currentSegmentID.
+    /// Called once on appear and whenever the transcript is (re)loaded.
+    private func rebuildCache() {
+        cachedSegmentGroups = buildSegmentGroups()
+        currentSegmentID = resolveCurrentSegment(at: currentTime)?.id
     }
 
-    /// Segments grouped into paragraph-sized chunks, breaking on sentence-ending
-    /// punctuation or when a chunk exceeds ~200 characters.
-    private var segmentGroups: [[TranscriptSegment]] {
+    private func buildSegmentGroups() -> [[TranscriptSegment]] {
         var groups: [[TranscriptSegment]] = []
         var current: [TranscriptSegment] = []
         var charCount = 0
@@ -112,8 +122,14 @@ struct TranscriptView: View {
         return groups
     }
 
-    private func groupContaining(_ segment: TranscriptSegment) -> [TranscriptSegment]? {
-        segmentGroups.first(where: { $0.contains(where: { $0.id == segment.id }) })
+    /// O(n) segment search — only called from onChange(of: currentTime), not from body.
+    private func resolveCurrentSegment(at time: TimeInterval) -> TranscriptSegment? {
+        segments.last(where: { time >= $0.startTime && time < $0.endTime })
+            ?? (time > 0 ? segments.last(where: { time >= $0.startTime }) : nil)
+    }
+
+    private func groupContainingID(_ id: UUID) -> [TranscriptSegment]? {
+        cachedSegmentGroups.first(where: { $0.contains(where: { $0.id == id }) })
     }
 
     var body: some View {
@@ -139,7 +155,7 @@ struct TranscriptView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 4) {
-                            ForEach(segmentGroups, id: \.first?.id) { group in
+                            ForEach(cachedSegmentGroups, id: \.first?.id) { group in
                                 segmentGroupView(group)
                                     .id(group.first?.id)
                             }
@@ -148,8 +164,11 @@ struct TranscriptView: View {
                         .padding(.vertical, 8)
                     }
                     .onChange(of: currentTime) { oldTime, newTime in
-                        guard let seg = currentSegment,
-                              let group = groupContaining(seg),
+                        // Update cached current segment (O(n), but only runs every ~0.5 s)
+                        currentSegmentID = resolveCurrentSegment(at: newTime)?.id
+
+                        guard let segID = currentSegmentID,
+                              let group = groupContainingID(segID),
                               let groupID = group.first?.id,
                               groupID != activeGroupID else { return }
 
@@ -157,13 +176,14 @@ struct TranscriptView: View {
 
                         if isSeek {
                             // Scrub / skip: cancel any previous pending scroll and
-                            // wait a beat so rapid slider changes don't thrash the view.
+                            // wait a short beat so rapid skip-button presses don't
+                            // thrash the view, then snap in quickly.
                             pendingScrollTask?.cancel()
                             pendingScrollTask = Task {
-                                try? await Task.sleep(for: .milliseconds(600))
+                                try? await Task.sleep(for: .milliseconds(150))
                                 guard !Task.isCancelled else { return }
                                 activeGroupID = groupID
-                                withAnimation(.easeInOut(duration: 0.5)) {
+                                withAnimation(.easeOut(duration: 0.2)) {
                                     proxy.scrollTo(groupID, anchor: .center)
                                 }
                             }
@@ -177,8 +197,8 @@ struct TranscriptView: View {
                         }
                     }
                     .onAppear {
-                        if let seg = currentSegment,
-                           let group = groupContaining(seg),
+                        if let segID = currentSegmentID,
+                           let group = groupContainingID(segID),
                            let groupID = group.first?.id {
                             activeGroupID = groupID
                             proxy.scrollTo(groupID, anchor: .center)
@@ -187,6 +207,10 @@ struct TranscriptView: View {
                 }
             }
         }
+        .onAppear { rebuildCache() }
+        // Rebuild when the transcript is (re)loaded — keyed on the first segment's
+        // identity so a full reload is detected even if the count happens to match.
+        .onChange(of: segments.first?.id) { _, _ in rebuildCache() }
     }
 
     // MARK: - Empty State Views
@@ -275,7 +299,8 @@ struct TranscriptView: View {
 
     @ViewBuilder
     private func segmentGroupView(_ group: [TranscriptSegment]) -> some View {
-        let groupHasCurrent = group.contains(where: { $0.id == currentSegment?.id })
+        // O(1) — reads cached state, no linear search
+        let groupHasCurrent = group.contains(where: { $0.id == currentSegmentID })
         let speaker = group.first?.speaker
 
         Button {
@@ -311,7 +336,8 @@ struct TranscriptView: View {
         for (i, segment) in group.enumerated() {
             let text = i < group.count - 1 ? segment.text + " " : segment.text
             var span = AttributedString(text)
-            let isCurrent = segment.id == currentSegment?.id
+            // O(1) — compares against cached ID, not a live O(n) search
+            let isCurrent = segment.id == currentSegmentID
             let isPast = segment.endTime < currentTime
             if isCurrent {
                 span.foregroundColor = .primary

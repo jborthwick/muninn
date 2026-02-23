@@ -789,21 +789,30 @@ struct PodcastDetailView: View {
             cleanTitle = String(cleanTitle[..<range.lowerBound])
         }
 
-        // Remove "(Premium)" or similar suffixes
+        // Remove parenthetical suffixes like "(Premium)" or "(Subscriber)"
         if let range = cleanTitle.range(of: #"\s*\((premium|subscriber|member|patron).*\)"#, options: [.regularExpression, .caseInsensitive]) {
+            cleanTitle = String(cleanTitle[..<range.lowerBound])
+        }
+
+        // Remove bare (non-parenthetical) private/member suffixes, e.g.
+        // "Patreon Exclusives", "Patreon Feed", "Members Only", "Subscriber Exclusive"
+        if let range = cleanTitle.range(of: #"\s+(patreon|patron|subscribers?|members?)(\s+(exclusives?|feed|only|content))?\s*$"#,
+                                        options: [.regularExpression, .caseInsensitive]) {
             cleanTitle = String(cleanTitle[..<range.lowerBound])
         }
 
         cleanTitle = cleanTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         logger.info("Clean title for search: \(cleanTitle)")
 
-        // Try progressively shorter search queries until we find good matches
-        // This handles cases like "If Books Could Kill Mile High Club" where "Mile High Club" is a tier name
+        // Try progressively shorter search queries until we find good matches.
+        // This handles cases like "If Books Could Kill Mile High Club" where
+        // "Mile High Club" is a tier name, and single-word abbreviations like
+        // "NaddPod" where stripping the suffix leaves only one word.
         var searchQueries = [cleanTitle]
         let words = cleanTitle.split(separator: " ").map(String.init)
-        if words.count > 3 {
-            // Try removing last 1, 2, 3 words
-            for dropCount in 1...min(3, words.count - 2) {
+        if words.count >= 2 {
+            // Try removing last 1, 2, 3 words (keeping at least 1)
+            for dropCount in 1...min(3, words.count - 1) {
                 let shortened = words.dropLast(dropCount).joined(separator: " ")
                 if shortened.count >= 3 {
                     searchQueries.append(shortened)
@@ -811,7 +820,11 @@ struct PodcastDetailView: View {
             }
         }
 
-        for searchQuery in searchQueries {
+        // De-duplicate while preserving order
+        var seen = Set<String>()
+        searchQueries = searchQueries.filter { seen.insert($0).inserted }
+
+        for (queryIndex, searchQuery) in searchQueries.enumerated() {
             logger.info("Trying search query: \(searchQuery)")
 
             do {
@@ -843,6 +856,24 @@ struct PodcastDetailView: View {
                 if let match = bestMatch, match.result.feedURL != nil {
                     logger.info("Best match: '\(match.result.title)' with score \(match.score)")
                     let appleURL = "https://podcasts.apple.com/podcast/id\(match.result.id)"
+                    logger.info("Setting public URL: \(appleURL)")
+                    await MainActor.run {
+                        podcast.publicFeedURL = appleURL
+                    }
+                    return
+                }
+
+                // Fallback for single-word abbreviation queries (e.g. "NaddPod"):
+                // word-overlap scoring can never work when the query is an opaque
+                // abbreviation of the full show title.  If this is the last query
+                // and it's a single substantive word, trust iTunes' own ranking and
+                // accept the top result.
+                let isLastQuery = queryIndex == searchQueries.count - 1
+                if isLastQuery && titleWords.count == 1,
+                   let word = titleWords.first, word.count >= 4,
+                   let topResult = results.first(where: { $0.feedURL != nil }) {
+                    logger.info("Accepting top iTunes result for abbreviation query '\(searchQuery)': '\(topResult.title)'")
+                    let appleURL = "https://podcasts.apple.com/podcast/id\(topResult.id)"
                     logger.info("Setting public URL: \(appleURL)")
                     await MainActor.run {
                         podcast.publicFeedURL = appleURL
