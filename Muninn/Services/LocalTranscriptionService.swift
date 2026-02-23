@@ -124,6 +124,38 @@ final class LocalTranscriptionService {
         // Create transcriber
         let transcriber = SpeechTranscriber(locale: locale, preset: .timeIndexedTranscriptionWithAlternatives)
 
+        // TODO: Speaker diarization
+        //
+        // Add a SpeakerDiarizer module to identify distinct speakers:
+        //
+        //   let diarizer = SpeakerDiarizer()
+        //   let analyzer = SpeechAnalyzer(modules: [transcriber, diarizer])
+        //
+        // Then extract the speaker label from each result's AttributedString runs
+        // alongside the existing TimeRangeAttribute extraction:
+        //
+        //   var speakerLabel: String?
+        //   for run in attrText.runs {
+        //       if let s = run[AttributeScopes.SpeechAttributes.SpeakerAttribute.self] {
+        //           speakerLabel = s.identifier   // e.g. "Speaker 1", "Speaker 2"
+        //           break
+        //       }
+        //   }
+        //
+        // Pass speakerLabel through to TranscriptSegment.speaker — the model and
+        // TranscriptView UI already support it.
+        //
+        // CAVEATS:
+        // - Exact attribute key name (SpeakerAttribute? SpeakerLabelAttribute?)
+        //   needs verification against the iOS 26 Speech framework headers.
+        // - SpeakerDiarizer may require a separate AssetInventory model download.
+        // - Labels are anonymous IDs, not names. Getting real host names would
+        //   require a post-processing step: map stable speaker IDs to names from
+        //   episode/show description metadata (e.g. via a local LLM or heuristic
+        //   matching against the first few utterances).
+        // - Performance: adds ~30-60% to transcription time and higher peak memory.
+        //   Consider making it opt-in at the transcription prompt.
+
         // Download model assets if not already installed
         if let installRequest = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
             logger.info("Downloading speech model assets…")
