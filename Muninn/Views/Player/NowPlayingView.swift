@@ -8,6 +8,9 @@ struct NowPlayingView: View {
     @Environment(\.dismiss) private var dismiss
 
     @AppStorage("nowPlaying.showTranscript") private var showTranscript = false
+    /// GUID of the episode that was playing when showTranscript was last set to true.
+    /// Used to detect episode changes that occurred while the player was dismissed.
+    @AppStorage("nowPlaying.transcriptEpisodeGUID") private var transcriptEpisodeGUID = ""
     @State private var showMarkPlayedConfirmation = false
     /// Decoupled from player state so the text appears *after* the Menu closes,
     /// avoiding the clip-during-close-animation artifact.
@@ -80,6 +83,18 @@ struct NowPlayingView: View {
             // Initialise label state to match current player state without animation
             speedLabelActive = abs(playerManager.effectivePlaybackSpeed - 1.0) > 0.01
             sleepLabelActive = playerManager.sleepTimerEndTime != nil
+
+            // If transcript is persisted open, ensure it's loaded for the *current*
+            // episode. The episode may have changed while the player was dismissed,
+            // in which case we clear stale segments before reloading so they never
+            // appear on screen.
+            if showTranscript, let episode = playerManager.currentEpisode {
+                if transcriptEpisodeGUID != episode.guid {
+                    transcriptService.clear()
+                    transcriptEpisodeGUID = episode.guid
+                }
+                Task { await transcriptService.load(for: episode) }
+            }
         }
         .onChange(of: playerManager.effectivePlaybackSpeed) { _, newSpeed in
             let active = abs(newSpeed - 1.0) > 0.01
@@ -106,8 +121,9 @@ struct NowPlayingView: View {
             }
         }
         .onChange(of: playerManager.currentEpisode?.guid) { _, _ in
-            // Reset transcript state when episode changes
+            // Reset transcript state when episode changes (while player is open)
             showTranscript = false
+            transcriptEpisodeGUID = ""
             transcriptService.clear()
         }
         .onChange(of: localTranscriptionService.isTranscribing) { _, isTranscribing in
@@ -364,6 +380,7 @@ struct NowPlayingView: View {
                 showTranscript.toggle()
             }
             if showTranscript {
+                transcriptEpisodeGUID = episode.guid
                 Task { await transcriptService.load(for: episode) }
             }
         } label: {
