@@ -12,6 +12,9 @@
 		0E83BCCB01E3403FC14E6311 /* FolderDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8F409D264E22CBAEE1C41E7 /* FolderDetailView.swift */; };
 		14BB3C985E2AB690741ACDCF /* AllEpisodesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48CCBFDB026179489552C0FB /* AllEpisodesView.swift */; };
 		193E56E92050440094B874AD /* LocalTranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A6CF04F4F7E4F549972F0DB /* LocalTranscriptionService.swift */; };
+		AA000000000000000000001B /* Chapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000001A /* Chapter.swift */; };
+		AA000000000000000000002B /* ChapterService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000002A /* ChapterService.swift */; };
+		AA000000000000000000003B /* ChapterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000003A /* ChapterView.swift */; };
 		1C9E5157BCA3810B3D481F85 /* RefreshManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 268AA5D773C70AD1911DE5FF /* RefreshManager.swift */; };
 		1DFEDAD63A631AC4086707F7 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7CCAF875DC9E95B9D810F81 /* SettingsView.swift */; };
 		1F26FCBEFEEFB5FA23A5CE86 /* NowPlayingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0546B715B9167A888B99C30 /* NowPlayingView.swift */; };
@@ -101,6 +104,9 @@
 		7057E2FF9329840C5E618047 /* EpisodeRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpisodeRowView.swift; sourceTree = "<group>"; };
 		76E35D34ECBE9C85F4B96E7B /* FeedService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedService.swift; sourceTree = "<group>"; };
 		833ED2B04B4E6B74A7044561 /* TranscriptSegment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptSegment.swift; sourceTree = "<group>"; };
+		AA000000000000000000001A /* Chapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Chapter.swift; sourceTree = "<group>"; };
+		AA000000000000000000002A /* ChapterService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChapterService.swift; sourceTree = "<group>"; };
+		AA000000000000000000003A /* ChapterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChapterView.swift; sourceTree = "<group>"; };
 		84CAFAE3F8C63C17199C051B /* AddPodcastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddPodcastView.swift; sourceTree = "<group>"; };
 		92D993985B5B0FB880F91849 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
 		96D17A61656CAF01A1B84E7A /* PodcastRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PodcastRowView.swift; sourceTree = "<group>"; };
@@ -260,6 +266,7 @@
 				E69FECF382B2E277C7A1B62C /* SyncService.swift */,
 				1586FB3AD0CBF245C4D6FE17 /* TranscriptService.swift */,
 				9A6CF04F4F7E4F549972F0DB /* LocalTranscriptionService.swift */,
+				AA000000000000000000002A /* ChapterService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -288,6 +295,7 @@
 				F905C1228E087C76EAA270E3 /* MiniPlayerView.swift */,
 				E0546B715B9167A888B99C30 /* NowPlayingView.swift */,
 				40C7CD4FB2DD6AB9EAE57CA7 /* TranscriptView.swift */,
+				AA000000000000000000003A /* ChapterView.swift */,
 			);
 			path = Player;
 			sourceTree = "<group>";
@@ -318,6 +326,7 @@
 				E1E64141727F55C2C2D3D1BD /* Podcast.swift */,
 				623991318220118EC2FAD57B /* QueueItem.swift */,
 				833ED2B04B4E6B74A7044561 /* TranscriptSegment.swift */,
+				AA000000000000000000001A /* Chapter.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -478,6 +487,9 @@
 				7A19DC01562B3158EB246869 /* TranscriptService.swift in Sources */,
 				193E56E92050440094B874AD /* LocalTranscriptionService.swift in Sources */,
 				FDA609EF04A5F3D23FD414D5 /* TranscriptView.swift in Sources */,
+				AA000000000000000000001B /* Chapter.swift in Sources */,
+				AA000000000000000000002B /* ChapterService.swift in Sources */,
+				AA000000000000000000003B /* ChapterView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -7,7 +7,7 @@ struct MiniPlayerView: View {
     var body: some View {
         if let episode = playerManager.currentEpisode {
             HStack(spacing: 12) {
-                // Artwork
+                // Artwork with circular progress ring
                 CachedAsyncImage(url: URL(string: episode.displayArtworkURL ?? "")) { image in
                     image
                         .resizable()
@@ -22,6 +22,21 @@ struct MiniPlayerView: View {
                 }
                 .frame(width: 48, height: 48)
                 .clipShape(Circle())
+                .overlay {
+                    ZStack {
+                        // Background track — strokeBorder keeps it fully inside the circle
+                        Circle()
+                            .strokeBorder(Color.white.opacity(0.1), lineWidth: 6)
+                        // Progress arc — padding(lineWidth/2) insets the stroke path
+                        // so it sits fully inside, matching the background track
+                        Circle()
+                            .trim(from: 0, to: progress)
+                            .stroke(Color.white.opacity(0.4),
+                                    style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                            .padding(3)
+                            .rotationEffect(.degrees(-90))
+                    }
+                }
 
                 // Title and podcast
                 VStack(alignment: .leading, spacing: 2) {
@@ -74,17 +89,6 @@ struct MiniPlayerView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
             .modifier(GlassBackgroundModifier())
-            .overlay(alignment: .bottom) {
-                // Progress indicator at bottom — inset enough to stay inside the pill's curved ends
-                GeometryReader { geometry in
-                    Capsule()
-                        .fill(Color.accentColor)
-                        .frame(width: geometry.size.width * progress, height: 3)
-                }
-                .frame(height: 3)
-                .padding(.horizontal, 28)
-                .padding(.bottom, 4)
-            }
             .contentShape(Rectangle())
             .onTapGesture {
                 showNowPlaying = true

@@ -4,6 +4,7 @@ struct NowPlayingView: View {
     var playerManager = AudioPlayerManager.shared
     var transcriptService = TranscriptService.shared
     var localTranscriptionService = LocalTranscriptionService.shared
+    var chapterService = ChapterService.shared
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
@@ -11,6 +12,9 @@ struct NowPlayingView: View {
     /// GUID of the episode that was playing when showTranscript was last set to true.
     /// Used to detect episode changes that occurred while the player was dismissed.
     @AppStorage("nowPlaying.transcriptEpisodeGUID") private var transcriptEpisodeGUID = ""
+    @AppStorage("nowPlaying.showChapters") private var showChapters = false
+    /// GUID of the episode that was playing when showChapters was last set to true.
+    @AppStorage("nowPlaying.chaptersEpisodeGUID") private var chaptersEpisodeGUID = ""
     @State private var showMarkPlayedConfirmation = false
     /// Decoupled from player state so the text appears *after* the Menu closes,
     /// avoiding the clip-during-close-animation artifact.
@@ -53,6 +57,7 @@ struct NowPlayingView: View {
             if let episode = playerManager.currentEpisode {
                 topSection(for: episode)
                     .animation(.easeInOut(duration: 0.25), value: showTranscript)
+                    .animation(.easeInOut(duration: 0.25), value: showChapters)
                 progressSection
                 playbackControls
                 actionsRow(for: episode)
@@ -95,6 +100,15 @@ struct NowPlayingView: View {
                 }
                 Task { await transcriptService.load(for: episode) }
             }
+
+            // Same stale-data guard for chapters
+            if showChapters, let episode = playerManager.currentEpisode {
+                if chaptersEpisodeGUID != episode.guid {
+                    chapterService.clear()
+                    chaptersEpisodeGUID = episode.guid
+                }
+                chapterService.load(for: episode)
+            }
         }
         .onChange(of: playerManager.effectivePlaybackSpeed) { _, newSpeed in
             let active = abs(newSpeed - 1.0) > 0.01
@@ -121,10 +135,13 @@ struct NowPlayingView: View {
             }
         }
         .onChange(of: playerManager.currentEpisode?.guid) { _, _ in
-            // Reset transcript state when episode changes (while player is open)
+            // Reset transcript and chapters state when episode changes (while player is open)
             showTranscript = false
             transcriptEpisodeGUID = ""
             transcriptService.clear()
+            showChapters = false
+            chaptersEpisodeGUID = ""
+            chapterService.clear()
         }
         .onChange(of: localTranscriptionService.isTranscribing) { _, isTranscribing in
             // When transcription finishes, reload the transcript
@@ -132,15 +149,26 @@ struct NowPlayingView: View {
                 Task { await transcriptService.load(for: episode) }
             }
         }
+        .onChange(of: chapterService.isGenerating) { _, isGenerating in
+            // When chapter generation finishes, reload chapters
+            if !isGenerating, let episode = playerManager.currentEpisode, showChapters {
+                chapterService.load(for: episode)
+            }
+        }
     }
 
     // MARK: - Sub-views
 
-    /// Artwork + title in normal mode, or compact header + transcript scroll in transcript mode.
-    /// The `.animation` for showTranscript is applied at the call site in body.
+    /// Artwork + title in normal mode, compact header + transcript/chapter scroll in panel modes.
+    /// The `.animation` for showTranscript/showChapters is applied at the call site in body.
     @ViewBuilder
     private func topSection(for episode: Episode) -> some View {
-        if showTranscript {
+        if showChapters {
+            ChapterHeaderView(episode: episode) {
+                withAnimation(.easeInOut(duration: 0.25)) { showChapters = false }
+            }
+            ChapterView(onGenerate: startChapterGeneration)
+        } else if showTranscript {
             TranscriptHeaderView(episode: episode) {
                 withAnimation(.easeInOut(duration: 0.25)) { showTranscript = false }
             }
@@ -227,7 +255,7 @@ struct NowPlayingView: View {
         .padding(.top, 24)
     }
 
-    /// Speed, sleep, star, mark-played, and transcript buttons.
+    /// Speed, sleep, star, mark-played, transcript, and chapters buttons.
     @ViewBuilder
     private func actionsRow(for episode: Episode) -> some View {
         HStack(spacing: 24) {
@@ -236,6 +264,7 @@ struct NowPlayingView: View {
             starButton(for: episode)
             markPlayedButton
             transcriptButton(for: episode)
+            chapterButton(for: episode)
         }
         .padding(.top, 24)
         .padding(.bottom, 8)
@@ -377,6 +406,7 @@ struct NowPlayingView: View {
     private func transcriptButton(for episode: Episode) -> some View {
         Button {
             withAnimation(.easeInOut(duration: 0.25)) {
+                if !showTranscript { showChapters = false }  // mutual exclusion
                 showTranscript.toggle()
             }
             if showTranscript {
@@ -387,6 +417,23 @@ struct NowPlayingView: View {
             Image(systemName: showTranscript ? "quote.bubble.fill" : "quote.bubble")
                 .font(.title2)
                 .foregroundStyle(showTranscript ? dominantColor : Color.secondary)
+        }
+    }
+
+    private func chapterButton(for episode: Episode) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                if !showChapters { showTranscript = false }  // mutual exclusion
+                showChapters.toggle()
+            }
+            if showChapters {
+                chaptersEpisodeGUID = episode.guid
+                chapterService.load(for: episode)
+            }
+        } label: {
+            Image(systemName: showChapters ? "list.bullet.rectangle.fill" : "list.bullet.rectangle")
+                .font(.title2)
+                .foregroundStyle(showChapters ? dominantColor : Color.secondary)
         }
     }
 
@@ -451,6 +498,15 @@ struct NowPlayingView: View {
             await localTranscriptionService.transcribe(episode: episode, context: modelContext)
         }
     }
+
+    // MARK: - Chapter Generation
+
+    private func startChapterGeneration() {
+        guard let episode = playerManager.currentEpisode else { return }
+        Task {
+            await chapterService.generate(episode: episode, context: modelContext)
+        }
+    }
 }
 
 
@@ -460,6 +516,7 @@ struct NowPlayingView: View {
 /// rapid slider updates only re-render this view, not NowPlayingView or TranscriptView.
 private struct ProgressSectionView: View {
     var playerManager = AudioPlayerManager.shared
+    var chapterService = ChapterService.shared
 
     @State private var isDragging = false
     @State private var dragTime: TimeInterval = 0
@@ -486,6 +543,9 @@ private struct ProgressSectionView: View {
                     }
                 }
             )
+            .overlay(alignment: .center) {
+                chapterTickMarks
+            }
 
             HStack {
                 Text(displayTime.formattedTimestamp)
@@ -503,6 +563,33 @@ private struct ProgressSectionView: View {
         }
         .padding(.horizontal)
         .padding(.top, 24)
+    }
+
+    /// Tick marks at chapter boundaries, overlaid on the scrubber track.
+    @ViewBuilder
+    private var chapterTickMarks: some View {
+        let chapters = chapterService.chapters
+        let duration = playerManager.duration
+        if chapters.count > 1, duration > 0 {
+            GeometryReader { geo in
+                // Apple's slider draws its track with ~12pt inset from each edge
+                // to accommodate the thumb circle.
+                let trackInset: CGFloat = 12
+                let trackWidth = geo.size.width - trackInset * 2
+                let currentTime = isDragging ? dragTime : playerManager.currentTime
+
+                // Skip the first chapter (starts at 0 = left edge of track)
+                ForEach(chapters.dropFirst()) { chapter in
+                    let x = trackInset + CGFloat(chapter.startTime / duration) * trackWidth
+                    let isCurrent = currentTime >= chapter.startTime && currentTime < chapter.endTime
+                    Rectangle()
+                        .fill(Color.white.opacity(isCurrent ? 0.9 : 0.45))
+                        .frame(width: 2, height: 10)
+                        .position(x: x, y: geo.size.height / 2)
+                }
+            }
+            .allowsHitTesting(false)
+        }
     }
 }
 

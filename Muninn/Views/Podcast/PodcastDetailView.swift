@@ -55,222 +55,8 @@ struct PodcastDetailView: View {
                 }
             }
 
-            // Sort and filter controls - single row
-            Section {
-                HStack(spacing: 12) {
-                    // Sort toggle
-                    Button {
-                        podcast.sortNewestFirst.toggle()
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "arrow.up.arrow.down")
-                            Text(podcast.sortNewestFirst ? "Newest" : "Oldest")
-                        }
-                        .font(.subheadline)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.secondary.opacity(0.1))
-                        .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-
-                    // Filter toggles
-                    FilterToggle(
-                        isOn: $showStarredOnly,
-                        icon: "star.fill",
-                        activeColor: .yellow
-                    )
-
-                    FilterToggle(
-                        isOn: $showDownloadedOnly,
-                        icon: "arrow.down.circle.fill",
-                        activeColor: .green
-                    )
-
-                    Spacer()
-
-                    // Auto-download toggle
-                    Button {
-                        podcast.autoDownloadNewEpisodes.toggle()
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: podcast.autoDownloadNewEpisodes ? "antenna.radiowaves.left.and.right" : "antenna.radiowaves.left.and.right.slash")
-                            Text("Auto")
-                                .font(.caption)
-                        }
-                        .font(.subheadline)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(podcast.autoDownloadNewEpisodes ? Color.blue.opacity(0.2) : Color.secondary.opacity(0.1))
-                        .foregroundStyle(podcast.autoDownloadNewEpisodes ? .blue : .secondary)
-                        .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .listSectionSeparator(.hidden, edges: .bottom)
-
-            // Episodes
-            Section {
-                // Search field + active filter pills
-                VStack(alignment: .leading, spacing: 8) {
-                    // Traditional iOS-style search box
-                    HStack(spacing: 8) {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundStyle(.secondary)
-                            .font(.system(size: 15))
-
-                        TextField(searchTags.isEmpty ? "Search episodes" : "Refine filter…", text: $searchText)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-                            .onSubmit { commitSearchTag() }
-
-                        if !searchText.isEmpty {
-                            Button { searchText = "" } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundStyle(Color(.tertiaryLabel))
-                                    .font(.system(size: 15))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(Color(.secondarySystemFill))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-
-                    // Active filter pills in a scrollable row below the search box
-                    if !searchTags.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 6) {
-                                ForEach(searchTags, id: \.self) { tag in
-                                    HStack(spacing: 4) {
-                                        Text(tag)
-                                            .font(.subheadline)
-                                            .lineLimit(1)
-                                        Button { removeSearchTag(tag) } label: {
-                                            Image(systemName: "xmark")
-                                                .font(.caption)
-                                                .fontWeight(.semibold)
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .background(Color.accentColor.opacity(0.15))
-                                    .foregroundStyle(Color.accentColor)
-                                    .clipShape(Capsule())
-                                }
-                            }
-                        }
-                        .frame(height: 34)
-                    }
-                }
-                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                .listRowSeparator(.hidden)
-
-                if filteredEpisodes.isEmpty {
-                    ContentUnavailableView(
-                        emptyStateTitle,
-                        systemImage: emptyStateIcon,
-                        description: Text(emptyStateDescription)
-                    )
-                } else {
-                    // Episode count as inline row (not sticky)
-                    HStack {
-                        if hasMoreEpisodes {
-                            Text("Showing \(filteredEpisodes.count) of \(totalEpisodeCount) Episodes")
-                        } else {
-                            Text("\(totalEpisodeCount) Episodes")
-                        }
-                        Spacer()
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-
-                    ForEach(Array(filteredEpisodes.enumerated()), id: \.element.guid) { index, episode in
-                        EpisodeRowView(
-                            episode: episode,
-                            isSelecting: isSelecting,
-                            isSelected: selectedEpisodeGUIDs.contains(episode.guid)
-                        )
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            if isSelecting {
-                                toggleEpisodeSelection(episode)
-                            } else {
-                                selectedEpisode = episode
-                            }
-                        }
-                        .onAppear {
-                            // Load more when approaching the end
-                            if index >= filteredEpisodes.count - 10 && hasMoreEpisodes {
-                                loadMoreEpisodes()
-                            }
-                        }
-                        .contextMenu {
-                            if !isSelecting {
-                                EpisodeContextMenu(
-                                    episode: episode,
-                                    onDownloadNeedsConfirmation: {
-                                        episodePendingDownload = episode
-                                        showCellularConfirmation = true
-                                    }
-                                )
-                            }
-                        }
-                        .swipeActions(edge: .leading) {
-                            if !isSelecting {
-                                Button {
-                                    toggleStar(episode)
-                                } label: {
-                                    Label(
-                                        episode.isStarred ? "Unstar" : "Star",
-                                        systemImage: episode.isStarred ? "star.slash" : "star"
-                                    )
-                                }
-                                .tint(.yellow)
-                            }
-                        }
-                        .swipeActions(edge: .trailing) {
-                            if !isSelecting {
-                                Button {
-                                    QueueManager.shared.addToQueue(episode)
-                                } label: {
-                                    Label("Queue", systemImage: "text.badge.plus")
-                                }
-                                .tint(.indigo)
-
-                                Button {
-                                    QueueManager.shared.playNext(episode)
-                                } label: {
-                                    Label("Next", systemImage: "text.line.first.and.arrowtriangle.forward")
-                                }
-                                .tint(.blue)
-                            }
-                        }
-                        .listRowBackground(
-                            selectedEpisodeGUIDs.contains(episode.guid) && isSelecting
-                                ? Color.accentColor.opacity(0.08)
-                                : nil
-                        )
-                    }
-
-                    // Loading indicator at bottom
-                    if hasMoreEpisodes {
-                        HStack {
-                            Spacer()
-                            ProgressView()
-                                .onAppear {
-                                    loadMoreEpisodes()
-                                }
-                            Spacer()
-                        }
-                        .listRowBackground(Color.clear)
-                    }
-                }
-            }
+            sortFilterSection
+            episodesSection
         }
         .listStyle(.plain)
         .contentMargins(.bottom, miniPlayerVisible ? 60 : 0, for: .scrollContent)
@@ -410,6 +196,206 @@ struct PodcastDetailView: View {
         .onChange(of: searchText) { _, _ in displayLimit = 100 }
         .onChange(of: searchTags) { _, _ in displayLimit = 100 }
     }
+
+    // MARK: - Sub-sections
+
+    @ViewBuilder
+    private var sortFilterSection: some View {
+        Section {
+            HStack(spacing: 12) {
+                Button {
+                    podcast.sortNewestFirst.toggle()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.up.arrow.down")
+                        Text(podcast.sortNewestFirst ? "Newest" : "Oldest")
+                    }
+                    .font(.subheadline)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.secondary.opacity(0.1))
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+
+                FilterToggle(isOn: $showStarredOnly, icon: "star.fill", activeColor: .yellow)
+                FilterToggle(isOn: $showDownloadedOnly, icon: "arrow.down.circle.fill", activeColor: .green)
+
+                Spacer()
+
+                Button {
+                    podcast.autoDownloadNewEpisodes.toggle()
+                } label: {
+                    let isAuto = podcast.autoDownloadNewEpisodes
+                    HStack(spacing: 4) {
+                        Image(systemName: isAuto ? "antenna.radiowaves.left.and.right" : "antenna.radiowaves.left.and.right.slash")
+                        Text("Auto").font(.caption)
+                    }
+                    .font(.subheadline)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(isAuto ? Color.blue.opacity(0.2) : Color.secondary.opacity(0.1))
+                    .foregroundStyle(isAuto ? .blue : .secondary)
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .listSectionSeparator(.hidden, edges: .bottom)
+    }
+
+    @ViewBuilder
+    private var episodesSection: some View {
+        Section {
+            searchHeader
+            if filteredEpisodes.isEmpty {
+                ContentUnavailableView(
+                    emptyStateTitle,
+                    systemImage: emptyStateIcon,
+                    description: Text(emptyStateDescription)
+                )
+            } else {
+                episodeCountRow
+                ForEach(Array(filteredEpisodes.enumerated()), id: \.element.guid) { index, episode in
+                    episodeRow(episode, index: index)
+                }
+                if hasMoreEpisodes {
+                    HStack {
+                        Spacer()
+                        ProgressView().onAppear { loadMoreEpisodes() }
+                        Spacer()
+                    }
+                    .listRowBackground(Color.clear)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var searchHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                    .font(.system(size: 15))
+                TextField(searchTags.isEmpty ? "Search episodes" : "Refine filter…", text: $searchText)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .onSubmit { commitSearchTag() }
+                if !searchText.isEmpty {
+                    Button { searchText = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(Color(.tertiaryLabel))
+                            .font(.system(size: 15))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(Color(.secondarySystemFill))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+
+            if !searchTags.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(searchTags, id: \.self) { tag in
+                            HStack(spacing: 4) {
+                                Text(tag).font(.subheadline).lineLimit(1)
+                                Button { removeSearchTag(tag) } label: {
+                                    Image(systemName: "xmark").font(.caption).fontWeight(.semibold)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.accentColor.opacity(0.15))
+                            .foregroundStyle(Color.accentColor)
+                            .clipShape(Capsule())
+                        }
+                    }
+                }
+                .frame(height: 34)
+            }
+        }
+        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+        .listRowSeparator(.hidden)
+    }
+
+    @ViewBuilder
+    private var episodeCountRow: some View {
+        HStack {
+            if hasMoreEpisodes {
+                Text("Showing \(filteredEpisodes.count) of \(totalEpisodeCount) Episodes")
+            } else {
+                Text("\(totalEpisodeCount) Episodes")
+            }
+            Spacer()
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+    }
+
+    @ViewBuilder
+    private func episodeRow(_ episode: Episode, index: Int) -> some View {
+        EpisodeRowView(
+            episode: episode,
+            isSelecting: isSelecting,
+            isSelected: selectedEpisodeGUIDs.contains(episode.guid)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if isSelecting {
+                toggleEpisodeSelection(episode)
+            } else {
+                selectedEpisode = episode
+            }
+        }
+        .onAppear {
+            if index >= filteredEpisodes.count - 10 && hasMoreEpisodes {
+                loadMoreEpisodes()
+            }
+        }
+        .contextMenu {
+            if !isSelecting {
+                EpisodeContextMenu(
+                    episode: episode,
+                    onDownloadNeedsConfirmation: {
+                        episodePendingDownload = episode
+                        showCellularConfirmation = true
+                    }
+                )
+            }
+        }
+        .swipeActions(edge: .leading) {
+            if !isSelecting {
+                Button { toggleStar(episode) } label: {
+                    Label(episode.isStarred ? "Unstar" : "Star",
+                          systemImage: episode.isStarred ? "star.slash" : "star")
+                }
+                .tint(.yellow)
+            }
+        }
+        .swipeActions(edge: .trailing) {
+            if !isSelecting {
+                Button { QueueManager.shared.addToQueue(episode) } label: {
+                    Label("Queue", systemImage: "text.badge.plus")
+                }
+                .tint(.indigo)
+                Button { QueueManager.shared.playNext(episode) } label: {
+                    Label("Next", systemImage: "text.line.first.and.arrowtriangle.forward")
+                }
+                .tint(.blue)
+            }
+        }
+        .listRowBackground(
+            selectedEpisodeGUIDs.contains(episode.guid) && isSelecting
+                ? Color.accentColor.opacity(0.08) : nil
+        )
+    }
+
+    // MARK: - Episode data
 
     /// How many more episodes to load when scrolling
     private let loadMoreIncrement = 50

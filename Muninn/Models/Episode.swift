@@ -42,6 +42,17 @@ final class Episode {
         return transcriptsPath.appendingPathComponent(filename)
     }
 
+    // Local chapters (from on-device generation via Foundation Models)
+    var localChaptersPath: String?  // nil = no generated chapters, stores just filename
+
+    /// Returns the full file URL for the locally-generated chapters JSON
+    var localChaptersURL: URL? {
+        guard let filename = localChaptersPath else { return nil }
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let chaptersPath = documentsPath.appendingPathComponent("Chapters", isDirectory: true)
+        return chaptersPath.appendingPathComponent(filename)
+    }
+
     // Relationships
     var podcast: Podcast?
 
