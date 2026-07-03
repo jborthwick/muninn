@@ -7,6 +7,7 @@ enum ChapterTitleGenerator {
     struct SegmentDraft {
         let startTime: TimeInterval
         let excerpt: String
+        var summary: String?
     }
 
     private static let logger = Logger(subsystem: "com.muninn", category: "ChapterTitles")
@@ -33,7 +34,6 @@ enum ChapterTitleGenerator {
     static func titles(
         for drafts: [SegmentDraft],
         episodeTitle: String,
-        synopsis: String?,
         episodeDuration: TimeInterval = 0
     ) async -> [String] {
         guard !drafts.isEmpty else { return [] }
@@ -43,7 +43,6 @@ enum ChapterTitleGenerator {
                 return try await generateWithModel(
                     drafts: drafts,
                     episodeTitle: episodeTitle,
-                    synopsis: synopsis,
                     episodeDuration: episodeDuration
                 )
             } catch {
@@ -53,7 +52,6 @@ enum ChapterTitleGenerator {
                 return try await generateMetadataOnly(
                     drafts: drafts,
                     episodeTitle: episodeTitle,
-                    synopsis: synopsis,
                     episodeDuration: episodeDuration
                 )
             } catch {
@@ -77,10 +75,9 @@ enum ChapterTitleGenerator {
     private static func generateWithModel(
         drafts: [SegmentDraft],
         episodeTitle: String,
-        synopsis: String?,
         episodeDuration: TimeInterval
     ) async throws -> [String] {
-        let instructions = instructionsBlock(episodeTitle: episodeTitle, synopsis: synopsis)
+        let instructions = instructionsBlock(episodeTitle: episodeTitle)
         let session = LanguageModelSession(instructions: instructions)
         session.prewarm()
 
@@ -97,10 +94,9 @@ enum ChapterTitleGenerator {
     private static func generateMetadataOnly(
         drafts: [SegmentDraft],
         episodeTitle: String,
-        synopsis: String?,
         episodeDuration: TimeInterval
     ) async throws -> [String] {
-        let instructions = instructionsBlock(episodeTitle: episodeTitle, synopsis: synopsis)
+        let instructions = instructionsBlock(episodeTitle: episodeTitle)
         let session = LanguageModelSession(instructions: instructions)
 
         let prompt = promptBlock(drafts: drafts, includeExcerpts: false)
@@ -113,23 +109,22 @@ enum ChapterTitleGenerator {
     }
 
     @available(iOS 26, *)
-    private static func instructionsBlock(episodeTitle: String, synopsis: String?) -> String {
-        var block = """
+    private static func instructionsBlock(episodeTitle: String) -> String {
+        """
         You write concise podcast chapter titles (4–7 words).
         Be specific to what is discussed; summarize the scene or topic in plain language.
         Avoid filler labels like Discussion or Wrap-up.
         For supporter roll calls or closing credits, use Closing Credits or Supporter Thanks.
         Podcast: "\(episodeTitle)"
         """
-        if let synopsis, !synopsis.isEmpty {
-            block += "\nEpisode synopsis: \(synopsis)"
-        }
-        return block
     }
 
     private static func promptBlock(drafts: [SegmentDraft], includeExcerpts: Bool) -> String {
         let segments = drafts.enumerated().map { index, draft -> String in
             let header = "Segment \(index + 1) (starts \(formatTime(draft.startTime))):"
+            if let summary = draft.summary, !summary.isEmpty {
+                return "\(header)\n\(summary)"
+            }
             if isRollCallLike(draft.excerpt) {
                 return "\(header)\nMostly a supporter roll call or closing credits."
             }

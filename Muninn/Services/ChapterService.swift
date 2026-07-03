@@ -59,8 +59,13 @@ final class ChapterService {
         if let oldURL = episode.localChaptersURL {
             try? FileManager.default.removeItem(at: oldURL)
         }
+        if let oldSummaryURL = episode.localSummaryURL {
+            try? FileManager.default.removeItem(at: oldSummaryURL)
+        }
         episode.localChaptersPath = nil
+        episode.localSummaryPath = nil
         chapters = []
+        TranscriptSummaryService.shared.clear()
 
         isGenerating = true
         error = nil
@@ -101,37 +106,75 @@ final class ChapterService {
             let chapterSegments = segments.filter { $0.startTime >= start && $0.startTime < end }
             return .init(
                 startTime: start,
-                excerpt: ChapterTitleGenerator.excerpt(from: chapterSegments)
+                excerpt: ChapterTitleGenerator.excerpt(from: chapterSegments),
+                summary: nil
             )
+        }
+
+        let summaryService = TranscriptSummaryService.shared
+        generationStatus = "Summarizing segments…"
+        let summaries = await summaryService.generateSegmentSummaries(
+            drafts: drafts,
+            episodeTitle: episode.title,
+            episodeDuration: duration
+        )
+
+        let enrichedDrafts: [ChapterTitleGenerator.SegmentDraft] = drafts.indices.map { index in
+            var draft = drafts[index]
+            if index < summaries.count {
+                draft.summary = summaries[index]
+            }
+            return draft
         }
 
         generationStatus = "Writing chapter titles…"
-        let synopsis = ChapterShowNotesParser.synopsis(from: episode.episodeDescription)
         let titles: [String]
         if #available(iOS 26, *) {
             titles = await ChapterTitleGenerator.titles(
-                for: drafts,
+                for: enrichedDrafts,
                 episodeTitle: episode.title,
-                synopsis: synopsis,
                 episodeDuration: duration
             )
         } else {
-            titles = drafts.map { ChapterTitleGenerator.lexicalTitle(from: $0.excerpt, startTime: $0.startTime) }
+            titles = enrichedDrafts.map {
+                ChapterTitleGenerator.lexicalTitle(from: $0.excerpt, startTime: $0.startTime)
+            }
         }
 
         var result: [Chapter] = []
+        var beats: [SummaryBeat] = []
         for (index, start) in boundaries.enumerated() {
             let end = index + 1 < boundaries.count ? boundaries[index + 1] : duration
             let title = index < titles.count ? titles[index] : ChapterTitleGenerator.lexicalTitle(
-                from: drafts[index].excerpt,
+                from: enrichedDrafts[index].excerpt,
                 startTime: start
             )
             result.append(Chapter(startTime: start, endTime: end, title: title))
+            beats.append(SummaryBeat(
+                startTime: start,
+                endTime: end,
+                summary: index < summaries.count ? summaries[index] : "",
+                title: title
+            ))
         }
 
         guard !result.isEmpty else {
             error = "No chapters could be generated."
             return false
+        }
+
+        generationStatus = "Building episode overview…"
+        let overview = await summaryService.generateOverview(beats: beats, episodeTitle: episode.title)
+        let episodeSummary = EpisodeSummary(
+            overview: overview,
+            beats: beats,
+            generatedAt: Date()
+        )
+
+        do {
+            try await summaryService.persist(summary: episodeSummary, episode: episode, context: context)
+        } catch {
+            logger.warning("Summary save failed: \(error.localizedDescription)")
         }
 
         return await persist(chapters: result, episode: episode, context: context)

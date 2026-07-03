@@ -209,6 +209,35 @@ struct SettingsView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+
+                    Toggle(isOn: Binding(
+                        get: { appSettings.pauseRecapEnabled },
+                        set: { appSettings.pauseRecapEnabled = $0; try? modelContext.save() }
+                    )) {
+                        HStack {
+                            Image(systemName: "pause.circle")
+                                .foregroundStyle(.purple)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Pause Recap")
+                                Text("Summarize recent content when you pause playback")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .disabled(!LocalTranscriptionService.isSupported)
+
+                    if appSettings.pauseRecapEnabled {
+                        Picker("Recap window", selection: Binding(
+                            get: { appSettings.pauseRecapMinutes },
+                            set: { appSettings.pauseRecapMinutes = $0; try? modelContext.save() }
+                        )) {
+                            Text("3 minutes").tag(3)
+                            Text("5 minutes").tag(5)
+                            Text("8 minutes").tag(8)
+                            Text("10 minutes").tag(10)
+                        }
+                    }
                 }
 
                 // Storage management section

@@ -35,6 +35,10 @@ final class AppSettings {
     // Transcription settings
     var autoTranscribeEnabledRaw: Int = 1  // 1 = true (default enabled), 0 = false
 
+    // Pause recap (on-device summary when playback pauses)
+    var pauseRecapEnabledRaw: Int = 1
+    var pauseRecapMinutes: Int = 5
+
     init() {}
 
     var downloadPreference: DownloadPreference {
@@ -50,6 +54,11 @@ final class AppSettings {
     var autoTranscribeEnabled: Bool {
         get { autoTranscribeEnabledRaw == 1 }
         set { autoTranscribeEnabledRaw = newValue ? 1 : 0 }
+    }
+
+    var pauseRecapEnabled: Bool {
+        get { pauseRecapEnabledRaw == 1 }
+        set { pauseRecapEnabledRaw = newValue ? 1 : 0 }
     }
 
     /// Storage limit in bytes (0 = unlimited)

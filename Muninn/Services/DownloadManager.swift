@@ -200,6 +200,17 @@ final class DownloadManager: NSObject {
             episode.localTranscriptPath = nil
         }
 
+        if let summaryFilename = episode.localSummaryPath {
+            let summaryURL = FileManager.default
+                .urls(for: .documentDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("Summaries", isDirectory: true)
+                .appendingPathComponent(summaryFilename)
+            if fileManager.fileExists(atPath: summaryURL.path) {
+                try? fileManager.removeItem(at: summaryURL)
+            }
+            episode.localSummaryPath = nil
+        }
+
         // Always clear the model properties. All callers are on the main thread so
         // the dispatch is unnecessary – update synchronously for reliable save ordering.
         episode.localFilePath = nil

@@ -1,10 +1,12 @@
 import SwiftUI
+import SwiftData
 
 struct NowPlayingView: View {
     var playerManager = AudioPlayerManager.shared
     var transcriptService = TranscriptService.shared
     var localTranscriptionService = LocalTranscriptionService.shared
     var chapterService = ChapterService.shared
+    var summaryService = TranscriptSummaryService.shared
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
@@ -20,6 +22,18 @@ struct NowPlayingView: View {
     /// avoiding the clip-during-close-animation artifact.
     @State private var speedLabelActive = false
     @State private var sleepLabelActive = false
+
+    private var appSettings: AppSettings {
+        AppSettings.getOrCreate(context: modelContext)
+    }
+
+    private var showPauseRecap: Bool {
+        !playerManager.isPlaying
+            && appSettings.pauseRecapEnabled
+            && (summaryService.pauseRecap != nil || summaryService.isGeneratingRecap)
+            && !showTranscript
+            && !showChapters
+    }
 
     /// Backed by AudioPlayerManager so the color is pre-computed before the sheet opens.
     private var dominantColor: Color { playerManager.nowPlayingDominantColor }
@@ -58,6 +72,13 @@ struct NowPlayingView: View {
                 topSection(for: episode)
                     .animation(.easeInOut(duration: 0.25), value: showTranscript)
                     .animation(.easeInOut(duration: 0.25), value: showChapters)
+                if showPauseRecap {
+                    PauseRecapBanner(
+                        text: summaryService.pauseRecap ?? "",
+                        isLoading: summaryService.isGeneratingRecap
+                    )
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
                 progressSection
                 playbackControls
                 actionsRow(for: episode)
@@ -109,6 +130,10 @@ struct NowPlayingView: View {
                 }
                 chapterService.load(for: episode)
             }
+
+            if let episode = playerManager.currentEpisode {
+                summaryService.load(for: episode)
+            }
         }
         .onChange(of: playerManager.effectivePlaybackSpeed) { _, newSpeed in
             let active = abs(newSpeed - 1.0) > 0.01
@@ -142,6 +167,14 @@ struct NowPlayingView: View {
             showChapters = false
             chaptersEpisodeGUID = ""
             chapterService.clear()
+            summaryService.clear()
+        }
+        .onChange(of: playerManager.isPlaying) { wasPlaying, isPlaying in
+            if wasPlaying && !isPlaying {
+                triggerPauseRecap()
+            } else if isPlaying {
+                summaryService.clearPauseRecap()
+            }
         }
         .onChange(of: localTranscriptionService.isTranscribing) { _, isTranscribing in
             // When transcription finishes, reload the transcript
@@ -505,6 +538,24 @@ struct NowPlayingView: View {
         guard let episode = playerManager.currentEpisode else { return }
         Task {
             await chapterService.generate(episode: episode, context: modelContext)
+            summaryService.load(for: episode)
+        }
+    }
+
+    private func triggerPauseRecap() {
+        guard appSettings.pauseRecapEnabled,
+              LocalTranscriptionService.isSupported,
+              let episode = playerManager.currentEpisode else { return }
+
+        Task {
+            await transcriptService.load(for: episode)
+            guard !transcriptService.segments.isEmpty else { return }
+            await summaryService.generatePauseRecap(
+                episode: episode,
+                segments: transcriptService.segments,
+                currentTime: playerManager.currentTime,
+                windowMinutes: appSettings.pauseRecapMinutes
+            )
         }
     }
 }

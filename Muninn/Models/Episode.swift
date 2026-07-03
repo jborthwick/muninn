@@ -53,6 +53,17 @@ final class Episode {
         return chaptersPath.appendingPathComponent(filename)
     }
 
+    // Episode summary (segment beats + overview from transcript)
+    var localSummaryPath: String?
+
+    /// Returns the full file URL for the locally-generated episode summary JSON
+    var localSummaryURL: URL? {
+        guard let filename = localSummaryPath else { return nil }
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let summariesPath = documentsPath.appendingPathComponent("Summaries", isDirectory: true)
+        return summariesPath.appendingPathComponent(filename)
+    }
+
     // Relationships
     var podcast: Podcast?
 
