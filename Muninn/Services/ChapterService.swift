@@ -22,8 +22,6 @@ final class ChapterService {
 
     // MARK: - Availability
 
-    /// Boundary detection uses NLEmbedding (iOS 13+), so generation is always available.
-    /// Chapter titles use Apple Intelligence when available, falling back to "Chapter N".
     nonisolated static var isSupported: Bool { true }
 
     nonisolated static var titlesSupported: Bool {
@@ -35,7 +33,6 @@ final class ChapterService {
 
     // MARK: - Public API
 
-    /// Load persisted chapters for episode from disk. Synchronous / O(1).
     func load(for episode: Episode) {
         guard let url = episode.localChaptersURL,
               FileManager.default.fileExists(atPath: url.path),
@@ -54,31 +51,19 @@ final class ChapterService {
         generationStatus = ""
     }
 
-    /// Generate chapters from the episode's transcript.
-    /// Step 1: NLEmbedding similarity → topic boundaries (no Apple Intelligence needed).
-    /// Step 2: LLM per chapter → titles (falls back to "Chapter N" without Apple Intelligence).
+    /// Generate chapters from show notes (fast path) or transcript (boundaries + titles).
     @discardableResult
     func generate(episode: Episode, context: ModelContext) async -> Bool {
         guard !isGenerating else { return false }
 
-        // Clear any previously generated chapters so regeneration works cleanly
         if let oldURL = episode.localChaptersURL {
             try? FileManager.default.removeItem(at: oldURL)
         }
         episode.localChaptersPath = nil
         chapters = []
 
-        let transcriptService = TranscriptService.shared
-        await transcriptService.load(for: episode)
-        let segments = transcriptService.segments
-        guard !segments.isEmpty else {
-            error = "A transcript is required to generate chapters. Transcribe the episode first."
-            return false
-        }
-
         isGenerating = true
         error = nil
-        generationStatus = "Detecting topic boundaries…"
         generatingEpisodeGUID = episode.guid
 
         defer {
@@ -87,43 +72,59 @@ final class ChapterService {
             generatingEpisodeGUID = nil
         }
 
+        let transcriptService = TranscriptService.shared
+        await transcriptService.load(for: episode)
+        let segments = transcriptService.segments
         let duration = episode.duration ?? segments.last?.endTime ?? 0
 
-        // Step 1: Boundary detection (CPU-bound NLEmbedding work, off main thread)
+        // Fast path: chapters already in episode show notes.
+        if let rssChapters = ChapterShowNotesParser.chapters(from: episode.episodeDescription, duration: duration) {
+            generationStatus = "Using show note chapters…"
+            return await persist(chapters: rssChapters, episode: episode, context: context)
+        }
+
+        guard !segments.isEmpty else {
+            error = "A transcript is required to generate chapters. Transcribe the episode first."
+            return false
+        }
+
+        generationStatus = "Detecting topic boundaries…"
+
         let boundaries = await Task.detached { [self] in
             self.detectBoundaries(in: segments, duration: duration)
         }.value
 
         logger.info("Detected \(boundaries.count) chapter boundaries")
 
-        // Step 2: Title each chapter
-        var result: [Chapter] = []
-        let canTitle = ChapterService.titlesSupported
-        let total = boundaries.count
+        let drafts: [ChapterTitleGenerator.SegmentDraft] = boundaries.enumerated().map { index, start in
+            let end = index + 1 < boundaries.count ? boundaries[index + 1] : duration
+            let chapterSegments = segments.filter { $0.startTime >= start && $0.startTime < end }
+            return .init(
+                startTime: start,
+                excerpt: ChapterTitleGenerator.excerpt(from: chapterSegments)
+            )
+        }
 
+        generationStatus = "Writing chapter titles…"
+        let synopsis = ChapterShowNotesParser.synopsis(from: episode.episodeDescription)
+        let titles: [String]
+        if #available(iOS 26, *) {
+            titles = await ChapterTitleGenerator.titles(
+                for: drafts,
+                episodeTitle: episode.title,
+                synopsis: synopsis
+            )
+        } else {
+            titles = drafts.map { ChapterTitleGenerator.lexicalTitle(from: $0.excerpt, startTime: $0.startTime) }
+        }
+
+        var result: [Chapter] = []
         for (index, start) in boundaries.enumerated() {
             let end = index + 1 < boundaries.count ? boundaries[index + 1] : duration
-
-            if canTitle {
-                generationStatus = "Writing titles (\(index + 1)/\(total))…"
-            }
-
-            let chapterText = segments
-                .filter { $0.startTime >= start && $0.startTime < end }
-                .map(\.text)
-                .joined(separator: " ")
-
-            let title: String
-            if canTitle, #available(iOS 26, *), !chapterText.isEmpty {
-                title = (try? await generateTitle(
-                    for: String(chapterText.prefix(700)),
-                    episodeTitle: episode.title,
-                    chapterIndex: index + 1
-                )) ?? "Chapter \(index + 1)"
-            } else {
-                title = "Chapter \(index + 1)"
-            }
-
+            let title = index < titles.count ? titles[index] : ChapterTitleGenerator.lexicalTitle(
+                from: drafts[index].excerpt,
+                startTime: start
+            )
             result.append(Chapter(startTime: start, endTime: end, title: title))
         }
 
@@ -132,16 +133,22 @@ final class ChapterService {
             return false
         }
 
+        return await persist(chapters: result, episode: episode, context: context)
+    }
+
+    // MARK: - Persistence
+
+    private func persist(chapters: [Chapter], episode: Episode, context: ModelContext) async -> Bool {
         do {
             let guid = episode.guid
             let filename = try await Task.detached { [self] in
-                try self.saveChaptersToDisk(chapters: result, guid: guid)
+                try self.saveChaptersToDisk(chapters: chapters, guid: guid)
             }.value
 
             episode.localChaptersPath = filename
             try? context.save()
-            chapters = result
-            logger.info("Chapters saved: \(filename) (\(result.count) chapters)")
+            self.chapters = chapters
+            logger.info("Chapters saved: \(filename) (\(chapters.count) chapters)")
             return true
         } catch {
             logger.error("Save failed: \(error.localizedDescription)")
@@ -152,20 +159,16 @@ final class ChapterService {
 
     // MARK: - Boundary Detection (NLEmbedding)
 
-    /// Detects topic-shift boundaries in the transcript using cosine similarity of sentence
-    /// embeddings across overlapping 2-minute windows with a 1-minute stride.
-    /// Falls back to lexical (Jaccard) similarity if NLEmbedding is unavailable.
     nonisolated private func detectBoundaries(
         in segments: [TranscriptSegment],
         duration: TimeInterval
     ) -> [TimeInterval] {
         guard duration > 30 else { return [0] }
 
-        let (minChapters, maxChapters) = recommendedChapterRange(duration: duration)
+        let (_, maxChapters) = recommendedChapterRange(duration: duration)
 
-        // Build overlapping windows: 2-min window, 1-min stride
         let windowDur: TimeInterval = 120
-        let stride: TimeInterval   = 60
+        let stride: TimeInterval = 60
 
         var windows: [(start: TimeInterval, text: String)] = []
         var t: TimeInterval = 0
@@ -180,10 +183,9 @@ final class ChapterService {
         }
 
         guard windows.count >= 3 else {
-            return evenlySpacedBoundaries(duration: duration, count: min(minChapters, windows.count))
+            return evenlySpacedBoundaries(duration: duration, count: min(3, maxChapters))
         }
 
-        // Compute similarity between each pair of adjacent windows
         let similarities: [Double]
         if let embedding = NLEmbedding.sentenceEmbedding(for: .english) {
             let vectors = windows.map { embedding.vector(for: $0.text) }
@@ -192,92 +194,46 @@ final class ChapterService {
                 return cosineSimilarity(v1, v2)
             }
         } else {
-            // Lexical fallback: Jaccard overlap on significant words
             let wordSets = windows.map { significantWords(in: $0.text) }
             similarities = (0..<(wordSets.count - 1)).map { i in
                 jaccardSimilarity(wordSets[i], wordSets[i + 1])
             }
         }
 
-        // Smooth to reduce noise from individual sentences
         let smoothed = smooth(similarities, windowSize: 3)
         let mean = smoothed.reduce(0, +) / Double(smoothed.count)
 
-        // Find local minima — each represents a vocabulary shift (likely topic change)
         var candidates: [(time: TimeInterval, depth: Double)] = []
         for i in 0..<smoothed.count {
             let prev = i > 0 ? smoothed[i - 1] : Double.infinity
             let next = i < smoothed.count - 1 ? smoothed[i + 1] : Double.infinity
             guard smoothed[i] < prev, smoothed[i] < next else { continue }
-            // The boundary is at the start of the window *after* the dip
             let boundaryTime = windows[min(i + 1, windows.count - 1)].start
             candidates.append((time: boundaryTime, depth: mean - smoothed[i]))
         }
 
-        // Sort by significance (deepest dip = most distinct topic change)
         candidates.sort { $0.depth > $1.depth }
 
-        // Pick top boundaries respecting a minimum gap
-        let minGap: TimeInterval = max(60, duration / Double(maxChapters + 1))
+        // Apple guidance: ≥2 min between chapters, ~6 per hour max.
+        let minGap: TimeInterval = max(120, duration / Double(maxChapters + 1))
         var selected: [TimeInterval] = [0]
 
         for candidate in candidates {
-            guard candidate.time > minGap else { continue }  // too close to start
+            guard candidate.time > minGap else { continue }
             let tooClose = selected.contains { abs($0 - candidate.time) < minGap }
             if !tooClose { selected.append(candidate.time) }
             if selected.count >= maxChapters { break }
         }
 
         selected.sort()
-
-        // If still below minimum, bisect the largest gaps to pad up
-        if selected.count < minChapters {
-            var gaps = zip(selected, selected.dropFirst())
-                .map { (start: $0.0, end: $0.1) }
-            if let last = selected.last { gaps.append((start: last, end: duration)) }
-            gaps.sort { ($0.end - $0.start) > ($1.end - $1.start) }
-
-            for gap in gaps {
-                guard selected.count < minChapters else { break }
-                let mid = (gap.start + gap.end) / 2
-                if !selected.contains(where: { abs($0 - mid) < minGap }) {
-                    selected.append(mid)
-                }
-            }
-            selected.sort()
-        }
-
         return selected
-    }
-
-    // MARK: - Title Generation (Apple Intelligence)
-
-    @available(iOS 26, *)
-    nonisolated private func generateTitle(
-        for text: String,
-        episodeTitle: String,
-        chapterIndex: Int
-    ) async throws -> String {
-        let prompt = """
-        Write a chapter title for this podcast segment. \
-        Reply with ONLY the title — 4 to 7 words, no quotes, no trailing punctuation.
-        Be specific to what is actually discussed; avoid generic labels like \
-        "Introduction", "Discussion", or "Conclusion".
-
-        Podcast: "\(episodeTitle)"
-        Transcript excerpt: \(text)
-        """
-        let session = LanguageModelSession()
-        let response = try await session.respond(to: prompt, generating: ChapterTitle.self)
-        let title = response.content.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        return title.isEmpty ? "Chapter \(chapterIndex)" : title
     }
 
     // MARK: - Helpers
 
     nonisolated private func cosineSimilarity(_ a: [Double], _ b: [Double]) -> Double {
         guard a.count == b.count, !a.isEmpty else { return 0 }
-        let dot   = zip(a, b).map(*).reduce(0, +)
+        let dot = zip(a, b).map(*).reduce(0, +)
         let normA = sqrt(a.map { $0 * $0 }.reduce(0, +))
         let normB = sqrt(b.map { $0 * $0 }.reduce(0, +))
         guard normA > 0, normB > 0 else { return 0 }
@@ -295,19 +251,7 @@ final class ChapterService {
     }
 
     nonisolated private func significantWords(in text: String) -> Set<String> {
-        let stopWords: Set<String> = [
-            "the","a","an","and","or","but","in","on","at","to","for","of","with",
-            "is","it","that","this","was","are","be","been","have","has","had",
-            "do","did","will","would","could","should","may","i","you","we","they",
-            "he","she","so","my","your","like","just","know","think","yeah","um","uh",
-            "its","we're","i'm","you're","they're","don't","can't","won't","isn't"
-        ]
-        return Set(
-            text.lowercased()
-                .components(separatedBy: .whitespacesAndNewlines)
-                .map { $0.trimmingCharacters(in: .punctuationCharacters) }
-                .filter { $0.count > 3 && !stopWords.contains($0) }
-        )
+        Set(ChapterTitleGenerator.topKeywords(in: text, limit: 32))
     }
 
     nonisolated private func jaccardSimilarity(_ a: Set<String>, _ b: Set<String>) -> Double {
@@ -322,12 +266,13 @@ final class ChapterService {
         return (0..<count).map { TimeInterval($0) * interval }
     }
 
+    /// Tighter chapter density aligned with Apple Podcasts creator guidance (~6/hour).
     nonisolated private func recommendedChapterRange(duration: TimeInterval) -> (Int, Int) {
         switch duration {
-        case ..<600:    return (2, 4)    // <10 min
-        case ..<1800:   return (3, 6)    // 10–30 min
-        case ..<3600:   return (5, 9)    // 30–60 min
-        default:        return (7, 12)   // 60+ min
+        case ..<600:    return (2, 3)
+        case ..<1800:   return (2, 4)
+        case ..<3600:   return (3, 6)
+        default:        return (4, 8)
         }
     }
 
@@ -358,13 +303,4 @@ final class ChapterService {
                 .prefix(128)
         )
     }
-}
-
-// MARK: - @Generable type for chapter title
-
-@available(iOS 26, *)
-@Generable
-private struct ChapterTitle {
-    @Guide(description: "A 4–7 word chapter title specific to what is discussed in this segment. No generic labels like 'Introduction' or 'Discussion'.")
-    var title: String
 }

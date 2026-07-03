@@ -75,7 +75,7 @@ struct ChapterView: View {
 
     private var canGenerate: Bool {
         guard let episode = playerManager.currentEpisode else { return false }
-        // Boundary detection works on all devices; just needs a transcript
+        if episode.episodeDescription != nil { return true }
         return !transcriptService.segments.isEmpty
             || episode.localTranscriptPath != nil
             || episode.transcriptURL != nil
@@ -242,9 +242,9 @@ struct ChapterView: View {
 
     private var generatePromptDescription: String {
         if ChapterService.titlesSupported {
-            return "Detect topic boundaries and generate chapter titles using Apple Intelligence. Everything stays on-device."
+            return "Uses show note chapters when available, otherwise detects topics from the transcript and writes titles on-device with Apple Intelligence."
         } else {
-            return "Detect topic boundaries from this episode's transcript. Chapter titles require Apple Intelligence."
+            return "Uses show note chapters when available, otherwise detects topics from the transcript. Titled chapters require Apple Intelligence."
         }
     }
 
@@ -268,7 +268,7 @@ struct ChapterView: View {
     }
 
     private var noChaptersMessage: String {
-        "Transcribe this episode first to enable chapter generation."
+        "Transcribe this episode, or add timestamped chapters to the episode description, to enable chapter generation."
     }
 
     // MARK: - Helpers
