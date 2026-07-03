@@ -235,6 +235,7 @@ final class ChapterService {
     ) -> [TimeInterval] {
         guard duration > 30 else { return [0] }
 
+        let timeline = TranscriptTimeline(segments: segments)
         let (_, maxChapters) = recommendedChapterRange(duration: duration)
 
         // Coarse windows only detect *that* a topic shift exists. Exact placement
@@ -246,7 +247,7 @@ final class ChapterService {
         var t: TimeInterval = 0
         while t < duration {
             let wEnd = min(t + windowDur, duration)
-            let text = textInRange(segments: segments, start: t, end: wEnd)
+            let text = timeline.text(from: t, to: wEnd)
             if !text.isEmpty { windows.append((start: t, text: text)) }
             t += stride
         }
@@ -323,14 +324,19 @@ final class ChapterService {
 
         selected.sort()
 
-        // Move each coarse hit onto the best natural break nearby.
+        // One pass over the transcript for natural breaks; shared embedding cache
+        // across chapters so overlapping context windows aren't recomputed.
+        let breaks = timeline.naturalBreaks()
+        var vectorCache: [TranscriptTimeline.RangeKey: [Double]] = [:]
         var refined: [TimeInterval] = [0]
         let minSeparation = competitionRadius * 0.5
         for coarse in selected where coarse > 0 {
             let time = refineBoundaryTime(
                 around: coarse,
-                segments: segments,
+                timeline: timeline,
+                breaks: breaks,
                 embedding: embedding,
+                vectorCache: &vectorCache,
                 searchRadius: stride * 1.5
             )
             guard time > minSeparation else { continue }
@@ -386,120 +392,116 @@ final class ChapterService {
         return (minChapters, maxChapters)
     }
 
-    /// Pick the segment start near `coarseTime` that best splits before/after topic,
-    /// preferring pauses and sentence edges over the analysis-window grid.
+    /// Pick the segment start near `coarseTime` that best splits before/after topic.
+    /// Prefers breaks closest to the coarse hit, lexically pre-ranks, then embeds top-K.
     nonisolated private func refineBoundaryTime(
         around coarseTime: TimeInterval,
-        segments: [TranscriptSegment],
+        timeline: TranscriptTimeline,
+        breaks: [TranscriptTimeline.NaturalBreak],
         embedding: NLEmbedding?,
+        vectorCache: inout [TranscriptTimeline.RangeKey: [Double]],
         searchRadius: TimeInterval,
-        contextDur: TimeInterval = 90
+        contextDur: TimeInterval = 90,
+        /// Lexical pre-rank pool size (closest breaks to the coarse hit).
+        lexicalPool: Int = 16,
+        /// How many of those get a full embedding score.
+        embedTopK: Int = 8
     ) -> TimeInterval {
-        guard segments.count > 2 else { return coarseTime }
-
         let lo = max(0, coarseTime - searchRadius)
         let hi = coarseTime + searchRadius
-        let breaks = naturalBreakIndices(in: segments, from: lo, to: hi)
-        let candidates = breaks.isEmpty
-            ? fallbackBreakIndices(in: segments, from: lo, to: hi)
-            : breaks
-        guard !candidates.isEmpty else { return coarseTime }
 
-        var bestTime = coarseTime
+        var nearby = timeline.breaks(breaks, from: lo, to: hi)
+        if nearby.isEmpty {
+            nearby = timeline.fallbackBreaks(from: lo, to: hi)
+        }
+        guard !nearby.isEmpty else { return coarseTime }
+
+        // Stay near the detected topic shift — don't let a long pause elsewhere
+        // in the window steal the shortlist from a better local break.
+        nearby.sort { abs($0.time - coarseTime) < abs($1.time - coarseTime) }
+        let shortlist = Array(nearby.prefix(lexicalPool))
+
+        struct RankedBreak {
+            let candidate: TranscriptTimeline.NaturalBreak
+            let beforeRange: TranscriptTimeline.RangeKey
+            let afterRange: TranscriptTimeline.RangeKey
+            let cheapScore: Double
+        }
+
+        let preRanked: [RankedBreak] = shortlist.compactMap { candidate in
+            let beforeRange = timeline.range(from: max(0, candidate.time - contextDur), to: candidate.time)
+            let afterRange = timeline.range(from: candidate.time, to: candidate.time + contextDur)
+            let before = timeline.text(beforeRange)
+            let after = timeline.text(afterRange)
+            guard before.count > 20, after.count > 20 else { return nil }
+
+            let similarity = jaccardSimilarity(significantWords(in: before), significantWords(in: after))
+            let score = breakScore(
+                similarity: similarity,
+                gap: candidate.gap,
+                afterSentence: candidate.afterSentence,
+                time: candidate.time,
+                coarseTime: coarseTime,
+                searchRadius: searchRadius
+            )
+            return RankedBreak(
+                candidate: candidate,
+                beforeRange: beforeRange,
+                afterRange: afterRange,
+                cheapScore: score
+            )
+        }
+        .sorted { $0.cheapScore > $1.cheapScore }
+
+        guard let bestCheap = preRanked.first else { return coarseTime }
+        guard let embedding else { return bestCheap.candidate.time }
+
+        var bestTime = bestCheap.candidate.time
         var bestScore = -Double.infinity
 
-        for index in candidates {
-            let time = segments[index].startTime
-            let before = textInRange(
-                segments: segments,
-                start: max(0, time - contextDur),
-                end: time
-            )
-            let after = textInRange(
-                segments: segments,
-                start: time,
-                end: time + contextDur
-            )
-            guard before.count > 20, after.count > 20 else { continue }
-
+        for item in preRanked.prefix(embedTopK) {
             let similarity: Double
-            if let embedding,
-               let v1 = embedding.vector(for: before),
-               let v2 = embedding.vector(for: after) {
+            if let v1 = timeline.vector(for: item.beforeRange, embedding: embedding, cache: &vectorCache),
+               let v2 = timeline.vector(for: item.afterRange, embedding: embedding, cache: &vectorCache) {
                 similarity = cosineSimilarity(v1, v2)
             } else {
-                similarity = jaccardSimilarity(significantWords(in: before), significantWords(in: after))
+                // Fall back to the lexical score for this candidate.
+                if item.cheapScore > bestScore {
+                    bestScore = item.cheapScore
+                    bestTime = item.candidate.time
+                }
+                continue
             }
 
-            let gap = index > 0
-                ? max(0, segments[index].startTime - segments[index - 1].endTime)
-                : 0
-            // Topic shift dominates; small bonuses for pauses and sentence edges.
-            let pauseBonus = min(gap / 3.0, 0.12)
-            let sentenceBonus = index > 0 && endsSentence(segments[index - 1].text) ? 0.06 : 0
-            let proximityPenalty = abs(time - coarseTime) / (searchRadius * 4)
-            let score = (1 - similarity) + pauseBonus + sentenceBonus - proximityPenalty
-
+            let score = breakScore(
+                similarity: similarity,
+                gap: item.candidate.gap,
+                afterSentence: item.candidate.afterSentence,
+                time: item.candidate.time,
+                coarseTime: coarseTime,
+                searchRadius: searchRadius
+            )
             if score > bestScore {
                 bestScore = score
-                bestTime = time
+                bestTime = item.candidate.time
             }
         }
 
         return bestTime
     }
 
-    /// Segment starts that follow a pause or end of sentence — natural edit points.
-    nonisolated private func naturalBreakIndices(
-        in segments: [TranscriptSegment],
-        from lo: TimeInterval,
-        to hi: TimeInterval
-    ) -> [Int] {
-        var indices: [Int] = []
-        for i in 1..<segments.count {
-            let start = segments[i].startTime
-            guard start >= lo, start <= hi else { continue }
-            let gap = segments[i].startTime - segments[i - 1].endTime
-            if gap >= 0.35 || endsSentence(segments[i - 1].text) {
-                indices.append(i)
-            }
-        }
-        return indices
-    }
-
-    /// If the transcript has no clear pauses, sample segment starts in the window.
-    nonisolated private func fallbackBreakIndices(
-        in segments: [TranscriptSegment],
-        from lo: TimeInterval,
-        to hi: TimeInterval
-    ) -> [Int] {
-        var indices: [Int] = []
-        for i in 1..<segments.count {
-            let start = segments[i].startTime
-            guard start >= lo, start <= hi else { continue }
-            // Word-level transcripts are dense — take every ~4th segment.
-            if indices.isEmpty || i - (indices.last ?? 0) >= 4 {
-                indices.append(i)
-            }
-        }
-        return indices
-    }
-
-    nonisolated private func textInRange(
-        segments: [TranscriptSegment],
-        start: TimeInterval,
-        end: TimeInterval
-    ) -> String {
-        segments
-            .filter { $0.startTime >= start && $0.startTime < end }
-            .map(\.text)
-            .joined(separator: " ")
-    }
-
-    nonisolated private func endsSentence(_ text: String) -> Bool {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let last = trimmed.last else { return false }
-        return ".?!…".contains(last)
+    nonisolated private func breakScore(
+        similarity: Double,
+        gap: TimeInterval,
+        afterSentence: Bool,
+        time: TimeInterval,
+        coarseTime: TimeInterval,
+        searchRadius: TimeInterval
+    ) -> Double {
+        let pauseBonus = min(gap / 3.0, 0.12)
+        let sentenceBonus = afterSentence ? 0.06 : 0
+        let proximityPenalty = abs(time - coarseTime) / (searchRadius * 4)
+        return (1 - similarity) + pauseBonus + sentenceBonus - proximityPenalty
     }
 
     /// Highest similarity between a valley and the next/previous valley (or edge).

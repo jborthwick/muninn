@@ -36,6 +36,7 @@
 		64BEAE80375F2E5958A39A3C /* BackgroundRefreshManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 982E1DEF4F3CF5F17ED2026D /* BackgroundRefreshManager.swift */; };
 		66B895EF2892504C3FF68B1F /* FeedKit in Frameworks */ = {isa = PBXBuildFile; productRef = 6B26BAD390B35C1273B3C954 /* FeedKit */; };
 		798AC7DCD81ADF924D73F283 /* StatsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47298820D872D6525D85E8C8 /* StatsService.swift */; };
+		79958518FCB39C68686D11D1 /* TranscriptTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBCE02FB3271B8D25847AE0D /* TranscriptTimeline.swift */; };
 		7A19DC01562B3158EB246869 /* TranscriptService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1586FB3AD0CBF245C4D6FE17 /* TranscriptService.swift */; };
 		7B688D1C3B2E2CC79B8A72E7 /* Muninn.entitlements.disabled in Resources */ = {isa = PBXBuildFile; fileRef = 9BCE8E1C3ACF2A90820611A9 /* Muninn.entitlements.disabled */; };
 		7D16365B39E6D2EC183EDA08 /* LocalTranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1C5CBEB76A4142C186FFB1 /* LocalTranscriptionService.swift */; };
@@ -137,6 +138,7 @@
 		C6392F13DD797B81EE9B8EB2 /* Muninn.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Muninn.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C73BA3FD53A7A3D3ECDE4AE8 /* PodcastLookupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PodcastLookupService.swift; sourceTree = "<group>"; };
 		C97098C7211E59D1F92C60A6 /* Muninn.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Muninn.entitlements; sourceTree = "<group>"; };
+		CBCE02FB3271B8D25847AE0D /* TranscriptTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptTimeline.swift; sourceTree = "<group>"; };
 		D0E9330D5CB81C5A6772CC6E /* ChapterService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChapterService.swift; sourceTree = "<group>"; };
 		D117CA5D12B7C9362CAFF9C1 /* OPMLParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OPMLParser.swift; sourceTree = "<group>"; };
 		D5532A218847B0E747E68333 /* DownloadCleanupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadCleanupService.swift; sourceTree = "<group>"; };
@@ -290,6 +292,7 @@
 				E69FECF382B2E277C7A1B62C /* SyncService.swift */,
 				1586FB3AD0CBF245C4D6FE17 /* TranscriptService.swift */,
 				C52BA9EE741453A055ACFE70 /* TranscriptSummaryService.swift */,
+				CBCE02FB3271B8D25847AE0D /* TranscriptTimeline.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -525,6 +528,7 @@
 				C7F982F143D9DE81ABA45BA4 /* TranscriptSegment.swift in Sources */,
 				7A19DC01562B3158EB246869 /* TranscriptService.swift in Sources */,
 				895B0097C4E8C469927F2475 /* TranscriptSummaryService.swift in Sources */,
+				79958518FCB39C68686D11D1 /* TranscriptTimeline.swift in Sources */,
 				FDA609EF04A5F3D23FD414D5 /* TranscriptView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
