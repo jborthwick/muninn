@@ -112,7 +112,8 @@ final class ChapterService {
             titles = await ChapterTitleGenerator.titles(
                 for: drafts,
                 episodeTitle: episode.title,
-                synopsis: synopsis
+                synopsis: synopsis,
+                episodeDuration: duration
             )
         } else {
             titles = drafts.map { ChapterTitleGenerator.lexicalTitle(from: $0.excerpt, startTime: $0.startTime) }
@@ -165,6 +166,7 @@ final class ChapterService {
     ) -> [TimeInterval] {
         guard duration > 30 else { return [0] }
 
+        let segmentStarts = segments.map(\.startTime)
         let (_, maxChapters) = recommendedChapterRange(duration: duration)
 
         let windowDur: TimeInterval = 120
@@ -208,25 +210,29 @@ final class ChapterService {
             let prev = i > 0 ? smoothed[i - 1] : Double.infinity
             let next = i < smoothed.count - 1 ? smoothed[i + 1] : Double.infinity
             guard smoothed[i] < prev, smoothed[i] < next else { continue }
-            let boundaryTime = windows[min(i + 1, windows.count - 1)].start
+            let rawTime = windows[min(i + 1, windows.count - 1)].start
+            let boundaryTime = snapToSegmentStart(rawTime, segmentStarts: segmentStarts)
             candidates.append((time: boundaryTime, depth: mean - smoothed[i]))
         }
 
         candidates.sort { $0.depth > $1.depth }
 
-        // Apple guidance: ≥2 min between chapters, ~6 per hour max.
-        let minGap: TimeInterval = max(120, duration / Double(maxChapters + 1))
+        let baseGap = max(120, duration / Double(maxChapters + 1))
+        let medianDepth = candidates.isEmpty
+            ? 0
+            : candidates.map(\.depth).sorted()[candidates.count / 2]
         var selected: [TimeInterval] = [0]
 
         for candidate in candidates {
-            guard candidate.time > minGap else { continue }
-            let tooClose = selected.contains { abs($0 - candidate.time) < minGap }
+            let gap = requiredGap(depth: candidate.depth, medianDepth: medianDepth, baseGap: baseGap)
+            guard candidate.time > gap else { continue }
+            let tooClose = selected.contains { abs($0 - candidate.time) < gap }
             if !tooClose { selected.append(candidate.time) }
             if selected.count >= maxChapters { break }
         }
 
         selected.sort()
-        return selected
+        return limitTailBoundaries(selected, duration: duration)
     }
 
     // MARK: - Helpers
@@ -266,13 +272,57 @@ final class ChapterService {
         return (0..<count).map { TimeInterval($0) * interval }
     }
 
-    /// Tighter chapter density aligned with Apple Podcasts creator guidance (~6/hour).
+    /// ~1 chapter per 9 minutes, capped for very long episodes.
     nonisolated private func recommendedChapterRange(duration: TimeInterval) -> (Int, Int) {
-        switch duration {
-        case ..<600:    return (2, 3)
-        case ..<1800:   return (2, 4)
-        case ..<3600:   return (3, 6)
-        default:        return (4, 8)
+        let minChapters = duration < 600 ? 2 : 3
+        let scaled = Int(round(duration / 540))
+        let maxChapters = min(16, max(minChapters + 1, scaled))
+        return (minChapters, maxChapters)
+    }
+
+    nonisolated private func snapToSegmentStart(
+        _ time: TimeInterval,
+        segmentStarts: [TimeInterval],
+        radius: TimeInterval = 60
+    ) -> TimeInterval {
+        let lo = time - radius
+        let hi = time + radius
+        var best = time
+        var bestDist = radius + 1
+        for start in segmentStarts where start >= lo && start <= hi {
+            let dist = abs(start - time)
+            if dist < bestDist {
+                bestDist = dist
+                best = start
+            }
+        }
+        return best
+    }
+
+    nonisolated private func requiredGap(
+        depth: Double,
+        medianDepth: Double,
+        baseGap: TimeInterval
+    ) -> TimeInterval {
+        if medianDepth > 0, depth >= medianDepth * 1.75 { return 60 }
+        if medianDepth > 0, depth >= medianDepth * 1.25 { return max(90, baseGap * 0.45) }
+        return baseGap
+    }
+
+    /// Avoid many micro-chapters in the closing minutes (credits, name roll calls, plugs).
+    nonisolated private func limitTailBoundaries(
+        _ boundaries: [TimeInterval],
+        duration: TimeInterval,
+        maxInTail: Int = 1
+    ) -> [TimeInterval] {
+        guard duration > 900 else { return boundaries }
+        let tailStart = duration - min(720, duration * 0.15)
+        var tailCount = 0
+        return boundaries.sorted().filter { time in
+            guard time >= tailStart else { return true }
+            guard tailCount < maxInTail else { return false }
+            tailCount += 1
+            return true
         }
     }
 
