@@ -176,17 +176,19 @@ struct NowPlayingView: View {
                 summaryService.clearPauseRecap()
             }
         }
-        .onChange(of: localTranscriptionService.isTranscribing) { _, isTranscribing in
-            // When transcription finishes, reload the transcript
-            if !isTranscribing, let episode = playerManager.currentEpisode, showTranscript {
-                Task { await transcriptService.load(for: episode) }
-            }
+        .onChange(of: localTranscriptionService.isTranscribing) { wasTranscribing, isTranscribing in
+            guard wasTranscribing, !isTranscribing,
+                  let episode = playerManager.currentEpisode,
+                  showTranscript,
+                  episode.localTranscriptPath != nil else { return }
+            Task { await transcriptService.load(for: episode) }
         }
-        .onChange(of: chapterService.isGenerating) { _, isGenerating in
-            // When chapter generation finishes, reload chapters
-            if !isGenerating, let episode = playerManager.currentEpisode, showChapters {
-                chapterService.load(for: episode)
-            }
+        .onChange(of: chapterService.isGenerating) { wasGenerating, isGenerating in
+            guard wasGenerating, !isGenerating,
+                  let episode = playerManager.currentEpisode,
+                  showChapters,
+                  chapterService.loadedEpisodeGUID == episode.guid else { return }
+            chapterService.load(for: episode)
         }
     }
 
@@ -205,7 +207,11 @@ struct NowPlayingView: View {
             TranscriptHeaderView(episode: episode) {
                 withAnimation(.easeInOut(duration: 0.25)) { showTranscript = false }
             }
-            TranscriptView(onTranscribe: startLocalTranscription)
+            TranscriptView(
+                onTranscribe: startLocalTranscription,
+                onCancelTranscription: cancelLocalTranscription,
+                onRetryTranscription: startLocalTranscription
+            )
         } else {
             Spacer()
 
@@ -528,7 +534,14 @@ struct NowPlayingView: View {
     private func startLocalTranscription() {
         guard let episode = playerManager.currentEpisode else { return }
         Task {
-            await localTranscriptionService.transcribe(episode: episode, context: modelContext)
+            await localTranscriptionService.retryTranscription(episode: episode, context: modelContext)
+        }
+    }
+
+    private func cancelLocalTranscription() {
+        guard let episode = playerManager.currentEpisode else { return }
+        Task {
+            await localTranscriptionService.cancelTranscription(for: episode, context: modelContext)
         }
     }
 
@@ -621,7 +634,9 @@ private struct ProgressSectionView: View {
     private var chapterTickMarks: some View {
         let chapters = chapterService.chapters
         let duration = playerManager.duration
-        if chapters.count > 1, duration > 0 {
+        let episodeGUID = playerManager.currentEpisode?.guid
+        if chapterService.loadedEpisodeGUID == episodeGUID,
+           chapters.count > 1, duration > 0 {
             GeometryReader { geo in
                 // Apple's slider draws its track with ~12pt inset from each edge
                 // to accommodate the thumb circle.

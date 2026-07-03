@@ -55,6 +55,8 @@ struct TranscriptView: View {
     /// Called when the user taps "Transcribe Episode". Needs to be a closure
     /// because the caller holds the SwiftData modelContext.
     let onTranscribe: () -> Void
+    let onCancelTranscription: () -> Void
+    let onRetryTranscription: () -> Void
 
     // Services accessed directly — TranscriptView is always showing the
     // currently-playing episode, so there is no value in passing these through.
@@ -83,8 +85,17 @@ struct TranscriptView: View {
     private var segments: [TranscriptSegment] { transcriptService.segments }
     private var isLoading: Bool { transcriptService.isLoading }
     private var error: String? { transcriptService.error }
-    private var isTranscribing: Bool { localTranscriptionService.isTranscribing }
-    private var transcriptionProgress: Double { localTranscriptionService.progress }
+    private var isTranscribing: Bool {
+        guard localTranscriptionService.isTranscribing else { return false }
+        return localTranscriptionService.transcribingEpisodeGUID == playerManager.currentEpisode?.guid
+    }
+    private var isStalledTranscription: Bool {
+        guard let episode = playerManager.currentEpisode else { return false }
+        return localTranscriptionService.isStalled(episode: episode)
+    }
+    private var transcriptionProgress: Double {
+        playerManager.currentEpisode?.transcriptionProgress ?? localTranscriptionService.progress
+    }
 
     private var canTranscribe: Bool {
         guard let episode = playerManager.currentEpisode else { return false }
@@ -182,6 +193,8 @@ struct TranscriptView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if isTranscribing {
                 transcribingView
+            } else if isStalledTranscription {
+                stalledTranscriptionView
             } else if let error {
                 ContentUnavailableView(
                     "Transcript Unavailable",
@@ -251,6 +264,41 @@ struct TranscriptView: View {
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
+
+            Button("Cancel", role: .destructive, action: onCancelTranscription)
+                .font(.subheadline)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+    }
+
+    private var stalledTranscriptionView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 40))
+                .foregroundStyle(.orange)
+
+            Text("Transcription Interrupted")
+                .font(.headline)
+
+            if transcriptionProgress > 0 {
+                Text("Stopped at \(Int(transcriptionProgress * 100))%. You can retry or dismiss.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+            }
+
+            HStack(spacing: 12) {
+                Button(action: onRetryTranscription) {
+                    Label("Retry", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button("Dismiss", role: .cancel, action: onCancelTranscription)
+                    .buttonStyle(.bordered)
+            }
+            .font(.subheadline)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()

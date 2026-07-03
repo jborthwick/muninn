@@ -268,6 +268,8 @@ private struct StarredEpisodeRow: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+                EpisodeProcessingStatusView(episode: episode)
             }
 
             Spacer()

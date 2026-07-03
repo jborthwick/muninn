@@ -64,9 +64,22 @@ struct ChapterView: View {
 
     // MARK: - Derived state
 
-    private var chapters: [Chapter] { chapterService.chapters }
-    private var isGenerating: Bool { chapterService.isGenerating }
-    private var error: String? { chapterService.error }
+    private var chapters: [Chapter] {
+        guard isDisplayingCurrentEpisodeChapters else { return [] }
+        return chapterService.chapters
+    }
+    private var isGenerating: Bool {
+        guard let guid = playerManager.currentEpisode?.guid else { return false }
+        return chapterService.isGenerating(for: guid)
+    }
+    private var error: String? {
+        guard let guid = playerManager.currentEpisode?.guid else { return nil }
+        return chapterService.errorMessage(for: guid)
+    }
+    private var isDisplayingCurrentEpisodeChapters: Bool {
+        guard let guid = playerManager.currentEpisode?.guid else { return false }
+        return chapterService.loadedEpisodeGUID == guid
+    }
     private var currentTime: TimeInterval { playerManager.currentTime }
 
     private var currentChapter: Chapter? {

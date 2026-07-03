@@ -68,6 +68,9 @@ struct MuninnApp: App {
                     // Clean up orphaned downloads (stuck downloads from previous sessions)
                     DownloadManager.shared.cleanupOrphanedDownloads(context: context)
 
+                    // Clear transcription progress left behind by interrupted sessions
+                    LocalTranscriptionService.cleanupOrphanedProgress(context: context)
+
                     // Restore active downloads from background session
                     DownloadManager.shared.restoreActiveDownloads(context: context)
 

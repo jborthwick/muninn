@@ -311,14 +311,43 @@ struct EpisodeDetailView: View {
             Text("Transcript")
                 .font(.headline)
 
-            if let progress = episode.transcriptionProgress {
-                // Actively transcribing — show progress bar
-                VStack(alignment: .leading, spacing: 6) {
-                    ProgressView(value: progress)
+            if isActivelyTranscribing {
+                VStack(alignment: .leading, spacing: 8) {
+                    ProgressView(value: episode.transcriptionProgress ?? 0)
                         .tint(.purple)
-                    Text("Transcribing… \(Int(progress * 100))%")
+                    Text("Transcribing… \(Int((episode.transcriptionProgress ?? 0) * 100))%")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    Button("Cancel", role: .destructive) {
+                        Task { await cancelTranscription() }
+                    }
+                    .font(.caption)
+                }
+
+            } else if isStalledTranscription, let progress = episode.transcriptionProgress {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(
+                        "Interrupted at \(Int(progress * 100))%",
+                        systemImage: "exclamationmark.triangle"
+                    )
+                    .font(.subheadline)
+                    .foregroundStyle(.orange)
+
+                    HStack(spacing: 12) {
+                        Button("Retry") {
+                            Task { await retryTranscription() }
+                        }
+                        .buttonStyle(.borderedProminent)
+
+                        Button("Dismiss") {
+                            LocalTranscriptionService.shared.clearTranscriptionState(
+                                for: episode,
+                                context: modelContext
+                            )
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    .font(.caption)
                 }
 
             } else if episode.localTranscriptPath != nil {
@@ -328,13 +357,28 @@ struct EpisodeDetailView: View {
                     .foregroundStyle(.blue)
 
             } else if let (position, total) = AutoTranscriptionQueue.shared.queuePosition(for: episode.guid) {
-                // Waiting in queue — show position out of total
-                Label("\(position) of \(total) queued for transcription", systemImage: "list.number")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("\(position) of \(total) queued for transcription", systemImage: "list.number")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Button("Remove from Queue") {
+                        AutoTranscriptionQueue.shared.removeFromQueue(guid: episode.guid)
+                    }
+                    .font(.caption)
+                }
+
+            } else if episode.localFilePath != nil, LocalTranscriptionService.isSupported {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Not yet transcribed", systemImage: "waveform.and.mic")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Button("Transcribe") {
+                        Task { await retryTranscription() }
+                    }
+                    .font(.caption)
+                }
 
             } else if episode.localFilePath != nil {
-                // Downloaded but not queued (auto-transcribe off, or transcription failed)
                 Label("Not yet transcribed", systemImage: "waveform.and.mic")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -350,6 +394,16 @@ struct EpisodeDetailView: View {
     }
 
     // MARK: - Computed Properties
+
+    private var transcriptionService: LocalTranscriptionService { .shared }
+
+    private var isActivelyTranscribing: Bool {
+        transcriptionService.isActivelyTranscribing(episodeGUID: episode.guid)
+    }
+
+    private var isStalledTranscription: Bool {
+        transcriptionService.isStalled(episode: episode)
+    }
 
     private var canPlay: Bool {
         episode.localFilePath != nil || networkMonitor.isConnected
@@ -394,6 +448,14 @@ struct EpisodeDetailView: View {
         case .blocked, .alreadyDownloaded, .alreadyDownloading:
             break
         }
+    }
+
+    private func cancelTranscription() async {
+        await transcriptionService.cancelTranscription(for: episode, context: modelContext)
+    }
+
+    private func retryTranscription() async {
+        await transcriptionService.retryTranscription(episode: episode, context: modelContext)
     }
 
     // MARK: - Description Parsing

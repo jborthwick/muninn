@@ -34,6 +34,7 @@ final class AppSettings {
 
     // Transcription settings
     var autoTranscribeEnabledRaw: Int = 1  // 1 = true (default enabled), 0 = false
+    var autoGenerateChaptersEnabledRaw: Int = 1
 
     // Pause recap (on-device summary when playback pauses)
     var pauseRecapEnabledRaw: Int = 1
@@ -54,6 +55,11 @@ final class AppSettings {
     var autoTranscribeEnabled: Bool {
         get { autoTranscribeEnabledRaw == 1 }
         set { autoTranscribeEnabledRaw = newValue ? 1 : 0 }
+    }
+
+    var autoGenerateChaptersEnabled: Bool {
+        get { autoGenerateChaptersEnabledRaw == 1 }
+        set { autoGenerateChaptersEnabledRaw = newValue ? 1 : 0 }
     }
 
     var pauseRecapEnabled: Bool {

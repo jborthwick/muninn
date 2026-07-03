@@ -19,6 +19,8 @@ final class LocalTranscriptionService {
     private(set) var error: String?
     private(set) var transcribingEpisodeGUID: String?
 
+    var cancellationHandler: (() async -> Void)?
+
     // MARK: - Availability
 
     /// True on iOS 26+ with a device that supports SpeechTranscriber.
@@ -43,6 +45,11 @@ final class LocalTranscriptionService {
         guard let audioURL = episode.localFileURL else {
             error = "Episode must be downloaded before it can be transcribed."
             return false
+        }
+        if let transcriptURL = episode.localTranscriptURL,
+           FileManager.default.fileExists(atPath: transcriptURL.path) {
+            logger.info("Transcript already exists for: \(episode.title)")
+            return true
         }
         guard !isTranscribing else { return false }
 
@@ -96,7 +103,13 @@ final class LocalTranscriptionService {
             episode.transcriptionProgress = nil
             try? context.save()
             logger.info("Transcript saved: \(filename) (\(segments.count) segments)")
+            AutoChapterQueue.shared.enqueueIfEnabled(episode: episode, context: context)
             return true
+        } catch is CancellationError {
+            logger.info("Transcription cancelled for: \(episode.title)")
+            episode.transcriptionProgress = nil
+            try? context.save()
+            return false
         } catch {
             logger.error("Transcription failed: \(error.localizedDescription)")
             self.error = "Transcription failed: \(error.localizedDescription)"
@@ -179,6 +192,7 @@ final class LocalTranscriptionService {
             var lastReportedProgress: Double = 0
 
             for try await result in transcriber.results {
+                try Task.checkCancellation()
                 guard result.isFinal else { continue }
 
                 let attrText = result.text
@@ -216,6 +230,16 @@ final class LocalTranscriptionService {
                 }
             }
             return segments
+        }
+
+        await MainActor.run {
+            registerCancellationHandler {
+                resultsTask.cancel()
+                await analyzer.cancelAndFinishNow()
+            }
+        }
+        defer {
+            Task { @MainActor in clearCancellationHandler() }
         }
 
         // Feed the audio file into the analyzer — returns after the entire file is read.

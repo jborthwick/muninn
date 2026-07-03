@@ -584,6 +584,8 @@ private struct AllEpisodesRow: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+                EpisodeProcessingStatusView(episode: episode)
             }
 
             Spacer()

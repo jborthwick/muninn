@@ -263,6 +263,8 @@ private struct DownloadedEpisodeRow: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+                EpisodeProcessingStatusView(episode: episode)
             }
 
             Spacer()

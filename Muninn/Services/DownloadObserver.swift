@@ -77,7 +77,11 @@ final class DownloadObserver {
                 // requested transcription by tapping "Transcribe" before the download finished.
                 let settings = AppSettings.getOrCreate(context: context)
                 let userRequested = AutoTranscriptionQueue.shared.consumeTranscribeRequest(guid: guid)
-                if (settings.autoTranscribeEnabled || userRequested) && LocalTranscriptionService.isSupported {
+                let shouldTranscribe = (settings.autoTranscribeEnabled || userRequested)
+                    && LocalTranscriptionService.isSupported
+                let needsTranscript = episode.localTranscriptPath == nil
+                    || episode.localTranscriptURL.map { !FileManager.default.fileExists(atPath: $0.path) } == true
+                if shouldTranscribe && needsTranscript {
                     AutoTranscriptionQueue.shared.enqueue(episode: episode, context: context)
                 }
             }

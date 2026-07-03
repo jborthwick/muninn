@@ -213,6 +213,8 @@ private struct QueueEpisodeRow: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+                EpisodeProcessingStatusView(episode: episode)
             }
 
             Spacer()

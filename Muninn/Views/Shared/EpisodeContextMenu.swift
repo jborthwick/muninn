@@ -102,6 +102,62 @@ struct EpisodeContextMenu: View {
 
         Divider()
 
+        // Transcription actions
+        if LocalTranscriptionService.isSupported, episode.localFilePath != nil {
+            if LocalTranscriptionService.shared.isActivelyTranscribing(episodeGUID: episode.guid) {
+                Button(role: .destructive) {
+                    Task {
+                        await LocalTranscriptionService.shared.cancelTranscription(
+                            for: episode,
+                            context: modelContext
+                        )
+                    }
+                } label: {
+                    Label("Cancel Transcription", systemImage: "xmark.circle")
+                }
+            } else if LocalTranscriptionService.shared.isStalled(episode: episode) {
+                Button {
+                    Task {
+                        await LocalTranscriptionService.shared.retryTranscription(
+                            episode: episode,
+                            context: modelContext
+                        )
+                    }
+                } label: {
+                    Label("Retry Transcription", systemImage: "arrow.clockwise")
+                }
+                Button {
+                    LocalTranscriptionService.shared.clearTranscriptionState(
+                        for: episode,
+                        context: modelContext
+                    )
+                } label: {
+                    Label("Dismiss Transcription", systemImage: "xmark")
+                }
+            } else if episode.localTranscriptPath == nil {
+                if AutoTranscriptionQueue.shared.queuePosition(for: episode.guid) != nil {
+                    Button {
+                        AutoTranscriptionQueue.shared.removeFromQueue(guid: episode.guid)
+                    } label: {
+                        Label("Remove from Transcription Queue", systemImage: "list.number")
+                    }
+                } else {
+                    Button {
+                        Task {
+                            await LocalTranscriptionService.shared.transcribe(
+                                episode: episode,
+                                context: modelContext
+                            )
+                        }
+                    } label: {
+                        Label("Transcribe Episode", systemImage: "waveform.and.mic")
+                    }
+                }
+            }
+
+            Divider()
+        }
+
         // Mark played/unplayed
         Button {
             if !episode.isPlayed &&

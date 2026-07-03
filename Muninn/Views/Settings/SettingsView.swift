@@ -200,6 +200,23 @@ struct SettingsView: View {
                     }
                     .disabled(!LocalTranscriptionService.isSupported)
 
+                    Toggle(isOn: Binding(
+                        get: { appSettings.autoGenerateChaptersEnabled },
+                        set: { appSettings.autoGenerateChaptersEnabled = $0; try? modelContext.save() }
+                    )) {
+                        HStack {
+                            Image(systemName: "list.bullet.rectangle")
+                                .foregroundStyle(.orange)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Auto-Generate Chapters")
+                                Text("Create chapters and summaries after transcription finishes")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .disabled(!LocalTranscriptionService.isSupported)
+
                     if !LocalTranscriptionService.isSupported {
                         HStack {
                             Image(systemName: "info.circle")

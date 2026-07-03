@@ -12,6 +12,8 @@ final class AutoTranscriptionQueue {
     private let logger = Logger(subsystem: "com.muninn", category: "AutoTranscriptionQueue")
 
     private(set) var isProcessing = false
+    /// Observable mirror of queued episode GUIDs (for SwiftUI updates).
+    private(set) var queuedGUIDs: [String] = []
     private var queue: [Episode] = []
     private var modelContext: ModelContext?
 
@@ -41,15 +43,41 @@ final class AutoTranscriptionQueue {
     /// or `nil` if the episode is not queued. The currently-transcribing episode has
     /// already been removed, so position 1 means "up next."
     func queuePosition(for guid: String) -> (position: Int, total: Int)? {
-        guard let index = queue.firstIndex(where: { $0.guid == guid }) else { return nil }
-        return (position: index + 1, total: queue.count)
+        guard let index = queuedGUIDs.firstIndex(of: guid) else { return nil }
+        return (position: index + 1, total: queuedGUIDs.count)
     }
 
     func enqueue(episode: Episode, context: ModelContext) {
+        if episode.localTranscriptPath != nil,
+           let url = episode.localTranscriptURL,
+           FileManager.default.fileExists(atPath: url.path) {
+            logger.info("Skipping auto-transcription — transcript exists: \(episode.title)")
+            return
+        }
+        guard !queue.contains(where: { $0.guid == episode.guid }) else {
+            logger.info("Skipping auto-transcription — already queued: \(episode.title)")
+            return
+        }
+
         queue.append(episode)
+        syncQueuedGUIDs()
         modelContext = context
         logger.info("Enqueued episode for auto-transcription: \(episode.title)")
         processNextIfNeeded()
+    }
+
+    func removeFromQueue(guid: String) {
+        let before = queue.count
+        queue.removeAll { $0.guid == guid }
+        if queue.count != before {
+            syncQueuedGUIDs()
+            logger.info("Removed episode from transcription queue: \(guid)")
+        }
+        pendingTranscribeOnDownload.remove(guid)
+    }
+
+    private func syncQueuedGUIDs() {
+        queuedGUIDs = queue.map(\.guid)
     }
 
     private func processNextIfNeeded() {
@@ -57,16 +85,21 @@ final class AutoTranscriptionQueue {
 
         isProcessing = true
         let episode = queue.removeFirst()
+        syncQueuedGUIDs()
 
         Task {
             logger.info("Starting auto-transcription for: \(episode.title)")
-            let started = await LocalTranscriptionService.shared.transcribe(episode: episode, context: context)
+            let success = await LocalTranscriptionService.shared.transcribe(episode: episode, context: context)
 
-            if !started {
-                // Service was busy (manual transcription in progress) — re-insert at front to retry
+            if !success, LocalTranscriptionService.shared.isTranscribing {
+                // Another transcription is in progress — retry this episode later.
                 self.queue.insert(episode, at: 0)
-                logger.info("Re-queued episode (service was busy): \(episode.title)")
+                self.syncQueuedGUIDs()
+                logger.info("Re-queued episode (transcription service busy): \(episode.title)")
+            } else if !success {
+                logger.warning("Auto-transcription failed, not retrying: \(episode.title)")
             }
+
             self.isProcessing = false
             self.processNextIfNeeded()
         }

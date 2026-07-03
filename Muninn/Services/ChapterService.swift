@@ -19,6 +19,18 @@ final class ChapterService {
     private(set) var generationStatus: String = ""
     private(set) var error: String?
     private(set) var generatingEpisodeGUID: String?
+    /// Episode whose chapters are currently loaded into `chapters` (Now Playing UI).
+    private(set) var loadedEpisodeGUID: String?
+    private var errorEpisodeGUID: String?
+
+    func isGenerating(for episodeGUID: String) -> Bool {
+        isGenerating && generatingEpisodeGUID == episodeGUID
+    }
+
+    func errorMessage(for episodeGUID: String) -> String? {
+        guard errorEpisodeGUID == episodeGUID else { return nil }
+        return error
+    }
 
     // MARK: - Availability
 
@@ -34,6 +46,7 @@ final class ChapterService {
     // MARK: - Public API
 
     func load(for episode: Episode) {
+        loadedEpisodeGUID = episode.guid
         guard let url = episode.localChaptersURL,
               FileManager.default.fileExists(atPath: url.path),
               let data = try? Data(contentsOf: url) else {
@@ -43,11 +56,14 @@ final class ChapterService {
         struct Wrapper: Decodable { let chapters: [Chapter] }
         chapters = (try? JSONDecoder().decode(Wrapper.self, from: data))?.chapters ?? []
         error = nil
+        errorEpisodeGUID = nil
     }
 
     func clear() {
         chapters = []
+        loadedEpisodeGUID = nil
         error = nil
+        errorEpisodeGUID = nil
         generationStatus = ""
     }
 
@@ -64,11 +80,16 @@ final class ChapterService {
         }
         episode.localChaptersPath = nil
         episode.localSummaryPath = nil
-        chapters = []
-        TranscriptSummaryService.shared.clear()
+        if loadedEpisodeGUID == episode.guid {
+            chapters = []
+        }
+        if loadedEpisodeGUID == episode.guid {
+            TranscriptSummaryService.shared.clear()
+        }
 
         isGenerating = true
         error = nil
+        errorEpisodeGUID = nil
         generatingEpisodeGUID = episode.guid
 
         defer {
@@ -90,6 +111,7 @@ final class ChapterService {
 
         guard !segments.isEmpty else {
             error = "A transcript is required to generate chapters. Transcribe the episode first."
+            errorEpisodeGUID = episode.guid
             return false
         }
 
@@ -160,6 +182,7 @@ final class ChapterService {
 
         guard !result.isEmpty else {
             error = "No chapters could be generated."
+            errorEpisodeGUID = episode.guid
             return false
         }
 
@@ -191,12 +214,15 @@ final class ChapterService {
 
             episode.localChaptersPath = filename
             try? context.save()
-            self.chapters = chapters
+            if loadedEpisodeGUID == guid {
+                self.chapters = chapters
+            }
             logger.info("Chapters saved: \(filename) (\(chapters.count) chapters)")
             return true
         } catch {
             logger.error("Save failed: \(error.localizedDescription)")
             self.error = "Could not save chapters: \(error.localizedDescription)"
+            errorEpisodeGUID = episode.guid
             return false
         }
     }
