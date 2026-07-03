@@ -350,22 +350,16 @@ struct TranscriptView: View {
         .buttonStyle(.plain)
     }
 
-    /// Builds an AttributedString for a group, colouring each word/segment by playback state.
     private func groupAttributedString(for group: [TranscriptSegment]) -> AttributedString {
         var result = AttributedString()
         for (i, segment) in group.enumerated() {
             let needsSpace = i < group.count - 1 && !segment.text.hasSuffix(" ")
             let text = needsSpace ? segment.text + " " : segment.text
             var span = AttributedString(text)
-            let isCurrent = segment.id == currentSegmentID
-            let isPast = segment.endTime < playbackTime
-            if isCurrent {
-                span.foregroundColor = .primary
-            } else if isPast {
-                span.foregroundColor = Color(UIColor.tertiaryLabel)
-            } else {
-                span.foregroundColor = Color(UIColor.secondaryLabel)
-            }
+            span.foregroundColor = TranscriptHighlight.color(
+                playbackTime: playbackTime,
+                segment: segment
+            )
             result += span
         }
         return result
