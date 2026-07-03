@@ -141,7 +141,13 @@ final class TranscriptService {
 
                 let text = cueLines.joined(separator: " ")
                 if !text.isEmpty {
-                    segments.append(TranscriptSegment(startTime: start, endTime: end, text: text, speaker: speaker))
+                    let wordSegments = parseVTTInlineWords(
+                        text: text,
+                        cueStart: start,
+                        cueEnd: end,
+                        speaker: speaker
+                    )
+                    segments.append(contentsOf: wordSegments)
                 }
                 continue
             }
@@ -177,6 +183,103 @@ final class TranscriptService {
             result.removeSubrange(open.lowerBound...close.lowerBound)
         }
         return result
+    }
+
+    // MARK: - VTT Inline Word Timestamps
+
+    /// Splits cue text on WebVTT inline timestamp tags (`<00:01.234>`) into word-level segments.
+    /// Falls back to a single segment when no inline tags are present.
+    private func parseVTTInlineWords(
+        text: String,
+        cueStart: TimeInterval,
+        cueEnd: TimeInterval,
+        speaker: String?
+    ) -> [TranscriptSegment] {
+        guard let regex = Self.inlineTimestampRegex else {
+            let cleaned = stripVTTTags(text).trimmingCharacters(in: .whitespaces)
+            guard !cleaned.isEmpty else { return [] }
+            return [TranscriptSegment(startTime: cueStart, endTime: cueEnd, text: cleaned, speaker: speaker)]
+        }
+
+        let nsText = text as NSString
+        let fullRange = NSRange(location: 0, length: nsText.length)
+        let matches = regex.matches(in: text, range: fullRange)
+        guard !matches.isEmpty else {
+            let cleaned = stripVTTTags(text).trimmingCharacters(in: .whitespaces)
+            guard !cleaned.isEmpty else { return [] }
+            return [TranscriptSegment(startTime: cueStart, endTime: cueEnd, text: cleaned, speaker: speaker)]
+        }
+
+        var segments: [TranscriptSegment] = []
+        var priorEnd = cueStart
+
+        // Text before the first inline tag shares the cue start time.
+        let firstTagLoc = matches[0].range.location
+        if firstTagLoc > 0 {
+            let prefix = stripVTTTags(nsText.substring(with: NSRange(location: 0, length: firstTagLoc)))
+                .trimmingCharacters(in: .whitespaces)
+            let prefixWords = prefix.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+            if !prefixWords.isEmpty {
+                let slot = (cueEnd - cueStart) / Double(prefixWords.count)
+                for word in prefixWords {
+                    let start = priorEnd
+                    let end = min(start + slot, cueEnd)
+                    segments.append(TranscriptSegment(startTime: start, endTime: end, text: word, speaker: speaker))
+                    priorEnd = end
+                }
+            }
+        }
+
+        for (index, match) in matches.enumerated() {
+            guard let wordStart = parseInlineVTTTimestamp(match, in: nsText) else { continue }
+
+            let textStart = match.range.location + match.range.length
+            let textEnd = index + 1 < matches.count ? matches[index + 1].range.location : nsText.length
+            guard textEnd > textStart else { continue }
+
+            let rawWord = nsText.substring(with: NSRange(location: textStart, length: textEnd - textStart))
+            let word = stripVTTTags(rawWord).trimmingCharacters(in: .whitespaces)
+            guard !word.isEmpty else { continue }
+
+            let wordEnd: TimeInterval
+            if index + 1 < matches.count, let nextStart = parseInlineVTTTimestamp(matches[index + 1], in: nsText) {
+                wordEnd = nextStart
+            } else {
+                wordEnd = cueEnd
+            }
+
+            segments.append(TranscriptSegment(
+                startTime: wordStart,
+                endTime: max(wordEnd, wordStart + 0.05),
+                text: word,
+                speaker: speaker
+            ))
+        }
+
+        if segments.isEmpty {
+            let cleaned = stripVTTTags(text).trimmingCharacters(in: .whitespaces)
+            guard !cleaned.isEmpty else { return [] }
+            return [TranscriptSegment(startTime: cueStart, endTime: cueEnd, text: cleaned, speaker: speaker)]
+        }
+        return segments
+    }
+
+    private static let inlineTimestampRegex: NSRegularExpression? = {
+        // WebVTT inline tags: <00:01.234> or <00:00:01.234>
+        try? NSRegularExpression(pattern: #"<(\d{1,2}):(\d{2})(?::(\d{2}))?\.(\d{3})>"#)
+    }()
+
+    private func parseInlineVTTTimestamp(_ match: NSTextCheckingResult, in text: NSString) -> TimeInterval? {
+        guard match.numberOfRanges >= 5 else { return nil }
+        let minutes = Double(text.substring(with: match.range(at: 1))) ?? 0
+        let seconds = Double(text.substring(with: match.range(at: 2))) ?? 0
+        let hoursRange = match.range(at: 3)
+        let millis = Double(text.substring(with: match.range(at: 4))) ?? 0
+        if hoursRange.location != NSNotFound, hoursRange.length > 0 {
+            let hours = Double(text.substring(with: hoursRange)) ?? 0
+            return hours * 3600 + minutes * 60 + seconds + millis / 1000
+        }
+        return minutes * 60 + seconds + millis / 1000
     }
 
     // MARK: - Podcast Index JSON Parser

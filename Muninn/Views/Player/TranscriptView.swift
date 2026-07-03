@@ -62,15 +62,18 @@ struct TranscriptView: View {
     private var localTranscriptionService: LocalTranscriptionService { LocalTranscriptionService.shared }
     private var playerManager: AudioPlayerManager { AudioPlayerManager.shared }
 
-    // Track which group is active to avoid re-scrolling on every 0.5s tick
+    // Track which group is active to avoid re-scrolling on every word tick
     @State private var activeGroupID: UUID? = nil
     // Cancellable scroll task — lets us debounce rapid seeks/scrubs
     @State private var pendingScrollTask: Task<Void, Never>? = nil
+    // High-frequency playback clock for word-level highlight (50 ms)
+    @State private var playbackTime: TimeInterval = 0
+    @State private var playbackClockTask: Task<Void, Never>? = nil
 
     // Cached to avoid O(n) recomputation on every render.
     // segmentGroups is expensive to build and never changes during playback —
-    // only when the transcript loads. currentSegmentID is updated via
-    // onChange(of: currentTime) at most every 0.5 s, not during every render.
+    // only when the transcript loads. currentSegmentID is updated via the
+    // playback clock at ~50 ms, not during every render.
     // This makes the render path O(1) so scrubbing the slider stays responsive.
     @State private var cachedSegmentGroups: [[TranscriptSegment]] = []
     @State private var currentSegmentID: UUID? = nil
@@ -78,7 +81,6 @@ struct TranscriptView: View {
     // MARK: - Derived from services
 
     private var segments: [TranscriptSegment] { transcriptService.segments }
-    private var currentTime: TimeInterval { playerManager.currentTime }
     private var isLoading: Bool { transcriptService.isLoading }
     private var error: String? { transcriptService.error }
     private var isTranscribing: Bool { localTranscriptionService.isTranscribing }
@@ -99,7 +101,27 @@ struct TranscriptView: View {
     /// Called once on appear and whenever the transcript is (re)loaded.
     private func rebuildCache() {
         cachedSegmentGroups = buildSegmentGroups()
-        currentSegmentID = resolveCurrentSegment(at: currentTime)?.id
+        currentSegmentID = segments.segment(at: playbackTime)?.id
+    }
+
+    private func startPlaybackClock() {
+        playbackClockTask?.cancel()
+        playbackTime = playerManager.playbackTime
+        playbackClockTask = Task { @MainActor in
+            while !Task.isCancelled {
+                let t = playerManager.playbackTime
+                if abs(t - playbackTime) >= 0.02 {
+                    playbackTime = t
+                    currentSegmentID = segments.segment(at: t)?.id
+                }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+        }
+    }
+
+    private func stopPlaybackClock() {
+        playbackClockTask?.cancel()
+        playbackClockTask = nil
     }
 
     private func buildSegmentGroups() -> [[TranscriptSegment]] {
@@ -122,14 +144,35 @@ struct TranscriptView: View {
         return groups
     }
 
-    /// O(n) segment search — only called from onChange(of: currentTime), not from body.
-    private func resolveCurrentSegment(at time: TimeInterval) -> TranscriptSegment? {
-        segments.last(where: { time >= $0.startTime && time < $0.endTime })
-            ?? (time > 0 ? segments.last(where: { time >= $0.startTime }) : nil)
-    }
-
     private func groupContainingID(_ id: UUID) -> [TranscriptSegment]? {
         cachedSegmentGroups.first(where: { $0.contains(where: { $0.id == id }) })
+    }
+
+    private func handlePlaybackTimeChange(oldTime: TimeInterval, newTime: TimeInterval, proxy: ScrollViewProxy) {
+        guard let segID = currentSegmentID,
+              let group = groupContainingID(segID),
+              let groupID = group.first?.id,
+              groupID != activeGroupID else { return }
+
+        let isSeek = abs(newTime - oldTime) > 2.0
+
+        if isSeek {
+            pendingScrollTask?.cancel()
+            pendingScrollTask = Task {
+                try? await Task.sleep(for: .milliseconds(150))
+                guard !Task.isCancelled else { return }
+                activeGroupID = groupID
+                withAnimation(.easeOut(duration: 0.35)) {
+                    proxy.scrollTo(groupID, anchor: .center)
+                }
+            }
+        } else {
+            pendingScrollTask?.cancel()
+            activeGroupID = groupID
+            withAnimation(.easeInOut(duration: 0.45)) {
+                proxy.scrollTo(groupID, anchor: .center)
+            }
+        }
     }
 
     var body: some View {
@@ -163,38 +206,8 @@ struct TranscriptView: View {
                         .padding(.horizontal)
                         .padding(.vertical, 8)
                     }
-                    .onChange(of: currentTime) { oldTime, newTime in
-                        // Update cached current segment (O(n), but only runs every ~0.5 s)
-                        currentSegmentID = resolveCurrentSegment(at: newTime)?.id
-
-                        guard let segID = currentSegmentID,
-                              let group = groupContainingID(segID),
-                              let groupID = group.first?.id,
-                              groupID != activeGroupID else { return }
-
-                        let isSeek = abs(newTime - oldTime) > 2.0
-
-                        if isSeek {
-                            // Scrub / skip: cancel any previous pending scroll and
-                            // wait a short beat so rapid skip-button presses don't
-                            // thrash the view.
-                            pendingScrollTask?.cancel()
-                            pendingScrollTask = Task {
-                                try? await Task.sleep(for: .milliseconds(150))
-                                guard !Task.isCancelled else { return }
-                                activeGroupID = groupID
-                                withAnimation(.easeOut(duration: 0.35)) {
-                                    proxy.scrollTo(groupID, anchor: .center)
-                                }
-                            }
-                        } else {
-                            // Normal playback tick.
-                            pendingScrollTask?.cancel()
-                            activeGroupID = groupID
-                            withAnimation(.easeInOut(duration: 0.45)) {
-                                proxy.scrollTo(groupID, anchor: .center)
-                            }
-                        }
+                    .onChange(of: playbackTime) { oldTime, newTime in
+                        handlePlaybackTimeChange(oldTime: oldTime, newTime: newTime, proxy: proxy)
                     }
                     .onAppear {
                         if let segID = currentSegmentID,
@@ -207,10 +220,17 @@ struct TranscriptView: View {
                 }
             }
         }
-        .onAppear { rebuildCache() }
+        .onAppear {
+            rebuildCache()
+            startPlaybackClock()
+        }
+        .onDisappear { stopPlaybackClock() }
         // Rebuild when the transcript is (re)loaded — keyed on the first segment's
         // identity so a full reload is detected even if the count happens to match.
-        .onChange(of: segments.first?.id) { _, _ in rebuildCache() }
+        .onChange(of: segments.first?.id) { _, _ in
+            rebuildCache()
+            currentSegmentID = segments.segment(at: playbackTime)?.id
+        }
     }
 
     // MARK: - Empty State Views
@@ -330,15 +350,15 @@ struct TranscriptView: View {
         .buttonStyle(.plain)
     }
 
-    /// Builds an AttributedString for a group, colouring each segment by playback state.
+    /// Builds an AttributedString for a group, colouring each word/segment by playback state.
     private func groupAttributedString(for group: [TranscriptSegment]) -> AttributedString {
         var result = AttributedString()
         for (i, segment) in group.enumerated() {
-            let text = i < group.count - 1 ? segment.text + " " : segment.text
+            let needsSpace = i < group.count - 1 && !segment.text.hasSuffix(" ")
+            let text = needsSpace ? segment.text + " " : segment.text
             var span = AttributedString(text)
-            // O(1) — compares against cached ID, not a live O(n) search
             let isCurrent = segment.id == currentSegmentID
-            let isPast = segment.endTime < currentTime
+            let isPast = segment.endTime < playbackTime
             if isCurrent {
                 span.foregroundColor = .primary
             } else if isPast {

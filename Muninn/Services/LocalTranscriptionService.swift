@@ -179,38 +179,36 @@ final class LocalTranscriptionService {
             var lastReportedProgress: Double = 0
 
             for try await result in transcriber.results {
-                let attrText = result.text
-                let plainText = String(attrText.characters)
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !plainText.isEmpty else { continue }
+                guard result.isFinal else { continue }
 
-                // Extract start/end time from AttributedString run attributes.
-                // Each run carries an AttributeScopes.SpeechAttributes.TimeRangeAttribute
-                // whose value is a CMTimeRange for that span of text.
-                var firstStart: CMTime?
-                var lastEnd: CMTime?
+                let attrText = result.text
+                var lastEndSecs: TimeInterval = 0
+
+                // Preserve per-run timing so playback can highlight word-by-word.
+                // Each run carries AttributeScopes.SpeechAttributes.TimeRangeAttribute.
                 for run in attrText.runs {
-                    if let cmRange = run[AttributeScopes.SpeechAttributes.TimeRangeAttribute.self] {
-                        if firstStart == nil { firstStart = cmRange.start }
-                        lastEnd = cmRange.end
+                    let runText = String(attrText[run.range].characters)
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !runText.isEmpty else { continue }
+                    guard let cmRange = run[AttributeScopes.SpeechAttributes.TimeRangeAttribute.self] else {
+                        continue
                     }
+
+                    let startSecs = cmRange.start.seconds
+                    let endSecs = cmRange.end.seconds
+                    lastEndSecs = endSecs
+
+                    segments.append(TranscriptSegment(
+                        startTime: startSecs,
+                        endTime: endSecs,
+                        text: runText,
+                        speaker: nil
+                    ))
                 }
 
-                let startSecs = firstStart?.seconds ?? 0
-                let endSecs   = lastEnd?.seconds   ?? (startSecs + 5)
-
-                segments.append(TranscriptSegment(
-                    startTime: startSecs,
-                    endTime: endSecs,
-                    text: plainText,
-                    speaker: nil
-                ))
-
                 // Throttle: only hop to main actor when progress advances by ≥1%.
-                // This prevents hundreds of SwiftData writes and SwiftUI re-renders
-                // per second from starving gesture and navigation processing.
-                if endSecs > 0, estimatedDuration > 0 {
-                    let newProgress = min(endSecs / estimatedDuration, 0.99)
+                if lastEndSecs > 0, estimatedDuration > 0 {
+                    let newProgress = min(lastEndSecs / estimatedDuration, 0.99)
                     if newProgress - lastReportedProgress >= 0.01 {
                         lastReportedProgress = newProgress
                         await MainActor.run { onProgress(newProgress) }

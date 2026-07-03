@@ -29,6 +29,14 @@ final class AudioPlayerManager {
     private(set) var isPlaying = false
     private(set) var currentTime: TimeInterval = 0
     private(set) var duration: TimeInterval = 0
+
+    /// Live playback position read directly from AVPlayer — use for word-level transcript sync.
+    var playbackTime: TimeInterval {
+        guard let player else { return currentTime }
+        let seconds = player.currentTime().seconds
+        guard !seconds.isNaN, !seconds.isInfinite, seconds >= 0 else { return currentTime }
+        return seconds
+    }
     private(set) var isLoading = false
     // Global default speed (saved to UserDefaults)
     var globalPlaybackSpeed: Double {
