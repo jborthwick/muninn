@@ -235,9 +235,10 @@ final class ChapterService {
     ) -> [TimeInterval] {
         guard duration > 30 else { return [0] }
 
-        let segmentStarts = segments.map(\.startTime)
         let (_, maxChapters) = recommendedChapterRange(duration: duration)
 
+        // Coarse windows only detect *that* a topic shift exists. Exact placement
+        // is refined later onto natural breaks (pauses / sentence edges).
         let windowDur: TimeInterval = 120
         let stride: TimeInterval = 60
 
@@ -245,10 +246,7 @@ final class ChapterService {
         var t: TimeInterval = 0
         while t < duration {
             let wEnd = min(t + windowDur, duration)
-            let text = segments
-                .filter { $0.startTime >= t && $0.startTime < wEnd }
-                .map(\.text)
-                .joined(separator: " ")
+            let text = textInRange(segments: segments, start: t, end: wEnd)
             if !text.isEmpty { windows.append((start: t, text: text)) }
             t += stride
         }
@@ -257,8 +255,9 @@ final class ChapterService {
             return evenlySpacedBoundaries(duration: duration, count: min(3, maxChapters))
         }
 
+        let embedding = NLEmbedding.sentenceEmbedding(for: .english)
         let similarities: [Double]
-        if let embedding = NLEmbedding.sentenceEmbedding(for: .english) {
+        if let embedding {
             let vectors = windows.map { embedding.vector(for: $0.text) }
             similarities = (0..<(windows.count - 1)).map { i -> Double in
                 guard let v1 = vectors[i], let v2 = vectors[i + 1] else { return 1.0 }
@@ -272,36 +271,74 @@ final class ChapterService {
         }
 
         let smoothed = smooth(similarities, windowSize: 3)
-        let mean = smoothed.reduce(0, +) / Double(smoothed.count)
 
-        var candidates: [(time: TimeInterval, depth: Double)] = []
+        // Local minima in the similarity curve = candidate topic shifts.
+        var minima: [(index: Int, time: TimeInterval, value: Double)] = []
         for i in 0..<smoothed.count {
             let prev = i > 0 ? smoothed[i - 1] : Double.infinity
             let next = i < smoothed.count - 1 ? smoothed[i + 1] : Double.infinity
             guard smoothed[i] < prev, smoothed[i] < next else { continue }
-            let rawTime = windows[min(i + 1, windows.count - 1)].start
-            let boundaryTime = snapToSegmentStart(rawTime, segmentStarts: segmentStarts)
-            candidates.append((time: boundaryTime, depth: mean - smoothed[i]))
+            // Transition sits between window i and i+1 — use the midpoint, not the grid edge.
+            let left = windows[i].start + windowDur / 2
+            let right = windows[min(i + 1, windows.count - 1)].start + windowDur / 2
+            minima.append((index: i, time: (left + right) / 2, value: smoothed[i]))
         }
 
-        candidates.sort { $0.depth > $1.depth }
+        // Prominence: how far this valley drops below the lowest ridge toward
+        // neighboring valleys. Stacked noise dips share a shallow basin and score low;
+        // a real topic shift stands alone and scores high.
+        var candidates: [(time: TimeInterval, prominence: Double)] = []
+        for (idx, minimum) in minima.enumerated() {
+            let leftRidge = ridgeHeight(
+                from: minimum.index,
+                through: idx > 0 ? minima[idx - 1].index : 0,
+                in: smoothed,
+                direction: -1
+            )
+            let rightRidge = ridgeHeight(
+                from: minimum.index,
+                through: idx + 1 < minima.count ? minima[idx + 1].index : smoothed.count - 1,
+                in: smoothed,
+                direction: 1
+            )
+            let prominence = min(leftRidge, rightRidge) - minimum.value
+            guard prominence > 0 else { continue }
+            candidates.append((time: minimum.time, prominence: prominence))
+        }
 
-        let baseGap = max(120, duration / Double(maxChapters + 1))
-        let medianDepth = candidates.isEmpty
-            ? 0
-            : candidates.map(\.depth).sorted()[candidates.count / 2]
+        candidates.sort { $0.prominence > $1.prominence }
+
+        // Non-maximum suppression: stronger boundaries claim a neighborhood so
+        // weaker neighbors in the same stretch can't stack. Radius scales with
+        // expected chapter spacing — not a fixed "min chapter length."
+        let competitionRadius = max(90, duration / Double(maxChapters * 2))
         var selected: [TimeInterval] = [0]
 
         for candidate in candidates {
-            let gap = requiredGap(depth: candidate.depth, medianDepth: medianDepth, baseGap: baseGap)
-            guard candidate.time > gap else { continue }
-            let tooClose = selected.contains { abs($0 - candidate.time) < gap }
-            if !tooClose { selected.append(candidate.time) }
+            guard candidate.time > competitionRadius * 0.5 else { continue }
+            let dominated = selected.contains { abs($0 - candidate.time) < competitionRadius }
+            if !dominated { selected.append(candidate.time) }
             if selected.count >= maxChapters { break }
         }
 
         selected.sort()
-        return limitTailBoundaries(selected, duration: duration)
+
+        // Move each coarse hit onto the best natural break nearby.
+        var refined: [TimeInterval] = [0]
+        let minSeparation = competitionRadius * 0.5
+        for coarse in selected where coarse > 0 {
+            let time = refineBoundaryTime(
+                around: coarse,
+                segments: segments,
+                embedding: embedding,
+                searchRadius: stride * 1.5
+            )
+            guard time > minSeparation else { continue }
+            guard !refined.contains(where: { abs($0 - time) < minSeparation }) else { continue }
+            refined.append(time)
+        }
+
+        return limitTailBoundaries(refined, duration: duration)
     }
 
     // MARK: - Helpers
@@ -349,33 +386,140 @@ final class ChapterService {
         return (minChapters, maxChapters)
     }
 
-    nonisolated private func snapToSegmentStart(
-        _ time: TimeInterval,
-        segmentStarts: [TimeInterval],
-        radius: TimeInterval = 60
+    /// Pick the segment start near `coarseTime` that best splits before/after topic,
+    /// preferring pauses and sentence edges over the analysis-window grid.
+    nonisolated private func refineBoundaryTime(
+        around coarseTime: TimeInterval,
+        segments: [TranscriptSegment],
+        embedding: NLEmbedding?,
+        searchRadius: TimeInterval,
+        contextDur: TimeInterval = 90
     ) -> TimeInterval {
-        let lo = time - radius
-        let hi = time + radius
-        var best = time
-        var bestDist = radius + 1
-        for start in segmentStarts where start >= lo && start <= hi {
-            let dist = abs(start - time)
-            if dist < bestDist {
-                bestDist = dist
-                best = start
+        guard segments.count > 2 else { return coarseTime }
+
+        let lo = max(0, coarseTime - searchRadius)
+        let hi = coarseTime + searchRadius
+        let breaks = naturalBreakIndices(in: segments, from: lo, to: hi)
+        let candidates = breaks.isEmpty
+            ? fallbackBreakIndices(in: segments, from: lo, to: hi)
+            : breaks
+        guard !candidates.isEmpty else { return coarseTime }
+
+        var bestTime = coarseTime
+        var bestScore = -Double.infinity
+
+        for index in candidates {
+            let time = segments[index].startTime
+            let before = textInRange(
+                segments: segments,
+                start: max(0, time - contextDur),
+                end: time
+            )
+            let after = textInRange(
+                segments: segments,
+                start: time,
+                end: time + contextDur
+            )
+            guard before.count > 20, after.count > 20 else { continue }
+
+            let similarity: Double
+            if let embedding,
+               let v1 = embedding.vector(for: before),
+               let v2 = embedding.vector(for: after) {
+                similarity = cosineSimilarity(v1, v2)
+            } else {
+                similarity = jaccardSimilarity(significantWords(in: before), significantWords(in: after))
+            }
+
+            let gap = index > 0
+                ? max(0, segments[index].startTime - segments[index - 1].endTime)
+                : 0
+            // Topic shift dominates; small bonuses for pauses and sentence edges.
+            let pauseBonus = min(gap / 3.0, 0.12)
+            let sentenceBonus = index > 0 && endsSentence(segments[index - 1].text) ? 0.06 : 0
+            let proximityPenalty = abs(time - coarseTime) / (searchRadius * 4)
+            let score = (1 - similarity) + pauseBonus + sentenceBonus - proximityPenalty
+
+            if score > bestScore {
+                bestScore = score
+                bestTime = time
             }
         }
-        return best
+
+        return bestTime
     }
 
-    nonisolated private func requiredGap(
-        depth: Double,
-        medianDepth: Double,
-        baseGap: TimeInterval
-    ) -> TimeInterval {
-        if medianDepth > 0, depth >= medianDepth * 1.75 { return 60 }
-        if medianDepth > 0, depth >= medianDepth * 1.25 { return max(90, baseGap * 0.45) }
-        return baseGap
+    /// Segment starts that follow a pause or end of sentence — natural edit points.
+    nonisolated private func naturalBreakIndices(
+        in segments: [TranscriptSegment],
+        from lo: TimeInterval,
+        to hi: TimeInterval
+    ) -> [Int] {
+        var indices: [Int] = []
+        for i in 1..<segments.count {
+            let start = segments[i].startTime
+            guard start >= lo, start <= hi else { continue }
+            let gap = segments[i].startTime - segments[i - 1].endTime
+            if gap >= 0.35 || endsSentence(segments[i - 1].text) {
+                indices.append(i)
+            }
+        }
+        return indices
+    }
+
+    /// If the transcript has no clear pauses, sample segment starts in the window.
+    nonisolated private func fallbackBreakIndices(
+        in segments: [TranscriptSegment],
+        from lo: TimeInterval,
+        to hi: TimeInterval
+    ) -> [Int] {
+        var indices: [Int] = []
+        for i in 1..<segments.count {
+            let start = segments[i].startTime
+            guard start >= lo, start <= hi else { continue }
+            // Word-level transcripts are dense — take every ~4th segment.
+            if indices.isEmpty || i - (indices.last ?? 0) >= 4 {
+                indices.append(i)
+            }
+        }
+        return indices
+    }
+
+    nonisolated private func textInRange(
+        segments: [TranscriptSegment],
+        start: TimeInterval,
+        end: TimeInterval
+    ) -> String {
+        segments
+            .filter { $0.startTime >= start && $0.startTime < end }
+            .map(\.text)
+            .joined(separator: " ")
+    }
+
+    nonisolated private func endsSentence(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let last = trimmed.last else { return false }
+        return ".?!…".contains(last)
+    }
+
+    /// Highest similarity between a valley and the next/previous valley (or edge).
+    /// That ridge is the baseline for prominence — shared basins score low.
+    nonisolated private func ridgeHeight(
+        from start: Int,
+        through end: Int,
+        in values: [Double],
+        direction: Int
+    ) -> Double {
+        guard !values.isEmpty else { return 0 }
+        var i = start
+        var peak = values[start]
+        let step = direction >= 0 ? 1 : -1
+        while i != end {
+            i += step
+            guard i >= 0, i < values.count else { break }
+            peak = max(peak, values[i])
+        }
+        return peak
     }
 
     /// Avoid many micro-chapters in the closing minutes (credits, name roll calls, plugs).
