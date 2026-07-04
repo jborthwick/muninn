@@ -82,6 +82,8 @@ struct TranscriptView: View {
     // This makes the render path O(1) so scrubbing the slider stays responsive.
     @State private var cachedSegmentGroups: [[TranscriptSegment]] = []
     @State private var currentSegmentID: UUID? = nil
+    /// Hide the list until we've scrolled to the playhead (avoids a top-of-transcript flash).
+    @State private var hasSettledInitialPosition = false
 
     // MARK: - Derived from services
 
@@ -113,9 +115,58 @@ struct TranscriptView: View {
 
     /// Rebuilds cachedSegmentGroups from the current segments and syncs currentSegmentID.
     /// Called once on appear and whenever the transcript is (re)loaded.
-    private func rebuildCache() {
+    private func rebuildCache(at time: TimeInterval? = nil) {
         cachedSegmentGroups = buildSegmentGroups()
-        currentSegmentID = segments.segment(at: playbackTime)?.id
+        let t = time ?? playbackTime
+        currentSegmentID = segments.segment(at: t)?.id
+        if let segID = currentSegmentID, let group = groupContainingID(segID) {
+            setActiveGroup(group)
+        }
+    }
+
+    /// Sync highlight state to the live player position (playing or paused).
+    private func syncToPlayerPosition() {
+        let time = playerManager.isPlaying ? playerManager.playbackTime : playerManager.currentTime
+        snapPlaybackTime(to: time)
+        rebuildCache(at: time)
+    }
+
+    /// Scroll to the active group after layout. LazyVStack often needs a second
+    /// pass before mid-episode IDs exist, so we retry once without animation.
+    /// Keeps the list hidden, then fades in so the top doesn't flash on open.
+    private func scheduleScrollToCurrent(proxy: ScrollViewProxy, animation: Animation?) {
+        pendingScrollTask?.cancel()
+        var hide = Transaction()
+        hide.disablesAnimations = true
+        withTransaction(hide) { hasSettledInitialPosition = false }
+
+        pendingScrollTask = Task {
+            // First pass on the next run loop so the ScrollView exists.
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            guard !playerManager.isScrubbing, let groupID = activeGroupID else {
+                await fadeInTranscript()
+                return
+            }
+            scrollToGroup(groupID, proxy: proxy, animation: animation)
+            // Second pass once LazyVStack has materialized the destination.
+            try? await Task.sleep(for: .milliseconds(48))
+            guard !Task.isCancelled else { return }
+            if !playerManager.isScrubbing, let groupID = activeGroupID {
+                scrollToGroup(groupID, proxy: proxy, animation: nil)
+            }
+            // Brief hold so the scroll commit isn't visible, then fade in.
+            try? await Task.sleep(for: .milliseconds(40))
+            guard !Task.isCancelled else { return }
+            await fadeInTranscript()
+        }
+    }
+
+    @MainActor
+    private func fadeInTranscript() {
+        withAnimation(.easeOut(duration: 0.2)) {
+            hasSettledInitialPosition = true
+        }
     }
 
     /// Starts, slows, or stops the highlight clock based on play/scrub state.
@@ -292,28 +343,32 @@ struct TranscriptView: View {
                         .padding(.horizontal)
                         .padding(.vertical, 8)
                     }
+                    // Stay invisible until scrolled to the playhead, then ease in.
+                    .opacity(hasSettledInitialPosition ? 1 : 0)
                     .onChange(of: playbackTime) { oldTime, newTime in
                         handlePlaybackTimeChange(oldTime: oldTime, newTime: newTime, proxy: proxy)
                     }
                     .onAppear {
-                        if let segID = currentSegmentID,
-                           let group = groupContainingID(segID),
-                           let groupID = group.first?.id {
-                            setActiveGroup(group)
-                            scrollToGroup(groupID, proxy: proxy, animation: nil)
-                        }
+                        // Open on the spoken line, not the top of the transcript.
+                        scheduleScrollToCurrent(proxy: proxy, animation: nil)
+                    }
+                    // Transcript finished loading after the view appeared.
+                    .onChange(of: cachedSegmentGroups.count) { oldCount, newCount in
+                        guard oldCount == 0, newCount > 0 else { return }
+                        scheduleScrollToCurrent(proxy: proxy, animation: nil)
                     }
                 }
             }
         }
         .onAppear {
-            rebuildCache()
+            syncToPlayerPosition()
             syncPlaybackClock()
         }
         .onDisappear {
             stopPlaybackClock()
             pendingScrollTask?.cancel()
             pendingScrollTask = nil
+            hasSettledInitialPosition = false
         }
         .onChange(of: playerManager.isPlaying) { _, _ in
             syncPlaybackClock()
@@ -324,7 +379,7 @@ struct TranscriptView: View {
                 pendingScrollTask?.cancel()
             } else {
                 // Snap highlight to the post-seek position, then resume the clock.
-                // Scroll follows via handlePlaybackTimeChange (instant, no animation).
+                // Scroll follows via handlePlaybackTimeChange.
                 snapPlaybackTime(to: playerManager.currentTime)
                 if let segID = currentSegmentID,
                    let group = groupContainingID(segID) {
@@ -341,8 +396,7 @@ struct TranscriptView: View {
         // Rebuild when the transcript is (re)loaded — keyed on the first segment's
         // identity so a full reload is detected even if the count happens to match.
         .onChange(of: segments.first?.id) { _, _ in
-            rebuildCache()
-            currentSegmentID = segments.segment(at: playbackTime)?.id
+            syncToPlayerPosition()
         }
     }
 
