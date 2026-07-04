@@ -671,6 +671,110 @@ private struct GlassCircleModifier: ViewModifier {
     }
 }
 
-#Preview {
-    NowPlayingView()
+#if DEBUG
+/// In-memory store matching `MuninnApp`'s schema.
+/// `cloudKitDatabase: .none` is required — iCloud entitlements otherwise make
+/// container setup fail in the preview process (same as `MuninnApp`).
+@MainActor
+private enum NowPlayingPreviewContainer {
+    static let result: Result<ModelContainer, Error> = {
+        let schema = Schema([
+            Podcast.self,
+            Episode.self,
+            Folder.self,
+            QueueItem.self,
+            AppSettings.self,
+            ListeningSession.self
+        ])
+        let configuration = ModelConfiguration(
+            schema: schema,
+            isStoredInMemoryOnly: true,
+            cloudKitDatabase: .none
+        )
+        do {
+            return .success(try ModelContainer(for: schema, configurations: [configuration]))
+        } catch {
+            return .failure(error)
+        }
+    }()
 }
+
+/// Seeds `AudioPlayerManager`, then shows `NowPlayingView`.
+private struct NowPlayingPreviewHost: View {
+    var isPlaying: Bool = true
+    var currentTime: TimeInterval = 30
+
+    @Environment(\.modelContext) private var modelContext
+    @State private var ready = false
+
+    var body: some View {
+        Group {
+            if ready {
+                NowPlayingView()
+            } else {
+                Color.black.ignoresSafeArea()
+            }
+        }
+        .preferredColorScheme(.dark)
+        .onAppear(perform: seedIfNeeded)
+    }
+
+    private func seedIfNeeded() {
+        guard !ready else { return }
+
+        let podcast = Podcast(
+            feedURL: "https://example.com/feed",
+            title: "NaddPod Patreon Exclusives"
+        )
+        let episode = Episode(
+            guid: "preview-episode-\(isPlaying ? "playing" : "paused")",
+            title: "C3 Ep. 28: Pulling Strings (The Dragon Elf Chronicles)",
+            audioURL: "https://example.com/audio.mp3",
+            duration: 2 * 3600 + 7 * 60 + 30,
+            publishedDate: .now
+        )
+        episode.podcast = podcast
+        episode.episodeLink = "https://example.com/episode"
+        episode.isStarred = true
+
+        modelContext.insert(podcast)
+        modelContext.insert(episode)
+        _ = AppSettings.getOrCreate(context: modelContext)
+
+        AudioPlayerManager.shared.preparePreview(
+            episode: episode,
+            currentTime: currentTime,
+            isPlaying: isPlaying
+        )
+        ready = true
+    }
+}
+
+private struct NowPlayingPreviewRoot: View {
+    var isPlaying: Bool
+    var currentTime: TimeInterval
+
+    var body: some View {
+        switch NowPlayingPreviewContainer.result {
+        case .success(let container):
+            NowPlayingPreviewHost(isPlaying: isPlaying, currentTime: currentTime)
+                .modelContainer(container)
+        case .failure(let error):
+            Text("Preview ModelContainer failed:\n\(error.localizedDescription)")
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.white)
+                .padding()
+                .containerRelativeFrame([.horizontal, .vertical])
+                .background(.black)
+        }
+    }
+}
+
+#Preview("Now Playing") {
+    NowPlayingPreviewRoot(isPlaying: true, currentTime: 30)
+}
+
+#Preview("Paused") {
+    NowPlayingPreviewRoot(isPlaying: false, currentTime: 12 * 60 + 34)
+}
+#endif

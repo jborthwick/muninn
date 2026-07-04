@@ -695,6 +695,23 @@ final class AudioPlayerManager {
         UserDefaults.standard.set(currentTime, forKey: Keys.lastPlaybackPosition)
     }
 
+    #if DEBUG
+    /// Seeds player UI state for SwiftUI previews (no AVPlayer / audio session).
+    func preparePreview(
+        episode: Episode,
+        currentTime: TimeInterval = 90,
+        duration: TimeInterval? = nil,
+        isPlaying: Bool = true
+    ) {
+        currentEpisode = episode
+        self.currentTime = currentTime
+        self.duration = duration ?? episode.duration ?? 3600
+        self.isPlaying = isPlaying
+        isLoading = false
+        updateArtworkColor(for: episode)
+    }
+    #endif
+
     /// Restores the last played episode on app launch (without starting playback)
     func restoreLastEpisode(from context: SwiftData.ModelContext) {
         guard currentEpisode == nil,
