@@ -29,6 +29,9 @@ final class AudioPlayerManager {
     private(set) var isPlaying = false
     private(set) var currentTime: TimeInterval = 0
     private(set) var duration: TimeInterval = 0
+    /// True while the Now Playing scrubber is being dragged. Transcript UI uses this
+    /// to pause high-frequency highlight work so scrubbing stays responsive.
+    private(set) var isScrubbing = false
 
     /// Live playback position read directly from AVPlayer — use for word-level transcript sync.
     var playbackTime: TimeInterval {
@@ -355,6 +358,17 @@ final class AudioPlayerManager {
         player?.seek(to: cmTime, toleranceBefore: .zero, toleranceAfter: .zero)
         currentTime = validTime
         updateNowPlayingInfo()
+    }
+
+    /// Marks the scrubber as active so transcript highlighting can pause.
+    /// Drag position stays local to the slider until `endScrubbing` seeks.
+    func beginScrubbing() {
+        isScrubbing = true
+    }
+
+    func endScrubbing(at time: TimeInterval) {
+        isScrubbing = false
+        seek(to: time)
     }
 
     func skipForward(_ seconds: TimeInterval? = nil) {
@@ -707,6 +721,7 @@ final class AudioPlayerManager {
         self.currentTime = currentTime
         self.duration = duration ?? episode.duration ?? 3600
         self.isPlaying = isPlaying
+        isScrubbing = false
         isLoading = false
         updateArtworkColor(for: episode)
     }

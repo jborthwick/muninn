@@ -596,13 +596,22 @@ private struct ProgressSectionView: View {
                     get: { isDragging ? dragTime : playerManager.currentTime },
                     set: { newValue in
                         dragTime = newValue
-                        isDragging = true
+                        if !isDragging {
+                            isDragging = true
+                            playerManager.beginScrubbing()
+                        }
                     }
                 ),
                 in: 0...max(playerManager.duration, 1),
                 onEditingChanged: { editing in
-                    if !editing {
-                        playerManager.seek(to: dragTime)
+                    if editing {
+                        if !isDragging {
+                            dragTime = playerManager.currentTime
+                            isDragging = true
+                            playerManager.beginScrubbing()
+                        }
+                    } else {
+                        playerManager.endScrubbing(at: dragTime)
                         isDragging = false
                     }
                 }

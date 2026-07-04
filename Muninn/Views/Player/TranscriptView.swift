@@ -66,6 +66,9 @@ struct TranscriptView: View {
 
     // Track which group is active to avoid re-scrolling on every word tick
     @State private var activeGroupID: UUID? = nil
+    /// Start time of the active group — lets past/future rows avoid reading `playbackTime`
+    /// every clock tick (which was forcing full-row AttributedString rebuilds).
+    @State private var activeGroupStart: TimeInterval = 0
     // Cancellable scroll task — lets us debounce rapid seeks/scrubs
     @State private var pendingScrollTask: Task<Void, Never>? = nil
     // High-frequency playback clock for word-level highlight (50 ms)
@@ -115,24 +118,50 @@ struct TranscriptView: View {
         currentSegmentID = segments.segment(at: playbackTime)?.id
     }
 
-    private func startPlaybackClock() {
+    /// Starts, slows, or stops the highlight clock based on play/scrub state.
+    /// - Playing: ~50 ms word-level updates
+    /// - Paused: clock off; one-shot sync (cheap)
+    /// - Scrubbing: clock off so slider work isn't competing with AttributedString rebuilds
+    private func syncPlaybackClock() {
+        if playerManager.isScrubbing {
+            stopPlaybackClock()
+            return
+        }
+        if playerManager.isPlaying {
+            startPlaybackClock(intervalMs: 50)
+        } else {
+            stopPlaybackClock()
+            snapPlaybackTime(to: playerManager.currentTime)
+        }
+    }
+
+    private func startPlaybackClock(intervalMs: UInt64) {
         playbackClockTask?.cancel()
-        playbackTime = playerManager.playbackTime
+        snapPlaybackTime(to: playerManager.playbackTime)
         playbackClockTask = Task { @MainActor in
             while !Task.isCancelled {
+                if playerManager.isScrubbing || !playerManager.isPlaying {
+                    break
+                }
                 let t = playerManager.playbackTime
                 if abs(t - playbackTime) >= 0.02 {
                     playbackTime = t
                     currentSegmentID = segments.segment(at: t)?.id
                 }
-                try? await Task.sleep(for: .milliseconds(50))
+                try? await Task.sleep(for: .milliseconds(intervalMs))
             }
+            playbackClockTask = nil
         }
     }
 
     private func stopPlaybackClock() {
         playbackClockTask?.cancel()
         playbackClockTask = nil
+    }
+
+    private func snapPlaybackTime(to time: TimeInterval) {
+        playbackTime = time
+        currentSegmentID = segments.segment(at: time)?.id
     }
 
     private func buildSegmentGroups() -> [[TranscriptSegment]] {
@@ -159,7 +188,33 @@ struct TranscriptView: View {
         cachedSegmentGroups.first(where: { $0.contains(where: { $0.id == id }) })
     }
 
+    private func setActiveGroup(_ group: [TranscriptSegment]) {
+        activeGroupID = group.first?.id
+        activeGroupStart = group.first?.startTime ?? 0
+    }
+
+    private func scrollToGroup(
+        _ groupID: UUID,
+        proxy: ScrollViewProxy,
+        animation: Animation?
+    ) {
+        if let animation {
+            withAnimation(animation) {
+                proxy.scrollTo(groupID, anchor: .center)
+            }
+        } else {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                proxy.scrollTo(groupID, anchor: .center)
+            }
+        }
+    }
+
     private func handlePlaybackTimeChange(oldTime: TimeInterval, newTime: TimeInterval, proxy: ScrollViewProxy) {
+        // Don't fight the user while scrubbing — animate to the new spot on release.
+        guard !playerManager.isScrubbing else { return }
+
         guard let segID = currentSegmentID,
               let group = groupContainingID(segID),
               let groupID = group.first?.id,
@@ -169,20 +224,26 @@ struct TranscriptView: View {
 
         if isSeek {
             pendingScrollTask?.cancel()
+            // Brief settle so scrub-release + clock snap don't queue competing scrolls.
             pendingScrollTask = Task {
-                try? await Task.sleep(for: .milliseconds(150))
-                guard !Task.isCancelled else { return }
-                activeGroupID = groupID
-                withAnimation(.easeOut(duration: 0.35)) {
-                    proxy.scrollTo(groupID, anchor: .center)
-                }
+                try? await Task.sleep(for: .milliseconds(50))
+                guard !Task.isCancelled, !playerManager.isScrubbing else { return }
+                setActiveGroup(group)
+                scrollToGroup(
+                    groupID,
+                    proxy: proxy,
+                    animation: .easeOut(duration: 0.4)
+                )
             }
         } else {
             pendingScrollTask?.cancel()
-            activeGroupID = groupID
-            withAnimation(.easeInOut(duration: 0.45)) {
-                proxy.scrollTo(groupID, anchor: .center)
-            }
+            setActiveGroup(group)
+            // Gentle follow during playback (Apple Podcasts / Pocket Casts style).
+            scrollToGroup(
+                groupID,
+                proxy: proxy,
+                animation: .easeInOut(duration: 0.45)
+            )
         }
     }
 
@@ -212,8 +273,20 @@ struct TranscriptView: View {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 4) {
                             ForEach(cachedSegmentGroups, id: \.first?.id) { group in
-                                segmentGroupView(group)
-                                    .id(group.first?.id)
+                                let groupID = group.first?.id
+                                let isCurrent = groupID == activeGroupID
+                                TranscriptSegmentGroupRow(
+                                    group: group,
+                                    isCurrent: isCurrent,
+                                    // Only the active row gets the live clock.
+                                    playbackTime: isCurrent ? playbackTime : nil,
+                                    activeGroupStart: activeGroupStart,
+                                    isScrubbing: playerManager.isScrubbing,
+                                    accentColor: playerManager.nowPlayingDominantColor,
+                                    onSeek: { playerManager.seek(to: $0) }
+                                )
+                                .equatable()
+                                .id(groupID)
                             }
                         }
                         .padding(.horizontal)
@@ -226,8 +299,8 @@ struct TranscriptView: View {
                         if let segID = currentSegmentID,
                            let group = groupContainingID(segID),
                            let groupID = group.first?.id {
-                            activeGroupID = groupID
-                            proxy.scrollTo(groupID, anchor: .center)
+                            setActiveGroup(group)
+                            scrollToGroup(groupID, proxy: proxy, animation: nil)
                         }
                     }
                 }
@@ -235,9 +308,36 @@ struct TranscriptView: View {
         }
         .onAppear {
             rebuildCache()
-            startPlaybackClock()
+            syncPlaybackClock()
         }
-        .onDisappear { stopPlaybackClock() }
+        .onDisappear {
+            stopPlaybackClock()
+            pendingScrollTask?.cancel()
+            pendingScrollTask = nil
+        }
+        .onChange(of: playerManager.isPlaying) { _, _ in
+            syncPlaybackClock()
+        }
+        .onChange(of: playerManager.isScrubbing) { _, scrubbing in
+            if scrubbing {
+                stopPlaybackClock()
+                pendingScrollTask?.cancel()
+            } else {
+                // Snap highlight to the post-seek position, then resume the clock.
+                // Scroll follows via handlePlaybackTimeChange (instant, no animation).
+                snapPlaybackTime(to: playerManager.currentTime)
+                if let segID = currentSegmentID,
+                   let group = groupContainingID(segID) {
+                    setActiveGroup(group)
+                }
+                syncPlaybackClock()
+            }
+        }
+        // Skip buttons / external seeks while paused (clock is off).
+        .onChange(of: playerManager.currentTime) { _, newTime in
+            guard !playerManager.isPlaying, !playerManager.isScrubbing else { return }
+            snapPlaybackTime(to: newTime)
+        }
         // Rebuild when the transcript is (re)loaded — keyed on the first segment's
         // identity so a full reload is detected even if the count happens to match.
         .onChange(of: segments.first?.id) { _, _ in
@@ -363,16 +463,34 @@ struct TranscriptView: View {
         }
     }
 
-    // MARK: - Segment Group View
+}
 
-    @ViewBuilder
-    private func segmentGroupView(_ group: [TranscriptSegment]) -> some View {
-        // O(1) — reads cached state, no linear search
-        let groupHasCurrent = group.contains(where: { $0.id == currentSegmentID })
+// MARK: - Segment Group Row
+
+/// Equatable so past/future rows skip body updates on every highlight-clock tick.
+private struct TranscriptSegmentGroupRow: View, Equatable {
+    let group: [TranscriptSegment]
+    let isCurrent: Bool
+    let playbackTime: TimeInterval?
+    let activeGroupStart: TimeInterval
+    let isScrubbing: Bool
+    let accentColor: Color
+    let onSeek: (TimeInterval) -> Void
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.isCurrent == rhs.isCurrent
+            && lhs.isScrubbing == rhs.isScrubbing
+            && lhs.activeGroupStart == rhs.activeGroupStart
+            && lhs.group.first?.id == rhs.group.first?.id
+            && lhs.accentColor == rhs.accentColor
+            && (!lhs.isCurrent || lhs.playbackTime == rhs.playbackTime)
+    }
+
+    var body: some View {
         let speaker = group.first?.speaker
 
         Button {
-            playerManager.seek(to: group.first?.startTime ?? 0)
+            onSeek(group.first?.startTime ?? 0)
         } label: {
             VStack(alignment: .leading, spacing: 2) {
                 if let speaker {
@@ -382,7 +500,7 @@ struct TranscriptView: View {
                         .foregroundStyle(.tint)
                         .textCase(.uppercase)
                 }
-                Text(groupAttributedString(for: group))
+                Text(attributedText)
                     .font(.body)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -390,26 +508,47 @@ struct TranscriptView: View {
                     .padding(.vertical, 6)
                     .background(
                         RoundedRectangle(cornerRadius: 6)
-                            .fill(playerManager.nowPlayingDominantColor.opacity(groupHasCurrent ? 0.18 : 0))
-                            .animation(.easeInOut(duration: 0.3), value: groupHasCurrent)
+                            .fill(accentColor.opacity(isCurrent ? 0.18 : 0))
                     )
             }
         }
         .buttonStyle(.plain)
     }
 
-    private func groupAttributedString(for group: [TranscriptSegment]) -> AttributedString {
+    private var attributedText: AttributedString {
+        if !isCurrent || playbackTime == nil || isScrubbing {
+            let isPast = (group.first?.startTime ?? 0) < activeGroupStart
+            let color: Color = {
+                if isScrubbing && isCurrent { return Color(UIColor.secondaryLabel) }
+                return Color(isPast ? UIColor.label : UIColor.tertiaryLabel)
+            }()
+            return monochromeString(color: color)
+        }
+
+        guard let time = playbackTime else {
+            return monochromeString(color: Color(UIColor.tertiaryLabel))
+        }
         var result = AttributedString()
         for (i, segment) in group.enumerated() {
             let needsSpace = i < group.count - 1 && !segment.text.hasSuffix(" ")
             let text = needsSpace ? segment.text + " " : segment.text
             var span = AttributedString(text)
             span.foregroundColor = TranscriptHighlight.color(
-                playbackTime: playbackTime,
+                playbackTime: time,
                 segment: segment
             )
             result += span
         }
+        return result
+    }
+
+    private func monochromeString(color: Color) -> AttributedString {
+        let text = group.enumerated().map { i, segment in
+            let needsSpace = i < group.count - 1 && !segment.text.hasSuffix(" ")
+            return needsSpace ? segment.text + " " : segment.text
+        }.joined()
+        var result = AttributedString(text)
+        result.foregroundColor = color
         return result
     }
 }
