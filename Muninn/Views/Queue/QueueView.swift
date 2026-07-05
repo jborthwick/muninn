@@ -10,6 +10,7 @@ struct QueueView: View {
     private var playerManager: AudioPlayerManager { AudioPlayerManager.shared }
 
     @State private var showClearConfirmation = false
+    @State private var selectedEpisode: Episode?
 
     var body: some View {
         NavigationStack {
@@ -22,14 +23,16 @@ struct QueueView: View {
                     )
                 } else {
                     List {
-                        // Now playing section
                         if let currentEpisode = playerManager.currentEpisode {
                             Section("Now Playing") {
                                 NowPlayingRow(episode: currentEpisode)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        selectedEpisode = currentEpisode
+                                    }
                             }
                         }
 
-                        // Offline indicator
                         if !networkMonitor.isConnected {
                             Section {
                                 HStack {
@@ -42,31 +45,19 @@ struct QueueView: View {
                             }
                         }
 
-                        // Queue section
                         Section("Up Next") {
                             ForEach(queueItems) { item in
                                 if let episode = item.episode {
-                                    HStack(spacing: 0) {
-                                        Button {
-                                            if let index = queueItems.firstIndex(where: { $0.id == item.id }) {
-                                                deleteItems(at: IndexSet(integer: index))
-                                            }
-                                        } label: {
-                                            Image(systemName: "minus.circle.fill")
-                                                .foregroundStyle(.red)
-                                                .font(.title3)
+                                    QueueEpisodeRow(episode: episode)
+                                        .equatable()
+                                        .contentShape(Rectangle())
+                                        .onTapGesture {
+                                            selectedEpisode = episode
                                         }
-                                        .buttonStyle(.plain)
-                                        .padding(.trailing, 8)
-
-                                        QueueEpisodeRow(episode: episode)
-                                            .onTapGesture {
-                                                playFromQueue(item)
-                                            }
-                                    }
                                 }
                             }
                             .onMove(perform: moveItems)
+                            .onDelete(perform: deleteItems)
                         }
                         .environment(\.editMode, .constant(.active))
                     }
@@ -84,7 +75,6 @@ struct QueueView: View {
                             Text("Clear")
                         }
                     }
-
                 }
             }
             .confirmationDialog(
@@ -99,39 +89,24 @@ struct QueueView: View {
             } message: {
                 Text("This will remove all episodes from your queue.")
             }
+            .sheet(item: $selectedEpisode) { episode in
+                EpisodeDetailView(episode: episode)
+            }
         }
-    }
-
-    private func playFromQueue(_ item: QueueItem) {
-        guard let episode = item.episode else { return }
-
-        // Check if offline and not downloaded
-        if !networkMonitor.isConnected && episode.localFilePath == nil {
-            return
-        }
-
-        // Remove from queue and play
-        modelContext.delete(item)
-        try? modelContext.save()
-
-        // Auto-download when playing
-        if episode.localFilePath == nil {
-            DownloadManager.shared.download(episode)
-        }
-
-        AudioPlayerManager.shared.play(episode)
     }
 
     private func deleteItems(at offsets: IndexSet) {
         for index in offsets {
-            let item = queueItems[index]
-            modelContext.delete(item)
+            modelContext.delete(queueItems[index])
         }
         try? modelContext.save()
     }
 
     private func moveItems(from source: IndexSet, to destination: Int) {
-        QueueManager.shared.moveItem(from: source, to: destination)
+        // @Query is already sorted — pass the snapshot through so reorder doesn't refetch.
+        withTransaction(Transaction(animation: nil)) {
+            QueueManager.shared.moveItems(queueItems, from: source, to: destination)
+        }
     }
 }
 
@@ -139,19 +114,10 @@ struct QueueView: View {
 
 private struct NowPlayingRow: View {
     let episode: Episode
-    private var playerManager: AudioPlayerManager { AudioPlayerManager.shared }
 
     var body: some View {
         HStack(spacing: 12) {
-            // Podcast artwork
-            CachedAsyncImage(url: URL(string: episode.podcast?.artworkURL ?? "")) { image in
-                image.resizable().aspectRatio(contentMode: .fill)
-            } placeholder: {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.secondary.opacity(0.2))
-            }
-            .frame(width: 50, height: 50)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+            QueueArtworkView(artworkURL: episode.podcast?.artworkURL)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(episode.title)
@@ -167,35 +133,43 @@ private struct NowPlayingRow: View {
 
             Spacer()
 
-            // Play/Pause button
-            Button {
-                playerManager.togglePlayPause()
-            } label: {
-                Image(systemName: playerManager.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                    .font(.title)
-                    .foregroundStyle(Color.accentColor)
-            }
-            .buttonStyle(.plain)
+            NowPlayingTransportButton()
         }
+    }
+}
+
+/// Isolates play/pause observation so queue rows don't re-render on every tick.
+private struct NowPlayingTransportButton: View {
+    private var playerManager: AudioPlayerManager { AudioPlayerManager.shared }
+
+    var body: some View {
+        Button {
+            playerManager.togglePlayPause()
+        } label: {
+            Image(systemName: playerManager.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                .font(.title)
+                .foregroundStyle(Color.accentColor)
+        }
+        .buttonStyle(.plain)
     }
 }
 
 // MARK: - Queue Episode Row
 
-private struct QueueEpisodeRow: View {
+private struct QueueEpisodeRow: View, Equatable {
     let episode: Episode
+
+    static func == (lhs: QueueEpisodeRow, rhs: QueueEpisodeRow) -> Bool {
+        lhs.episode.guid == rhs.episode.guid
+            && lhs.episode.title == rhs.episode.title
+            && lhs.episode.localFilePath == rhs.episode.localFilePath
+            && lhs.episode.downloadProgress == rhs.episode.downloadProgress
+            && lhs.episode.podcast?.feedURL == rhs.episode.podcast?.feedURL
+    }
 
     var body: some View {
         HStack(spacing: 12) {
-            // Podcast artwork
-            CachedAsyncImage(url: URL(string: episode.podcast?.artworkURL ?? "")) { image in
-                image.resizable().aspectRatio(contentMode: .fill)
-            } placeholder: {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.secondary.opacity(0.2))
-            }
-            .frame(width: 50, height: 50)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+            QueueArtworkView(artworkURL: episode.podcast?.artworkURL)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(episode.title)
@@ -213,23 +187,52 @@ private struct QueueEpisodeRow: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
-
-                EpisodeProcessingStatusView(episode: episode)
             }
 
             Spacer()
 
-            // Download indicator
-            if let progress = episode.downloadProgress {
+            QueueDownloadIndicator(
+                downloadProgress: episode.downloadProgress,
+                isDownloaded: episode.localFilePath != nil
+            )
+        }
+    }
+}
+
+private struct QueueArtworkView: View, Equatable {
+    let artworkURL: String?
+
+    static func == (lhs: QueueArtworkView, rhs: QueueArtworkView) -> Bool {
+        lhs.artworkURL == rhs.artworkURL
+    }
+
+    var body: some View {
+        CachedAsyncImage(url: URL(string: artworkURL ?? "")) { image in
+            image.resizable().aspectRatio(contentMode: .fill)
+        } placeholder: {
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.secondary.opacity(0.2))
+        }
+        .frame(width: 50, height: 50)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+}
+
+private struct QueueDownloadIndicator: View, Equatable {
+    let downloadProgress: Double?
+    let isDownloaded: Bool
+
+    var body: some View {
+        Group {
+            if let progress = downloadProgress {
                 CircularProgressView(progress: progress)
                     .frame(width: 16, height: 16)
-            } else if episode.localFilePath != nil {
+            } else if isDownloaded {
                 Image(systemName: "arrow.down.circle.fill")
                     .font(.caption)
                     .foregroundStyle(.green)
             }
         }
-        .contentShape(Rectangle())
     }
 }
 

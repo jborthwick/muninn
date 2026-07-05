@@ -133,15 +133,14 @@ final class QueueManager {
         return items.first?.episode
     }
 
-    /// Moves an item in the queue
-    func moveItem(from source: IndexSet, to destination: Int) {
+    /// Moves items using the caller's already-sorted queue snapshot (avoids refetching during reorder).
+    func moveItems(_ items: [QueueItem], from source: IndexSet, to destination: Int) {
         guard let context = modelContext else { return }
 
-        var items = fetchQueueItems().sorted { $0.sortOrder < $1.sortOrder }
-        items.move(fromOffsets: source, toOffset: destination)
+        var ordered = items
+        ordered.move(fromOffsets: source, toOffset: destination)
 
-        // Update sort orders
-        for (index, item) in items.enumerated() {
+        for (index, item) in ordered.enumerated() where item.sortOrder != index {
             item.sortOrder = index
         }
 
@@ -150,6 +149,12 @@ final class QueueManager {
         } catch {
             logger.error("Failed to save queue reorder: \(error.localizedDescription)")
         }
+    }
+
+    /// Legacy entry point — prefer `moveItems(_:from:to:)` with a sorted snapshot.
+    func moveItem(from source: IndexSet, to destination: Int) {
+        let items = fetchQueueItems().sorted { $0.sortOrder < $1.sortOrder }
+        moveItems(items, from: source, to: destination)
     }
 
     /// Clears the entire queue
