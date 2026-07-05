@@ -24,6 +24,11 @@ struct PodcastDetailView: View {
     @State private var selectedEpisode: Episode?
     @State private var displayLimit = 100  // Start with 100, load more on scroll
 
+    // Episodes loaded on-demand via FetchDescriptor (avoids sorting all episodes on every body pass)
+    @State private var loadedEpisodes: [Episode] = []
+    @State private var totalEpisodeCount = 0
+    @State private var isLoadingEpisodes = false
+
     // Multi-select state
     @State private var isSelecting = false
     @State private var selectedEpisodeGUIDs: Set<String> = []
@@ -182,6 +187,8 @@ struct PodcastDetailView: View {
                 showDownloadedOnly = true
             }
 
+            loadEpisodes()
+
             // Pre-lookup public feed URL for sharing
             if podcast.isPrivateFeed && podcast.publicFeedURL == nil {
                 Task {
@@ -190,11 +197,26 @@ struct PodcastDetailView: View {
                 }
             }
         }
-        .onChange(of: podcast.sortNewestFirst) { _, _ in displayLimit = 100 }
-        .onChange(of: showStarredOnly) { _, _ in displayLimit = 100 }
-        .onChange(of: showDownloadedOnly) { _, _ in displayLimit = 100 }
-        .onChange(of: searchText) { _, _ in displayLimit = 100 }
-        .onChange(of: searchTags) { _, _ in displayLimit = 100 }
+        .onChange(of: podcast.sortNewestFirst) { _, _ in
+            displayLimit = 100
+            loadEpisodes()
+        }
+        .onChange(of: showStarredOnly) { _, _ in
+            displayLimit = 100
+            loadEpisodes()
+        }
+        .onChange(of: showDownloadedOnly) { _, _ in
+            displayLimit = 100
+            loadEpisodes()
+        }
+        .onChange(of: searchText) { _, _ in
+            displayLimit = 100
+            loadEpisodes()
+        }
+        .onChange(of: searchTags) { _, _ in
+            displayLimit = 100
+            loadEpisodes()
+        }
     }
 
     // MARK: - Sub-sections
@@ -248,7 +270,14 @@ struct PodcastDetailView: View {
     private var episodesSection: some View {
         Section {
             searchHeader
-            if filteredEpisodes.isEmpty {
+            if isLoadingEpisodes && loadedEpisodes.isEmpty {
+                HStack {
+                    Spacer()
+                    ProgressView()
+                    Spacer()
+                }
+                .listRowBackground(Color.clear)
+            } else if loadedEpisodes.isEmpty {
                 ContentUnavailableView(
                     emptyStateTitle,
                     systemImage: emptyStateIcon,
@@ -256,10 +285,17 @@ struct PodcastDetailView: View {
                 )
             } else {
                 episodeCountRow
-                ForEach(Array(filteredEpisodes.enumerated()), id: \.element.guid) { index, episode in
+                ForEach(Array(loadedEpisodes.enumerated()), id: \.element.guid) { index, episode in
                     episodeRow(episode, index: index)
                 }
-                if hasMoreEpisodes {
+                if isLoadingEpisodes {
+                    HStack {
+                        Spacer()
+                        ProgressView()
+                        Spacer()
+                    }
+                    .listRowBackground(Color.clear)
+                } else if hasMoreEpisodes {
                     HStack {
                         Spacer()
                         ProgressView().onAppear { loadMoreEpisodes() }
@@ -326,7 +362,7 @@ struct PodcastDetailView: View {
     private var episodeCountRow: some View {
         HStack {
             if hasMoreEpisodes {
-                Text("Showing \(filteredEpisodes.count) of \(totalEpisodeCount) Episodes")
+                Text("Showing \(loadedEpisodes.count) of \(totalEpisodeCount) Episodes")
             } else {
                 Text("\(totalEpisodeCount) Episodes")
             }
@@ -353,7 +389,7 @@ struct PodcastDetailView: View {
             }
         }
         .onAppear {
-            if index >= filteredEpisodes.count - 10 && hasMoreEpisodes {
+            if index >= loadedEpisodes.count - 10 && hasMoreEpisodes {
                 loadMoreEpisodes()
             }
         }
@@ -400,55 +436,103 @@ struct PodcastDetailView: View {
     /// How many more episodes to load when scrolling
     private let loadMoreIncrement = 50
 
-    private var allFilteredEpisodes: [Episode] {
-        var episodes = podcast.episodes
+    private var hasMoreEpisodes: Bool {
+        loadedEpisodes.count < totalEpisodeCount
+    }
 
-        if showStarredOnly {
-            episodes = episodes.filter { $0.isStarred }
+    private var isSearchActive: Bool {
+        !searchText.isEmpty || !searchTags.isEmpty
+    }
+
+    /// Database-level predicate: this podcast + optional starred/downloaded filters.
+    private func buildBasePredicate() -> Predicate<Episode> {
+        let feedURL = podcast.feedURL
+        if showStarredOnly && showDownloadedOnly {
+            return #Predicate<Episode> {
+                $0.podcast?.feedURL == feedURL && $0.isStarred == true && $0.localFilePath != nil
+            }
+        } else if showStarredOnly {
+            return #Predicate<Episode> {
+                $0.podcast?.feedURL == feedURL && $0.isStarred == true
+            }
+        } else if showDownloadedOnly {
+            return #Predicate<Episode> {
+                $0.podcast?.feedURL == feedURL && $0.localFilePath != nil
+            }
+        } else {
+            return #Predicate<Episode> { $0.podcast?.feedURL == feedURL }
         }
+    }
 
-        if showDownloadedOnly {
-            episodes = episodes.filter { $0.localFilePath != nil }
-        }
-
-        // Persistent tag pills: show episodes matching ANY saved tag (OR logic)
+    /// Title/tag filters applied in memory (only when search is active).
+    private func applySearchFilters(_ episodes: [Episode]) -> [Episode] {
+        var result = episodes
         if !searchTags.isEmpty {
             let tags = searchTags.map { $0.lowercased() }
-            episodes = episodes.filter { episode in
+            result = result.filter { episode in
                 let title = episode.title.lowercased()
                 return tags.contains { title.contains($0) }
             }
         }
-
-        // Live search text narrows the current result set further (AND with tags)
         if !searchText.isEmpty {
             let query = searchText.lowercased()
-            episodes = episodes.filter { $0.title.lowercased().contains(query) }
+            result = result.filter { $0.title.lowercased().contains(query) }
         }
+        return result
+    }
 
-        return episodes.sorted { e1, e2 in
-            let date1 = e1.publishedDate ?? .distantPast
-            let date2 = e2.publishedDate ?? .distantPast
-            return podcast.sortNewestFirst ? date1 > date2 : date1 < date2
+    /// Load episodes from SwiftData with sort/limit at the query level.
+    private func loadEpisodes(limit: Int? = nil) {
+        guard !isLoadingEpisodes else { return }
+        isLoadingEpisodes = true
+        let effectiveLimit = limit ?? displayLimit
+        let sortNewestFirst = podcast.sortNewestFirst
+
+        Task { @MainActor in
+            defer { isLoadingEpisodes = false }
+            do {
+                let basePredicate = buildBasePredicate()
+                let sortOrder: SortOrder = sortNewestFirst ? .reverse : .forward
+
+                if isSearchActive {
+                    // Search requires title matching in memory; fetch sorted set once per reload.
+                    let descriptor = FetchDescriptor<Episode>(
+                        predicate: basePredicate,
+                        sortBy: [SortDescriptor(\Episode.publishedDate, order: sortOrder)]
+                    )
+                    let allForPodcast = try modelContext.fetch(descriptor)
+                    let filtered = applySearchFilters(allForPodcast)
+                    totalEpisodeCount = filtered.count
+                    loadedEpisodes = Array(filtered.prefix(effectiveLimit))
+                } else {
+                    var descriptor = FetchDescriptor<Episode>(
+                        predicate: basePredicate,
+                        sortBy: [SortDescriptor(\Episode.publishedDate, order: sortOrder)]
+                    )
+                    descriptor.fetchLimit = effectiveLimit
+                    loadedEpisodes = try modelContext.fetch(descriptor)
+                    totalEpisodeCount = try modelContext.fetchCount(FetchDescriptor(predicate: basePredicate))
+                }
+            } catch {
+                print("Error loading episodes: \(error)")
+            }
         }
-    }
-
-    private var filteredEpisodes: [Episode] {
-        Array(allFilteredEpisodes.prefix(displayLimit))
-    }
-
-    private var totalEpisodeCount: Int {
-        allFilteredEpisodes.count
-    }
-
-    private var hasMoreEpisodes: Bool {
-        displayLimit < totalEpisodeCount
     }
 
     private func loadMoreEpisodes() {
-        if hasMoreEpisodes {
-            displayLimit += loadMoreIncrement
+        guard !isLoadingEpisodes && hasMoreEpisodes else { return }
+        displayLimit += loadMoreIncrement
+        loadEpisodes(limit: displayLimit)
+    }
+
+    private func fetchEpisodes(withGUIDs guids: Set<String>) throws -> [Episode] {
+        guard !guids.isEmpty else { return [] }
+        let feedURL = podcast.feedURL
+        let guidList = Array(guids)
+        let predicate = #Predicate<Episode> { episode in
+            guidList.contains(episode.guid) && episode.podcast?.feedURL == feedURL
         }
+        return try modelContext.fetch(FetchDescriptor(predicate: predicate))
     }
 
     // MARK: - Search tag helpers
@@ -466,12 +550,14 @@ struct PodcastDetailView: View {
         searchTags.append(trimmed)
         searchText = ""
         UserDefaults.standard.set(searchTags, forKey: searchTagsKey)
+        loadEpisodes()
     }
 
     /// Removes a single filter pill.
     private func removeSearchTag(_ tag: String) {
         searchTags.removeAll { $0 == tag }
         UserDefaults.standard.set(searchTags, forKey: searchTagsKey)
+        loadEpisodes()
     }
 
     private var emptyStateTitle: String {
@@ -540,12 +626,29 @@ struct PodcastDetailView: View {
         if episode.isStarred && episode.localFilePath == nil {
             DownloadManager.shared.download(episode)
         }
+
+        if showStarredOnly {
+            loadEpisodes()
+        }
     }
 
     // MARK: - Multi-Select
 
     private var selectedEpisodes: [Episode] {
-        allFilteredEpisodes.filter { selectedEpisodeGUIDs.contains($0.guid) }
+        let loadedByGUID = Dictionary(uniqueKeysWithValues: loadedEpisodes.map { ($0.guid, $0) })
+        var result: [Episode] = []
+        var missingGUIDs: Set<String> = []
+        for guid in selectedEpisodeGUIDs {
+            if let episode = loadedByGUID[guid] {
+                result.append(episode)
+            } else {
+                missingGUIDs.insert(guid)
+            }
+        }
+        if let fetched = try? fetchEpisodes(withGUIDs: missingGUIDs) {
+            result.append(contentsOf: fetched)
+        }
+        return result
     }
 
     private func enterSelectionMode() {
@@ -567,7 +670,17 @@ struct PodcastDetailView: View {
     }
 
     private func selectAll() {
-        selectedEpisodeGUIDs = Set(allFilteredEpisodes.map(\.guid))
+        do {
+            let descriptor = FetchDescriptor<Episode>(
+                predicate: buildBasePredicate(),
+                sortBy: [SortDescriptor(\Episode.publishedDate, order: podcast.sortNewestFirst ? .reverse : .forward)]
+            )
+            let all = try modelContext.fetch(descriptor)
+            let filtered = applySearchFilters(all)
+            selectedEpisodeGUIDs = Set(filtered.map(\.guid))
+        } catch {
+            print("Error selecting all episodes: \(error)")
+        }
     }
 
     private func batchPlayNext() {
@@ -629,7 +742,7 @@ struct PodcastDetailView: View {
     }
 
     private var selectionActionBar: some View {
-        let allSelected = !allFilteredEpisodes.isEmpty && selectedEpisodeGUIDs.count == allFilteredEpisodes.count
+        let allSelected = totalEpisodeCount > 0 && selectedEpisodeGUIDs.count == totalEpisodeCount
         let hasSelection = !selectedEpisodeGUIDs.isEmpty
         let hasUndownloaded = selectedEpisodes.contains { $0.localFilePath == nil && $0.downloadProgress == nil }
         let hasDownloaded = selectedEpisodes.contains { $0.localFilePath != nil }
@@ -733,6 +846,7 @@ struct PodcastDetailView: View {
         isRefreshing = true
         do {
             _ = try await FeedService.shared.refreshPodcast(podcast, context: modelContext)
+            loadEpisodes()
         } catch {
             // Could show error
         }
