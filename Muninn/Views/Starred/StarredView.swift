@@ -4,7 +4,6 @@ import SwiftData
 struct StarredView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.miniPlayerVisible) private var miniPlayerVisible
-    @Query private var allEpisodes: [Episode]
 
     private var networkMonitor: NetworkMonitor { NetworkMonitor.shared }
 
@@ -15,45 +14,63 @@ struct StarredView: View {
     @State private var selectedEpisode: Episode?
     @State private var displayLimit = 100  // Start with 100, load more on scroll
 
+    @State private var loadedEpisodes: [Episode] = []
+    @State private var totalEpisodeCount = 0
+    @State private var totalStarredCountAll = 0
+    @State private var isLoadingEpisodes = false
+
     /// How many more episodes to load when scrolling
     private let loadMoreIncrement = 50
 
-    private var allStarredEpisodes: [Episode] {
-        var episodes = allEpisodes.filter { $0.isStarred }
-
-        if showDownloadedOnly {
-            episodes = episodes.filter { $0.localFilePath != nil }
-        }
-
-        return episodes.sorted { e1, e2 in
-            let date1 = e1.publishedDate ?? .distantPast
-            let date2 = e2.publishedDate ?? .distantPast
-            return sortNewestFirst ? date1 > date2 : date1 < date2
-        }
-    }
-
-    private var starredEpisodes: [Episode] {
-        Array(allStarredEpisodes.prefix(displayLimit))
-    }
-
-    private var totalStarredCount: Int {
-        allStarredEpisodes.count
-    }
-
     private var hasMoreStarred: Bool {
-        displayLimit < totalStarredCount
+        loadedEpisodes.count < totalEpisodeCount
+    }
+
+    private func buildBasePredicate() -> Predicate<Episode> {
+        if showDownloadedOnly {
+            return #Predicate<Episode> { $0.isStarred == true && $0.localFilePath != nil }
+        }
+        return #Predicate<Episode> { $0.isStarred == true }
+    }
+
+    private func loadEpisodes(limit: Int? = nil) {
+        guard !isLoadingEpisodes else { return }
+        isLoadingEpisodes = true
+        let effectiveLimit = limit ?? displayLimit
+        let sortOrder: SortOrder = sortNewestFirst ? .reverse : .forward
+
+        Task { @MainActor in
+            defer { isLoadingEpisodes = false }
+            do {
+                let basePredicate = buildBasePredicate()
+                var descriptor = FetchDescriptor<Episode>(
+                    predicate: basePredicate,
+                    sortBy: [SortDescriptor(\Episode.publishedDate, order: sortOrder)]
+                )
+                descriptor.fetchLimit = effectiveLimit
+                loadedEpisodes = try modelContext.fetch(descriptor)
+                totalEpisodeCount = try modelContext.fetchCount(FetchDescriptor(predicate: basePredicate))
+
+                let starredOnly = #Predicate<Episode> { $0.isStarred == true }
+                totalStarredCountAll = try modelContext.fetchCount(FetchDescriptor(predicate: starredOnly))
+            } catch {
+                print("Error loading starred episodes: \(error)")
+            }
+        }
     }
 
     private func loadMoreStarred() {
-        if hasMoreStarred {
-            displayLimit += loadMoreIncrement
-        }
+        guard !isLoadingEpisodes && hasMoreStarred else { return }
+        displayLimit += loadMoreIncrement
+        loadEpisodes(limit: displayLimit)
     }
 
     var body: some View {
         NavigationStack {
             Group {
-                if allEpisodes.filter({ $0.isStarred }).isEmpty {
+                if isLoadingEpisodes && loadedEpisodes.isEmpty && totalStarredCountAll == 0 {
+                    ProgressView()
+                } else if totalStarredCountAll == 0 {
                     ContentUnavailableView(
                         "No Starred Episodes",
                         systemImage: "star",
@@ -106,7 +123,14 @@ struct StarredView: View {
 
                         // Episodes
                         Section {
-                            if starredEpisodes.isEmpty {
+                            if isLoadingEpisodes && loadedEpisodes.isEmpty {
+                                HStack {
+                                    Spacer()
+                                    ProgressView()
+                                    Spacer()
+                                }
+                                .listRowBackground(Color.clear)
+                            } else if loadedEpisodes.isEmpty {
                                 ContentUnavailableView(
                                     "No Downloaded Starred Episodes",
                                     systemImage: "arrow.down.circle",
@@ -116,9 +140,9 @@ struct StarredView: View {
                                 // Episode count as inline row (not sticky)
                                 HStack {
                                     if hasMoreStarred {
-                                        Text("Showing \(starredEpisodes.count) of \(totalStarredCount) Episodes")
+                                        Text("Showing \(loadedEpisodes.count) of \(totalEpisodeCount) Episodes")
                                     } else {
-                                        Text("\(totalStarredCount) Episodes")
+                                        Text("\(totalEpisodeCount) Episodes")
                                     }
                                     Spacer()
                                 }
@@ -126,15 +150,14 @@ struct StarredView: View {
                                 .foregroundStyle(.secondary)
                                 .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
 
-                                ForEach(Array(starredEpisodes.enumerated()), id: \.element.guid) { index, episode in
-                                    StarredEpisodeRow(episode: episode)
+                                ForEach(Array(loadedEpisodes.enumerated()), id: \.element.guid) { index, episode in
+                                    StarredEpisodeRow(episode: episode, onStarToggled: { loadEpisodes() })
                                         .contentShape(Rectangle())
                                         .onTapGesture {
                                             selectedEpisode = episode
                                         }
                                         .onAppear {
-                                            // Load more when approaching the end
-                                            if index >= starredEpisodes.count - 10 && hasMoreStarred {
+                                            if index >= loadedEpisodes.count - 10 && hasMoreStarred {
                                                 loadMoreStarred()
                                             }
                                         }
@@ -149,14 +172,18 @@ struct StarredView: View {
                                         }
                                 }
 
-                                // Loading indicator at bottom
-                                if hasMoreStarred {
+                                if isLoadingEpisodes {
                                     HStack {
                                         Spacer()
                                         ProgressView()
-                                            .onAppear {
-                                                loadMoreStarred()
-                                            }
+                                        Spacer()
+                                    }
+                                    .listRowBackground(Color.clear)
+                                } else if hasMoreStarred {
+                                    HStack {
+                                        Spacer()
+                                        ProgressView()
+                                            .onAppear { loadMoreStarred() }
                                         Spacer()
                                     }
                                     .listRowBackground(Color.clear)
@@ -169,13 +196,19 @@ struct StarredView: View {
             }
             .navigationTitle("Starred")
             .onAppear {
-                // Auto-filter to downloaded when offline
                 if !networkMonitor.isConnected {
                     showDownloadedOnly = true
                 }
+                loadEpisodes()
             }
-            .onChange(of: sortNewestFirst) { _, _ in displayLimit = 100 }
-            .onChange(of: showDownloadedOnly) { _, _ in displayLimit = 100 }
+            .onChange(of: sortNewestFirst) { _, _ in
+                displayLimit = 100
+                loadEpisodes()
+            }
+            .onChange(of: showDownloadedOnly) { _, _ in
+                displayLimit = 100
+                loadEpisodes()
+            }
             .alert("Download on Cellular?", isPresented: $showCellularConfirmation) {
                 Button("Download") {
                     if let episode = episodePendingDownload {
@@ -200,6 +233,7 @@ struct StarredView: View {
 
 private struct StarredEpisodeRow: View {
     let episode: Episode
+    var onStarToggled: () -> Void = {}
 
     @Environment(\.modelContext) private var modelContext
     @State private var showDeleteDownloadConfirmation = false
@@ -279,6 +313,7 @@ private struct StarredEpisodeRow: View {
                 // Star button (always filled since we're in starred view)
                 Button {
                     episode.isStarred.toggle()
+                    onStarToggled()
                 } label: {
                     Image(systemName: "star.fill")
                         .font(.title2)

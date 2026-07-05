@@ -4,7 +4,6 @@ import SwiftData
 struct DownloadsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.miniPlayerVisible) private var miniPlayerVisible
-    @Query private var allEpisodes: [Episode]
 
     private var networkMonitor: NetworkMonitor { NetworkMonitor.shared }
 
@@ -14,42 +13,57 @@ struct DownloadsView: View {
     @State private var selectedEpisode: Episode?
     @State private var displayLimit = 100  // Start with 100, load more on scroll
 
+    @State private var loadedEpisodes: [Episode] = []
+    @State private var downloadingEpisodes: [Episode] = []
+    @State private var totalDownloadedCount = 0
+    @State private var isLoadingEpisodes = false
+
     /// How many more episodes to load when scrolling
     private let loadMoreIncrement = 50
 
-    private var allDownloadedEpisodes: [Episode] {
-        allEpisodes
-            .filter { $0.localFilePath != nil }
-            .sorted { ($0.publishedDate ?? .distantPast) > ($1.publishedDate ?? .distantPast) }
-    }
-
-    private var downloadedEpisodes: [Episode] {
-        Array(allDownloadedEpisodes.prefix(displayLimit))
-    }
-
-    private var totalDownloadedCount: Int {
-        allDownloadedEpisodes.count
-    }
-
     private var hasMoreDownloads: Bool {
-        displayLimit < totalDownloadedCount
+        loadedEpisodes.count < totalDownloadedCount
     }
 
-    private func loadMoreDownloads() {
-        if hasMoreDownloads {
-            displayLimit += loadMoreIncrement
+    private func loadEpisodes(limit: Int? = nil) {
+        guard !isLoadingEpisodes else { return }
+        isLoadingEpisodes = true
+        let effectiveLimit = limit ?? displayLimit
+
+        Task { @MainActor in
+            defer { isLoadingEpisodes = false }
+            do {
+                let downloadedPredicate = #Predicate<Episode> { $0.localFilePath != nil }
+                var descriptor = FetchDescriptor<Episode>(
+                    predicate: downloadedPredicate,
+                    sortBy: [SortDescriptor(\Episode.publishedDate, order: .reverse)]
+                )
+                descriptor.fetchLimit = effectiveLimit
+                loadedEpisodes = try modelContext.fetch(descriptor)
+                totalDownloadedCount = try modelContext.fetchCount(FetchDescriptor(predicate: downloadedPredicate))
+
+                let downloadingPredicate = #Predicate<Episode> {
+                    $0.downloadProgress != nil && $0.localFilePath == nil
+                }
+                downloadingEpisodes = try modelContext.fetch(FetchDescriptor(predicate: downloadingPredicate))
+            } catch {
+                print("Error loading downloads: \(error)")
+            }
         }
     }
 
-    private var downloadingEpisodes: [Episode] {
-        allEpisodes
-            .filter { $0.downloadProgress != nil && $0.localFilePath == nil }
+    private func loadMoreDownloads() {
+        guard !isLoadingEpisodes && hasMoreDownloads else { return }
+        displayLimit += loadMoreIncrement
+        loadEpisodes(limit: displayLimit)
     }
 
     var body: some View {
         NavigationStack {
             Group {
-                if downloadedEpisodes.isEmpty && downloadingEpisodes.isEmpty {
+                if isLoadingEpisodes && loadedEpisodes.isEmpty && downloadingEpisodes.isEmpty {
+                    ProgressView()
+                } else if loadedEpisodes.isEmpty && downloadingEpisodes.isEmpty {
                     ContentUnavailableView(
                         "No Downloads",
                         systemImage: "arrow.down.circle",
@@ -87,7 +101,7 @@ struct DownloadsView: View {
                             // Episode count as inline row (not sticky)
                             HStack {
                                 if hasMoreDownloads {
-                                    Text("Showing \(downloadedEpisodes.count) of \(totalDownloadedCount) Downloaded (\(formattedTotalSize))")
+                                    Text("Showing \(loadedEpisodes.count) of \(totalDownloadedCount) Downloaded (\(formattedTotalSize))")
                                 } else {
                                     Text("Downloaded (\(formattedTotalSize))")
                                 }
@@ -97,15 +111,14 @@ struct DownloadsView: View {
                             .foregroundStyle(.secondary)
                             .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
 
-                            ForEach(Array(downloadedEpisodes.enumerated()), id: \.element.guid) { index, episode in
-                                DownloadedEpisodeRow(episode: episode)
+                            ForEach(Array(loadedEpisodes.enumerated()), id: \.element.guid) { index, episode in
+                                DownloadedEpisodeRow(episode: episode, onDownloadDeleted: { loadEpisodes() })
                                     .contentShape(Rectangle())
                                     .onTapGesture {
                                         selectedEpisode = episode
                                     }
                                     .onAppear {
-                                        // Load more when approaching the end
-                                        if index >= downloadedEpisodes.count - 10 && hasMoreDownloads {
+                                        if index >= loadedEpisodes.count - 10 && hasMoreDownloads {
                                             loadMoreDownloads()
                                         }
                                     }
@@ -121,20 +134,25 @@ struct DownloadsView: View {
                                     .swipeActions(edge: .trailing) {
                                         Button(role: .destructive) {
                                             DownloadManager.shared.deleteDownload(episode, context: modelContext)
+                                            loadEpisodes()
                                         } label: {
                                             Label("Delete", systemImage: "trash")
                                         }
                                     }
                             }
 
-                            // Loading indicator at bottom
-                            if hasMoreDownloads {
+                            if isLoadingEpisodes {
                                 HStack {
                                     Spacer()
                                     ProgressView()
-                                        .onAppear {
-                                            loadMoreDownloads()
-                                        }
+                                    Spacer()
+                                }
+                                .listRowBackground(Color.clear)
+                            } else if hasMoreDownloads {
+                                HStack {
+                                    Spacer()
+                                    ProgressView()
+                                        .onAppear { loadMoreDownloads() }
                                     Spacer()
                                 }
                                 .listRowBackground(Color.clear)
@@ -145,8 +163,15 @@ struct DownloadsView: View {
                 }
             }
             .navigationTitle("Downloads")
+            .onAppear { loadEpisodes() }
+            .onReceive(NotificationCenter.default.publisher(for: .downloadCompleted)) { _ in
+                loadEpisodes()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .downloadFailed)) { _ in
+                loadEpisodes()
+            }
             .toolbar {
-                if !downloadedEpisodes.isEmpty {
+                if !loadedEpisodes.isEmpty {
                     ToolbarItem(placement: .primaryAction) {
                         Menu {
                             Button(role: .destructive) {
@@ -167,6 +192,7 @@ struct DownloadsView: View {
             ) {
                 Button("Delete All", role: .destructive) {
                     DownloadManager.shared.deleteAllDownloads(context: modelContext)
+                    loadEpisodes()
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
@@ -201,6 +227,7 @@ struct DownloadsView: View {
 
 private struct DownloadedEpisodeRow: View {
     let episode: Episode
+    var onDownloadDeleted: () -> Void = {}
 
     @Environment(\.modelContext) private var modelContext
     @State private var showDeleteDownloadConfirmation = false
@@ -308,6 +335,7 @@ private struct DownloadedEpisodeRow: View {
         .alert("Delete Download?", isPresented: $showDeleteDownloadConfirmation) {
             Button("Delete", role: .destructive) {
                 DownloadManager.shared.deleteDownload(episode, context: modelContext)
+                onDownloadDeleted()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
