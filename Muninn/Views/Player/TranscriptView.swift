@@ -1,54 +1,5 @@
 import SwiftUI
 
-// MARK: - Compact Header (shown instead of artwork in transcript mode)
-
-struct TranscriptHeaderView: View {
-    let episode: Episode
-    let onDismiss: () -> Void
-
-    var body: some View {
-        HStack(spacing: 12) {
-            CachedAsyncImage(url: URL(string: episode.displayArtworkURL ?? "")) { image in
-                image
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            } placeholder: {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.secondary.opacity(0.2))
-                    .overlay {
-                        Image(systemName: "mic")
-                            .foregroundStyle(.secondary)
-                    }
-            }
-            .frame(width: 60, height: 60)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(episode.title)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .lineLimit(2)
-                if let podcast = episode.podcast {
-                    Text(podcast.title)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            }
-
-            Spacer()
-
-            Button(action: onDismiss) {
-                Image(systemName: "quote.bubble.fill")
-                    .font(.title2)
-                    .foregroundStyle(.tint)
-            }
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-    }
-}
-
 // MARK: - Transcript Body
 
 struct TranscriptView: View {

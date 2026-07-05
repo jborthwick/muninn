@@ -18,10 +18,6 @@ struct NowPlayingView: View {
     /// GUID of the episode that was playing when showChapters was last set to true.
     @AppStorage("nowPlaying.chaptersEpisodeGUID") private var chaptersEpisodeGUID = ""
     @State private var showMarkPlayedConfirmation = false
-    /// Decoupled from player state so the text appears *after* the Menu closes,
-    /// avoiding the clip-during-close-animation artifact.
-    @State private var speedLabelActive = false
-    @State private var sleepLabelActive = false
 
     private var appSettings: AppSettings {
         AppSettings.getOrCreate(context: modelContext)
@@ -42,7 +38,7 @@ struct NowPlayingView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Close / share row
+            // Close / more row
             HStack {
                 Button {
                     dismiss()
@@ -55,14 +51,8 @@ struct NowPlayingView: View {
                         .modifier(GlassCircleModifier())
                 }
                 Spacer()
-                if let episode = playerManager.currentEpisode, episode.canShare {
-                    ShareLink(item: episode.shareURL) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.title2)
-                            .foregroundStyle(.primary)
-                            .frame(width: 44, height: 44)
-                            .modifier(GlassCircleModifier())
-                    }
+                if let episode = playerManager.currentEpisode {
+                    moreMenu(for: episode)
                 }
             }
             .padding(.horizontal)
@@ -70,8 +60,8 @@ struct NowPlayingView: View {
 
             if let episode = playerManager.currentEpisode {
                 topSection(for: episode)
-                    .animation(.easeInOut(duration: 0.25), value: showTranscript)
-                    .animation(.easeInOut(duration: 0.25), value: showChapters)
+                    .animation(.easeInOut(duration: 0.35), value: showTranscript)
+                    .animation(.easeInOut(duration: 0.35), value: showChapters)
                 if showPauseRecap {
                     PauseRecapBanner(
                         text: summaryService.pauseRecap ?? "",
@@ -106,10 +96,6 @@ struct NowPlayingView: View {
             Text("Marks this episode as played and advances to the next item in your queue.")
         }
         .onAppear {
-            // Initialise label state to match current player state without animation
-            speedLabelActive = abs(playerManager.effectivePlaybackSpeed - 1.0) > 0.01
-            sleepLabelActive = playerManager.sleepTimerEndTime != nil
-
             // If transcript is persisted open, ensure it's loaded for the *current*
             // episode. The episode may have changed while the player was dismissed,
             // in which case we clear stale segments before reloading so they never
@@ -133,30 +119,6 @@ struct NowPlayingView: View {
 
             if let episode = playerManager.currentEpisode {
                 summaryService.load(for: episode)
-            }
-        }
-        .onChange(of: playerManager.effectivePlaybackSpeed) { _, newSpeed in
-            let active = abs(newSpeed - 1.0) > 0.01
-            if active && !speedLabelActive {
-                // Delay until the Menu's close animation finishes (~0.35 s) so the
-                // label expansion happens outside any active clip animation.
-                Task {
-                    try? await Task.sleep(for: .milliseconds(350))
-                    speedLabelActive = true
-                }
-            } else if !active {
-                speedLabelActive = false   // going inactive: snap is fine
-            }
-        }
-        .onChange(of: playerManager.sleepTimerEndTime) { _, newEndTime in
-            let active = newEndTime != nil
-            if active && !sleepLabelActive {
-                Task {
-                    try? await Task.sleep(for: .milliseconds(350))
-                    sleepLabelActive = true
-                }
-            } else if !active {
-                sleepLabelActive = false
             }
         }
         .onChange(of: playerManager.currentEpisode?.guid) { _, _ in
@@ -195,60 +157,40 @@ struct NowPlayingView: View {
     // MARK: - Sub-views
 
     /// Artwork + title in normal mode, compact header + transcript/chapter scroll in panel modes.
-    /// The `.animation` for showTranscript/showChapters is applied at the call site in body.
     @ViewBuilder
     private func topSection(for episode: Episode) -> some View {
-        if showChapters {
-            ChapterHeaderView(episode: episode) {
-                withAnimation(.easeInOut(duration: 0.25)) { showChapters = false }
-            }
-            ChapterView(onGenerate: startChapterGeneration)
-        } else if showTranscript {
-            TranscriptHeaderView(episode: episode) {
-                withAnimation(.easeInOut(duration: 0.25)) { showTranscript = false }
-            }
-            TranscriptView(
-                onTranscribe: startLocalTranscription,
-                onCancelTranscription: cancelLocalTranscription,
-                onRetryTranscription: startLocalTranscription
+        VStack(spacing: 0) {
+            NowPlayingEpisodeHeader(
+                episode: episode,
+                panel: activePanel,
+                onDismissPanel: dismissActivePanel
             )
-        } else {
-            Spacer()
 
-            CachedAsyncImage(url: URL(string: episode.displayArtworkURL ?? "")) { image in
-                image
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            } placeholder: {
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color.secondary.opacity(0.2))
-                    .overlay {
-                        Image(systemName: "mic")
-                            .font(.system(size: 60))
-                            .foregroundStyle(.secondary)
-                    }
+            if showChapters {
+                ChapterView(onGenerate: startChapterGeneration)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            } else if showTranscript {
+                TranscriptView(
+                    onTranscribe: startLocalTranscription,
+                    onCancelTranscription: cancelLocalTranscription,
+                    onRetryTranscription: startLocalTranscription
+                )
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
-            .frame(width: 280, height: 280)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .shadow(radius: 10)
+        }
+        .frame(maxHeight: .infinity)
+    }
 
-            VStack(spacing: 4) {
-                Text(episode.title)
-                    .font(.title3)
-                    .fontWeight(.semibold)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
+    private var activePanel: NowPlayingEpisodeHeader.Panel? {
+        if showChapters { return .chapters }
+        if showTranscript { return .transcript }
+        return nil
+    }
 
-                if let podcast = episode.podcast {
-                    Text(podcast.title)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding(.horizontal)
-            .padding(.top, 24)
-
-            Spacer()
+    private func dismissActivePanel() {
+        withAnimation(.easeInOut(duration: 0.35)) {
+            if showChapters { showChapters = false }
+            if showTranscript { showTranscript = false }
         }
     }
 
@@ -294,157 +236,141 @@ struct NowPlayingView: View {
         .padding(.top, 24)
     }
 
-    /// Speed, sleep, star, mark-played, transcript, and chapters buttons.
+    /// Transcript and chapter toggles — other actions live in the top-right more menu.
     @ViewBuilder
     private func actionsRow(for episode: Episode) -> some View {
-        HStack(spacing: 24) {
-            speedMenu(for: episode)
-            sleepMenu
-            starButton(for: episode)
-            markPlayedButton
+        HStack(spacing: 48) {
             transcriptButton(for: episode)
             chapterButton(for: episode)
         }
+        .frame(maxWidth: .infinity)
         .padding(.top, 24)
         .padding(.bottom, 8)
     }
 
+    private func moreMenu(for episode: Episode) -> some View {
+        Menu {
+            if episode.canShare {
+                ShareLink(item: episode.shareURL) {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                }
+            }
+
+            Menu {
+                speedMenuContent(for: episode)
+            } label: {
+                Label {
+                    Text(speedMenuTitle)
+                } icon: {
+                    Image(systemName: "gauge.with.dots.needle.67percent")
+                }
+            }
+
+            Menu {
+                sleepMenuContent
+            } label: {
+                Label {
+                    Text(sleepMenuTitle)
+                } icon: {
+                    Image(systemName: "moon.zzz.fill")
+                }
+            }
+
+            Button {
+                episode.isStarred.toggle()
+            } label: {
+                Label(
+                    episode.isStarred ? "Unstar" : "Star",
+                    systemImage: episode.isStarred ? "star.slash" : "star"
+                )
+            }
+
+            Button {
+                showMarkPlayedConfirmation = true
+            } label: {
+                Label("Mark as Played", systemImage: "checkmark.circle")
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.title2)
+                .fontWeight(.semibold)
+                .foregroundStyle(.primary)
+                .frame(width: 44, height: 44)
+                .modifier(GlassCircleModifier())
+        }
+    }
+
     @ViewBuilder
-    private func speedMenu(for episode: Episode) -> some View {
-        Menu {
-            ForEach([0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0], id: \.self) { speed in
-                Button {
-                    playerManager.playbackSpeed = speed
-                } label: {
-                    HStack {
-                        Text(formatSpeed(speed))
-                        if abs(playerManager.effectivePlaybackSpeed - speed) < 0.01 {
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
-            }
-            if let podcast = episode.podcast {
-                Divider()
-                Button {
-                    if podcast.playbackSpeedOverride != nil {
-                        podcast.playbackSpeedOverride = nil
-                    } else {
-                        podcast.playbackSpeedOverride = playerManager.effectivePlaybackSpeed
-                    }
-                } label: {
-                    Label(
-                        podcast.playbackSpeedOverride != nil ? "Remove Speed Pin" : "Pin Speed to Podcast",
-                        systemImage: podcast.playbackSpeedOverride != nil ? "pin.slash" : "pin"
-                    )
-                }
-            }
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "gauge.with.dots.needle.67percent")
-                    .font(.title2)
-                if speedLabelActive {
-                    Text(formatSpeed(playerManager.effectivePlaybackSpeed))
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .transition(.scale(scale: 0.8, anchor: .leading)
-                            .combined(with: .opacity))
-                }
-                if episode.podcast?.playbackSpeedOverride != nil {
-                    Image(systemName: "pin.fill")
-                        .font(.caption2)
-                }
-            }
-            .foregroundStyle(
-                !speedLabelActive && episode.podcast?.playbackSpeedOverride == nil
-                    ? Color.secondary : dominantColor
-            )
-            .animation(.spring(duration: 0.35, bounce: 0.15), value: speedLabelActive)
-        }
-    }
-
-    private var sleepMenu: some View {
-        Menu {
+    private func speedMenuContent(for episode: Episode) -> some View {
+        ForEach([0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0], id: \.self) { speed in
             Button {
-                playerManager.cancelSleepTimer()
+                playerManager.playbackSpeed = speed
             } label: {
                 HStack {
-                    Text("Off")
-                    if playerManager.sleepTimerEndTime == nil {
+                    Text(formatSpeed(speed))
+                    if abs(playerManager.effectivePlaybackSpeed - speed) < 0.01 {
                         Image(systemName: "checkmark")
                     }
                 }
             }
-
+        }
+        if let podcast = episode.podcast {
             Divider()
-
-            ForEach([5, 10, 15, 30, 45, 60], id: \.self) { minutes in
-                Button {
-                    playerManager.setSleepTimer(minutes: minutes)
-                } label: {
-                    Text("\(minutes) min")
-                }
-            }
-
-            Divider()
-
             Button {
-                playerManager.setSleepTimerEndOfEpisode()
+                if podcast.playbackSpeedOverride != nil {
+                    podcast.playbackSpeedOverride = nil
+                } else {
+                    podcast.playbackSpeedOverride = playerManager.effectivePlaybackSpeed
+                }
             } label: {
-                HStack {
-                    Text("End of Episode")
-                    if playerManager.isSleepTimerEndOfEpisode {
-                        Image(systemName: "checkmark")
-                    }
-                }
+                Label(
+                    podcast.playbackSpeedOverride != nil ? "Remove Speed Pin" : "Pin Speed to Podcast",
+                    systemImage: podcast.playbackSpeedOverride != nil ? "pin.slash" : "pin"
+                )
             }
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "moon.zzz.fill")
-                    .font(.title2)
-                    // Suppress animation on the icon only — prevents the moon
-                    // disappear glitch while still letting the text animate
-                    .animation(nil, value: playerManager.sleepTimerEndTime != nil)
-                if sleepLabelActive {
-                    let timerText: String = playerManager.isSleepTimerEndOfEpisode ? "EP" :
-                        playerManager.sleepTimerRemaining.map { formatSleepTimer($0) } ?? ""
-                    Text(timerText)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .monospacedDigit()
-                        .transition(.scale(scale: 0.8, anchor: .leading)
-                            .combined(with: .opacity))
-                }
-            }
-            .foregroundStyle(sleepLabelActive ? dominantColor : .secondary)
-            .animation(.spring(duration: 0.35, bounce: 0.15), value: sleepLabelActive)
         }
     }
 
-    private func starButton(for episode: Episode) -> some View {
+    @ViewBuilder
+    private var sleepMenuContent: some View {
         Button {
-            episode.isStarred.toggle()
+            playerManager.cancelSleepTimer()
         } label: {
-            Image(systemName: episode.isStarred ? "star.fill" : "star")
-                .font(.title2)
-                .foregroundStyle(episode.isStarred ? .yellow : .secondary)
+            HStack {
+                Text("Off")
+                if playerManager.sleepTimerEndTime == nil {
+                    Image(systemName: "checkmark")
+                }
+            }
         }
-    }
 
-    private var markPlayedButton: some View {
+        Divider()
+
+        ForEach([5, 10, 15, 30, 45, 60], id: \.self) { minutes in
+            Button {
+                playerManager.setSleepTimer(minutes: minutes)
+            } label: {
+                Text("\(minutes) min")
+            }
+        }
+
+        Divider()
+
         Button {
-            showMarkPlayedConfirmation = true
+            playerManager.setSleepTimerEndOfEpisode()
         } label: {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.title2)
-                .symbolRenderingMode(.monochrome)
-                .foregroundStyle(Color.secondary)
+            HStack {
+                Text("End of Episode")
+                if playerManager.isSleepTimerEndOfEpisode {
+                    Image(systemName: "checkmark")
+                }
+            }
         }
     }
 
     private func transcriptButton(for episode: Episode) -> some View {
         Button {
-            withAnimation(.easeInOut(duration: 0.25)) {
+            withAnimation(.easeInOut(duration: 0.35)) {
                 if !showTranscript { showChapters = false }  // mutual exclusion
                 showTranscript.toggle()
             }
@@ -461,7 +387,7 @@ struct NowPlayingView: View {
 
     private func chapterButton(for episode: Episode) -> some View {
         Button {
-            withAnimation(.easeInOut(duration: 0.25)) {
+            withAnimation(.easeInOut(duration: 0.35)) {
                 if !showChapters { showTranscript = false }  // mutual exclusion
                 showChapters.toggle()
             }
@@ -498,6 +424,24 @@ struct NowPlayingView: View {
     }
 
     // MARK: - Helpers
+
+    private var speedMenuTitle: String {
+        let speed = playerManager.effectivePlaybackSpeed
+        if abs(speed - 1.0) > 0.01 {
+            return "Speed · \(formatSpeed(speed))"
+        }
+        return "Speed"
+    }
+
+    private var sleepMenuTitle: String {
+        if playerManager.isSleepTimerEndOfEpisode {
+            return "Sleep · End of Episode"
+        }
+        if let remaining = playerManager.sleepTimerRemaining {
+            return "Sleep · \(formatSleepTimer(remaining))"
+        }
+        return "Sleep Timer"
+    }
 
     private func formatSpeed(_ speed: Double) -> String {
         if speed == floor(speed) {
