@@ -534,11 +534,11 @@ struct NowPlayingView: View {
                 triggerWhatsHappening()
             }
         } label: {
-            Label("What's happening?", systemImage: "sparkles")
+            Label("Recap", systemImage: "sparkles")
                 .font(.subheadline.weight(.medium))
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
-                .background(.ultraThinMaterial, in: Capsule())
+                .modifier(GlassCapsuleButtonModifier())
         }
         .buttonStyle(.plain)
         .foregroundStyle(isRecapPopoverVisible ? dominantColor : .primary)
@@ -557,7 +557,7 @@ struct NowPlayingView: View {
             await summaryService.generatePauseRecap(
                 episode: episode,
                 segments: transcriptService.segments,
-                currentTime: playerManager.currentTime,
+                currentTime: playerManager.effectivePlaybackPosition,
                 windowMinutes: appSettings.pauseRecapMinutes
             )
         }
@@ -659,7 +659,17 @@ private struct ProgressSectionView: View {
     }
 }
 
-// MARK: - Glass Circle Button Background
+// MARK: - Glass Button Backgrounds
+
+private struct GlassCapsuleButtonModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.glassEffect(.regular.interactive(), in: .capsule)
+        } else {
+            content.background(.ultraThinMaterial, in: Capsule())
+        }
+    }
+}
 
 private struct GlassCircleModifier: ViewModifier {
     func body(content: Content) -> some View {

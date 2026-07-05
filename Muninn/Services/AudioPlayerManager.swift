@@ -29,6 +29,14 @@ final class AudioPlayerManager {
     private(set) var isPlaying = false
     private(set) var currentTime: TimeInterval = 0
     private(set) var duration: TimeInterval = 0
+
+    /// Best-known playhead when AVPlayer isn't loaded or hasn't seeked yet (e.g. restored session).
+    var effectivePlaybackPosition: TimeInterval {
+        guard let episode = currentEpisode else { return 0 }
+        let saved = UserDefaults.standard.double(forKey: Keys.lastPlaybackPosition)
+        return max(currentTime, episode.playbackPosition, saved)
+    }
+
     /// True while the Now Playing scrubber is being dragged. Transcript UI uses this
     /// to pause high-frequency highlight work so scrubbing stays responsive.
     private(set) var isScrubbing = false
@@ -803,9 +811,9 @@ final class AudioPlayerManager {
         currentEpisode = episode
         updateArtworkColor(for: episode)
 
-        // Restore position from either UserDefaults or episode's saved position
+        // Restore position — SwiftData is updated during playback; UserDefaults is a background snapshot.
         let savedPosition = UserDefaults.standard.double(forKey: Keys.lastPlaybackPosition)
-        currentTime = savedPosition > 0 ? savedPosition : episode.playbackPosition
+        currentTime = max(savedPosition, episode.playbackPosition)
 
         // Get duration from episode if available
         duration = episode.duration ?? 0

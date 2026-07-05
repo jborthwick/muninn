@@ -225,6 +225,7 @@ final class TranscriptSummaryService {
         Do not quote the transcript verbatim. No bullet points.
         Podcast: "\(episodeTitle)"
         """)
+        session.prewarm()
 
         var prompt = """
         Listener paused at \(ChapterTitleGenerator.formatTime(pausedAt)).
@@ -280,6 +281,7 @@ final class TranscriptSummaryService {
         No bullet points. Do not include anything after \(ChapterTitleGenerator.formatTime(pausedAt)).
         Podcast: "\(episodeTitle)"
         """)
+        session.prewarm()
 
         let response = try await session.respond(
             to: "Segments heard so far:\n\(beatList)\n\nWrite exactly 2–3 sentences for the story so far.",
