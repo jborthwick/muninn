@@ -97,8 +97,7 @@ struct AllEpisodesView: View {
                 .listStyle(.plain)
                 .contentMargins(.bottom, miniPlayerVisible ? 60 : 0, for: .scrollContent)
                 .refreshable {
-                    // Trigger background refresh and return immediately
-                    refreshManager.refreshPodcasts(podcasts, context: modelContext)
+                    await refreshManager.refreshPodcasts(podcasts, context: modelContext)
                 }
             }
         }

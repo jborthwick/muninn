@@ -97,7 +97,7 @@ struct MuninnApp: App {
                     let settings = AppSettings.getOrCreate(context: context)
                     let staleThreshold = Date().addingTimeInterval(-3600) // 1 hour
                     if settings.lastGlobalRefresh ?? .distantPast < staleThreshold {
-                        RefreshManager.shared.refreshAllPodcasts(context: context)
+                        await RefreshManager.shared.refreshAllPodcasts(context: context)
                         settings.lastGlobalRefresh = Date()
                         try? context.save()
                     }

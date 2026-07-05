@@ -22,44 +22,37 @@ final class RefreshManager {
 
     private init() {}
 
-    /// Triggers a background refresh of all podcasts
-    func refreshAllPodcasts(context: ModelContext) {
+    /// Refreshes all podcasts and completes when done (use from `.refreshable`).
+    func refreshAllPodcasts(context: ModelContext) async {
         guard !isRefreshing else { return }
 
-        Task {
-            isRefreshing = true
-            refreshProgress = 0
-            refreshedCount = 0
+        isRefreshing = true
+        refreshProgress = 0
+        refreshedCount = 0
+        defer { isRefreshing = false }
 
-            let descriptor = FetchDescriptor<Podcast>()
-            guard let podcasts = try? context.fetch(descriptor) else {
-                isRefreshing = false
-                return
-            }
+        let descriptor = FetchDescriptor<Podcast>()
+        guard let podcasts = try? context.fetch(descriptor) else { return }
 
-            totalCount = podcasts.count
-            await refreshInParallel(podcasts: podcasts, context: context)
+        totalCount = podcasts.count
+        await refreshInParallel(podcasts: podcasts, context: context)
 
-            lastRefreshDate = Date()
-            isRefreshing = false
-        }
+        lastRefreshDate = Date()
     }
 
-    /// Triggers a background refresh of specific podcasts
-    func refreshPodcasts(_ podcasts: [Podcast], context: ModelContext) {
+    /// Refreshes specific podcasts and completes when done (use from `.refreshable`).
+    func refreshPodcasts(_ podcasts: [Podcast], context: ModelContext) async {
         guard !isRefreshing else { return }
 
-        Task {
-            isRefreshing = true
-            refreshProgress = 0
-            refreshedCount = 0
-            totalCount = podcasts.count
+        isRefreshing = true
+        refreshProgress = 0
+        refreshedCount = 0
+        defer { isRefreshing = false }
 
-            await refreshInParallel(podcasts: podcasts, context: context)
+        totalCount = podcasts.count
+        await refreshInParallel(podcasts: podcasts, context: context)
 
-            lastRefreshDate = Date()
-            isRefreshing = false
-        }
+        lastRefreshDate = Date()
     }
 
     /// Refresh podcasts in parallel with limited concurrency

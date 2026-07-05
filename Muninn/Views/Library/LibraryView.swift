@@ -96,8 +96,7 @@ struct LibraryView: View {
                     .listStyle(.plain)
                     .contentMargins(.bottom, miniPlayerVisible ? 60 : 0, for: .scrollContent)
                     .refreshable {
-                        // Trigger background refresh and return immediately
-                        refreshManager.refreshAllPodcasts(context: modelContext)
+                        await refreshManager.refreshAllPodcasts(context: modelContext)
                     }
                 }
             }
@@ -109,12 +108,6 @@ struct LibraryView: View {
                 FolderDetailView(folder: folder)
             }
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    if refreshManager.isRefreshing {
-                        ProgressView()
-                    }
-                }
-
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
                         Button {

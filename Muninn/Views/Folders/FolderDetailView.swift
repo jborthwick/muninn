@@ -82,8 +82,7 @@ struct FolderDetailView: View {
                 .listStyle(.plain)
                 .contentMargins(.bottom, miniPlayerVisible ? 60 : 0, for: .scrollContent)
                 .refreshable {
-                    // Trigger background refresh and return immediately
-                    refreshManager.refreshPodcasts(cachedPodcastsInFolder, context: modelContext)
+                    await refreshManager.refreshPodcasts(cachedPodcastsInFolder, context: modelContext)
                 }
             }
         }
