@@ -147,6 +147,8 @@ final class AudioPlayerManager {
         }
     }
 
+    private static let nearlyFinishedThreshold = 0.05
+
     // Note: deinit not needed as this is a singleton that lives for app lifetime.
     // Sleep timer and observers are cleaned up in their respective methods.
 
@@ -195,7 +197,16 @@ final class AudioPlayerManager {
         }
 
         // URL is valid - now stop old playback and switch
-        saveCurrentPosition()
+        if let previous = currentEpisode, previous.guid != episode.guid {
+            let remaining = remainingFraction(for: previous)
+            saveCurrentPosition()
+            handleQueueOnSwitch(from: previous, remainingFraction: remaining)
+        } else {
+            saveCurrentPosition()
+        }
+
+        QueueManager.shared.removeFromQueue(episode)
+
         clearObservers()
         player?.pause()
         player = nil
@@ -696,6 +707,48 @@ final class AudioPlayerManager {
 
         // Save last episode GUID for restoration on next launch
         saveLastEpisode()
+    }
+
+    /// Share of playback time left, used when switching episodes to decide re-queue vs finish.
+    private func remainingFraction(for episode: Episode) -> Double {
+        let totalDuration: TimeInterval
+        let position: TimeInterval
+
+        if duration > 0, !duration.isNaN, !duration.isInfinite {
+            totalDuration = duration
+            position = playbackTime
+        } else if let episodeDuration = episode.duration, episodeDuration > 0 {
+            totalDuration = episodeDuration
+            position = episode.playbackPosition
+        } else {
+            return 1.0
+        }
+
+        guard totalDuration > 0 else { return 1.0 }
+        return max(0, totalDuration - position) / totalDuration
+    }
+
+    /// When starting a different episode, re-queue the interrupted one unless nearly finished.
+    private func handleQueueOnSwitch(from episode: Episode, remainingFraction: Double) {
+        if remainingFraction <= Self.nearlyFinishedThreshold {
+            markFinishedOnSwitch(episode)
+        } else {
+            QueueManager.shared.playNext(episode)
+        }
+    }
+
+    /// Treat a switched-away episode as finished: mark played and drop from queue.
+    private func markFinishedOnSwitch(_ episode: Episode) {
+        episode.isPlayed = true
+        episode.playbackPosition = 0
+
+        NotificationCenter.default.post(
+            name: .episodePlaybackCompleted,
+            object: nil,
+            userInfo: ["guid": episode.guid]
+        )
+
+        QueueManager.shared.removeFromQueue(episode)
     }
 
     private func saveLastEpisode() {
