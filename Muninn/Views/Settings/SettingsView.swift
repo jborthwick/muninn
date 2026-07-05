@@ -217,35 +217,8 @@ struct SettingsView: View {
                     }
                     .disabled(!LocalTranscriptionService.isSupported)
 
-                    if !LocalTranscriptionService.isSupported {
-                        HStack {
-                            Image(systemName: "info.circle")
-                                .foregroundStyle(.secondary)
-                            Text("On-device transcription requires iOS 26+ with Apple Intelligence")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    Toggle(isOn: Binding(
-                        get: { appSettings.pauseRecapEnabled },
-                        set: { appSettings.pauseRecapEnabled = $0; try? modelContext.save() }
-                    )) {
-                        HStack {
-                            Image(systemName: "pause.circle")
-                                .foregroundStyle(.purple)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Pause Recap")
-                                Text("Summarize recent content when you pause playback")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    .disabled(!LocalTranscriptionService.isSupported)
-
-                    if appSettings.pauseRecapEnabled {
-                        Picker("Recap window", selection: Binding(
+                    if LocalTranscriptionService.isSupported {
+                        Picker("What's happening window", selection: Binding(
                             get: { appSettings.pauseRecapMinutes },
                             set: { appSettings.pauseRecapMinutes = $0; try? modelContext.save() }
                         )) {
@@ -253,6 +226,16 @@ struct SettingsView: View {
                             Text("5 minutes").tag(5)
                             Text("8 minutes").tag(8)
                             Text("10 minutes").tag(10)
+                        }
+                    }
+
+                    if !LocalTranscriptionService.isSupported {
+                        HStack {
+                            Image(systemName: "info.circle")
+                                .foregroundStyle(.secondary)
+                            Text("On-device transcription requires iOS 26+ with Apple Intelligence")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }

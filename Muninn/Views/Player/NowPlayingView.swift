@@ -18,15 +18,14 @@ struct NowPlayingView: View {
     /// GUID of the episode that was playing when showChapters was last set to true.
     @AppStorage("nowPlaying.chaptersEpisodeGUID") private var chaptersEpisodeGUID = ""
     @State private var showMarkPlayedConfirmation = false
+    @State private var isRecapPopoverVisible = false
 
     private var appSettings: AppSettings {
         AppSettings.getOrCreate(context: modelContext)
     }
 
-    private var showPauseRecap: Bool {
-        !playerManager.isPlaying
-            && appSettings.pauseRecapEnabled
-            && (summaryService.pauseRecap != nil || summaryService.isGeneratingRecap)
+    private var showsWhatsHappening: Bool {
+        LocalTranscriptionService.isSupported
             && !showTranscript
             && !showChapters
     }
@@ -59,16 +58,29 @@ struct NowPlayingView: View {
             .padding(.top, 16)
 
             if let episode = playerManager.currentEpisode {
-                topSection(for: episode)
-                    .animation(.easeInOut(duration: 0.35), value: showTranscript)
-                    .animation(.easeInOut(duration: 0.35), value: showChapters)
-                if showPauseRecap {
-                    PauseRecapBanner(
-                        text: summaryService.pauseRecap ?? "",
-                        isLoading: summaryService.isGeneratingRecap
-                    )
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                ZStack(alignment: .bottom) {
+                    topSection(for: episode)
+                        .animation(.easeInOut(duration: 0.35), value: showTranscript)
+                        .animation(.easeInOut(duration: 0.35), value: showChapters)
+
+                    if isRecapPopoverVisible {
+                        PauseRecapBanner(
+                            text: summaryService.pauseRecap ?? "",
+                            isLoading: summaryService.isGeneratingRecap
+                        )
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 8)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                        .zIndex(1)
+                    }
                 }
+                .frame(maxHeight: .infinity)
+
+                if showsWhatsHappening {
+                    whatsHappeningButton
+                        .padding(.bottom, 4)
+                }
+
                 progressSection
                 playbackControls
                 actionsRow(for: episode)
@@ -86,6 +98,7 @@ struct NowPlayingView: View {
         .animation(.easeInOut(duration: 0.6), value: playerManager.nowPlayingDominantColor)
         .presentationDragIndicator(.visible)
         .presentationBackground { presentationBackground }
+        .animation(.easeInOut(duration: 0.25), value: isRecapPopoverVisible)
         .preferredColorScheme(.dark)
         .alert("Mark as Played?", isPresented: $showMarkPlayedConfirmation) {
             Button("Mark as Played", role: .destructive) {
@@ -130,13 +143,21 @@ struct NowPlayingView: View {
             chaptersEpisodeGUID = ""
             chapterService.clear()
             summaryService.clear()
+            isRecapPopoverVisible = false
         }
-        .onChange(of: playerManager.isPlaying) { wasPlaying, isPlaying in
-            if wasPlaying && !isPlaying {
-                triggerPauseRecap()
-            } else if isPlaying {
+        .onChange(of: playerManager.isPlaying) { _, isPlaying in
+            if isPlaying {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    isRecapPopoverVisible = false
+                }
                 summaryService.clearPauseRecap()
             }
+        }
+        .onChange(of: showTranscript) { _, isOpen in
+            if isOpen { isRecapPopoverVisible = false }
+        }
+        .onChange(of: showChapters) { _, isOpen in
+            if isOpen { isRecapPopoverVisible = false }
         }
         .onChange(of: localTranscriptionService.isTranscribing) { wasTranscribing, isTranscribing in
             guard wasTranscribing, !isTranscribing,
@@ -499,14 +520,40 @@ struct NowPlayingView: View {
         }
     }
 
-    private func triggerPauseRecap() {
-        guard appSettings.pauseRecapEnabled,
-              LocalTranscriptionService.isSupported,
+    private var whatsHappeningButton: some View {
+        Button {
+            if isRecapPopoverVisible {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    isRecapPopoverVisible = false
+                }
+                summaryService.clearPauseRecap()
+            } else {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    isRecapPopoverVisible = true
+                }
+                triggerWhatsHappening()
+            }
+        } label: {
+            Label("What's happening?", systemImage: "sparkles")
+                .font(.subheadline.weight(.medium))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(isRecapPopoverVisible ? dominantColor : .primary)
+    }
+
+    private func triggerWhatsHappening() {
+        guard LocalTranscriptionService.isSupported,
               let episode = playerManager.currentEpisode else { return }
 
         Task {
             await transcriptService.load(for: episode)
-            guard !transcriptService.segments.isEmpty else { return }
+            guard !transcriptService.segments.isEmpty else {
+                summaryService.clearPauseRecap()
+                return
+            }
             await summaryService.generatePauseRecap(
                 episode: episode,
                 segments: transcriptService.segments,

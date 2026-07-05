@@ -94,6 +94,8 @@ final class TranscriptSummaryService {
 
     // MARK: - Pause recap
 
+    private static let maxRecapContextCharacters = 3_500
+
     func generatePauseRecap(
         episode: Episode,
         segments: [TranscriptSegment],
@@ -113,19 +115,20 @@ final class TranscriptSummaryService {
             load(for: episode)
         }
 
-        let contextText = recapContext(
+        guard let input = buildRecapInput(
             from: start,
             to: currentTime,
-            segments: segments
-        )
-        guard !contextText.isEmpty else { return }
+            segments: segments,
+            summary: summary
+        ) else { return }
 
         if #available(iOS 26, *), SystemLanguageModel.default.isAvailable {
             do {
                 pauseRecap = try await recapWithModel(
-                    context: contextText,
+                    input: input,
                     episodeTitle: episode.title,
-                    windowMinutes: windowMinutes
+                    windowMinutes: windowMinutes,
+                    pausedAt: currentTime
                 )
                 return
             } catch {
@@ -133,7 +136,7 @@ final class TranscriptSummaryService {
             }
         }
 
-        pauseRecap = String(contextText.prefix(280)).trimmingCharacters(in: .whitespacesAndNewlines)
+        pauseRecap = recapFallback(from: input.transcriptExcerpt)
     }
 
     // MARK: - FM helpers
@@ -192,18 +195,36 @@ final class TranscriptSummaryService {
 
     @available(iOS 26, *)
     private func recapWithModel(
-        context: String,
+        input: RecapInput,
         episodeTitle: String,
-        windowMinutes: Int
+        windowMinutes: Int,
+        pausedAt: TimeInterval
     ) async throws -> String {
         let session = LanguageModelSession(instructions: """
-        Summarize what just happened in a podcast in 2–4 short sentences.
-        Be specific to the content; write for someone who paused mid-episode.
+        You write a quick "catch me up" recap for someone who paused a podcast mid-episode.
+        Use the transcript excerpt as your only source of truth — synthesize it in your own words.
+        Do not quote the transcript verbatim and do not copy chapter summaries if provided.
+        Include concrete details: names, events, decisions, arguments, jokes, or plot turns.
+        Skip ads, housekeeping, and filler unless that is all that happened.
+        Write 2–4 short sentences in plain, engaging language. No bullet points.
         Podcast: "\(episodeTitle)"
         """)
 
+        var prompt = """
+        Listener paused at \(ChapterTitleGenerator.formatTime(pausedAt)).
+        Summarize what happened in roughly the last \(windowMinutes) minutes of playback.
+
+        Transcript excerpt:
+        \(input.transcriptExcerpt)
+        """
+
+        if !input.beatHints.isEmpty {
+            prompt += "\n\nChapter context (orientation only — prioritize the transcript window):\n"
+            prompt += input.beatHints.joined(separator: "\n")
+        }
+
         let response = try await session.respond(
-            to: "Summarize the last \(windowMinutes) minutes:\n\n\(context)",
+            to: prompt,
             generating: PauseRecapPlan.self
         )
         return response.content.recap.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -251,23 +272,71 @@ final class TranscriptSummaryService {
         return prefix + "…"
     }
 
-    private func recapContext(
+    private struct RecapInput {
+        let transcriptExcerpt: String
+        let beatHints: [String]
+    }
+
+    /// Transcript-first context for recap generation. Chapter beat summaries are hints only.
+    private func buildRecapInput(
         from start: TimeInterval,
         to end: TimeInterval,
-        segments: [TranscriptSegment]
-    ) -> String {
-        if let beats = summary?.beats, !beats.isEmpty {
-            let relevant = beats.filter { $0.endTime > start && $0.startTime < end }
-            if !relevant.isEmpty {
-                return relevant.map(\.summary).joined(separator: " ")
+        segments: [TranscriptSegment],
+        summary: EpisodeSummary?
+    ) -> RecapInput? {
+        let timeline = TranscriptTimeline(segments: segments)
+        let transcript = timeline.text(from: start, to: end)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !transcript.isEmpty else { return nil }
+
+        let excerpt = cappedRecapExcerpt(transcript, maxCharacters: Self.maxRecapContextCharacters)
+        let beatHints = beatHints(from: start, to: end, in: summary)
+        return RecapInput(transcriptExcerpt: excerpt, beatHints: beatHints)
+    }
+
+    /// Keep the most recent speech when the window is too long for the model context.
+    private func cappedRecapExcerpt(_ text: String, maxCharacters: Int) -> String {
+        guard text.count > maxCharacters else { return text }
+        let suffix = String(text.suffix(maxCharacters))
+        if let firstSpace = suffix.firstIndex(of: " ") {
+            return "…" + String(suffix[suffix.index(after: firstSpace)...])
+        }
+        return "…" + suffix
+    }
+
+    private func beatHints(
+        from start: TimeInterval,
+        to end: TimeInterval,
+        in summary: EpisodeSummary?
+    ) -> [String] {
+        guard let beats = summary?.beats, !beats.isEmpty else { return [] }
+        return beats
+            .filter { $0.endTime > start && $0.startTime < end }
+            .suffix(3)
+            .map { beat in
+                let time = ChapterTitleGenerator.formatTime(beat.startTime)
+                if let title = beat.title, !title.isEmpty {
+                    return "\(time) — \(title)"
+                }
+                return "\(time) — \(beat.summary)"
             }
+    }
+
+    /// Non-model fallback: last few sentences from the transcript window.
+    private func recapFallback(from excerpt: String) -> String {
+        let trimmed = excerpt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+
+        let sentenceChunks = trimmed
+            .split(whereSeparator: { ".!?".contains($0) })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        if sentenceChunks.count >= 2 {
+            return sentenceChunks.suffix(3).joined(separator: ". ") + "."
         }
 
-        return segments
-            .filter { $0.endTime > start && $0.startTime < end }
-            .map(\.text)
-            .joined(separator: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return lexicalSummary(from: trimmed, episodeDuration: 0)
     }
 
     // MARK: - Disk
@@ -315,6 +384,6 @@ private struct EpisodeOverviewPlan {
 @available(iOS 26, *)
 @Generable
 private struct PauseRecapPlan {
-    @Guide(description: "2–4 sentence recap of recent content.")
+    @Guide(description: "2–4 vivid sentences on what just happened: names, events, and plot turns. Synthesized from the transcript, not copied from chapter summaries.")
     var recap: String
 }
