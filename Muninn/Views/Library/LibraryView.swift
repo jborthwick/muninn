@@ -14,6 +14,7 @@ struct LibraryView: View {
     @State private var folderToEdit: Folder?
     @State private var podcastToUnsubscribe: Podcast?
     @State private var podcastForNewFolder: Podcast?
+    @AppStorage("library.useGridLayout") private var useGridLayout = false
 
     private var refreshManager: RefreshManager { RefreshManager.shared }
 
@@ -26,78 +27,10 @@ struct LibraryView: View {
                         systemImage: "mic",
                         description: Text("Add a podcast to get started")
                     )
+                } else if useGridLayout {
+                    gridContent
                 } else {
-                    List {
-                        // Virtual folders section (only when user has folders)
-                        if !folders.isEmpty {
-                            Section {
-                                NavigationLink {
-                                    AllEpisodesView()
-                                } label: {
-                                    Label("All Episodes", systemImage: "list.bullet")
-                                }
-
-                                NavigationLink {
-                                    AllEpisodesView(showUnsortedOnly: true)
-                                } label: {
-                                    Label("Unsorted", systemImage: "tray")
-                                }
-                            }
-                        }
-
-                        // Folders section
-                        if !folders.isEmpty {
-                            Section("Folders") {
-                                ForEach(folders) { folder in
-                                    NavigationLink(value: folder) {
-                                        FolderRowView(folder: folder)
-                                    }
-                                    .contextMenu {
-                                        Button {
-                                            folderToEdit = folder
-                                        } label: {
-                                            Label("Edit Folder", systemImage: "pencil")
-                                        }
-
-                                        Button(role: .destructive) {
-                                            modelContext.delete(folder)
-                                            try? modelContext.save()
-                                        } label: {
-                                            Label("Delete Folder", systemImage: "trash")
-                                        }
-                                    }
-                                }
-                                .onDelete(perform: deleteFolders)
-                            }
-                        }
-
-                        // Podcasts section
-                        Section(folders.isEmpty ? "" : "All Podcasts") {
-                            ForEach(podcasts) { podcast in
-                                NavigationLink(value: podcast) {
-                                    PodcastRowView(podcast: podcast)
-                                }
-                                .contextMenu {
-                                    PodcastContextMenu(
-                                        podcast: podcast,
-                                        onUnsubscribe: {
-                                            podcastToUnsubscribe = podcast
-                                        },
-                                        onCreateFolder: { podcastToAdd in
-                                            podcastForNewFolder = podcastToAdd
-                                            showingAddFolder = true
-                                        }
-                                    )
-                                }
-                            }
-                            .onDelete(perform: deletePodcasts)
-                        }
-                    }
-                    .listStyle(.plain)
-                    .contentMargins(.bottom, miniPlayerVisible ? 60 : 0, for: .scrollContent)
-                    .refreshable {
-                        await refreshManager.refreshAllPodcasts(context: modelContext)
-                    }
+                    listContent
                 }
             }
             .navigationTitle("Library")
@@ -110,25 +43,36 @@ struct LibraryView: View {
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
-                        Button {
-                            showingAddPodcast = true
-                        } label: {
-                            Label("Add Podcast", systemImage: "plus")
+                        Section("View") {
+                            Picker("Layout", selection: $useGridLayout) {
+                                Label("List", systemImage: "list.bullet")
+                                    .tag(false)
+                                Label("Grid", systemImage: "square.grid.2x2")
+                                    .tag(true)
+                            }
                         }
 
-                        Button {
-                            showingOPMLPicker = true
-                        } label: {
-                            Label("Import from OPML", systemImage: "arrow.down.doc.fill")
-                        }
+                        Section {
+                            Button {
+                                showingAddPodcast = true
+                            } label: {
+                                Label("Add Podcast", systemImage: "plus")
+                            }
 
-                        Button {
-                            showingAddFolder = true
-                        } label: {
-                            Label("New Folder", systemImage: "folder.badge.plus")
+                            Button {
+                                showingOPMLPicker = true
+                            } label: {
+                                Label("Import from OPML", systemImage: "arrow.down.doc.fill")
+                            }
+
+                            Button {
+                                showingAddFolder = true
+                            } label: {
+                                Label("New Folder", systemImage: "folder.badge.plus")
+                            }
                         }
                     } label: {
-                        Image(systemName: "plus")
+                        Image(systemName: "ellipsis")
                     }
                 }
             }
@@ -180,6 +124,125 @@ struct LibraryView: View {
             } message: {
                 Text("This will remove the podcast and delete all downloaded episodes.")
             }
+        }
+    }
+
+    // MARK: - List Layout
+
+    private var listContent: some View {
+        List {
+            libraryShortcutsSection
+            foldersListSection
+            podcastsListSection
+        }
+        .listStyle(.plain)
+        .contentMargins(.bottom, miniPlayerVisible ? 60 : 0, for: .scrollContent)
+        .refreshable {
+            await refreshManager.refreshAllPodcasts(context: modelContext)
+        }
+    }
+
+    @ViewBuilder
+    private var libraryShortcutsSection: some View {
+        if !folders.isEmpty {
+            Section {
+                NavigationLink {
+                    AllEpisodesView()
+                } label: {
+                    Label("All Episodes", systemImage: "list.bullet")
+                }
+
+                NavigationLink {
+                    AllEpisodesView(showUnsortedOnly: true)
+                } label: {
+                    Label("Unsorted", systemImage: "tray")
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var foldersListSection: some View {
+        if !folders.isEmpty {
+            Section("Folders") {
+                ForEach(folders) { folder in
+                    NavigationLink(value: folder) {
+                        FolderRowView(folder: folder)
+                    }
+                    .contextMenu {
+                        folderContextMenu(for: folder)
+                    }
+                }
+                .onDelete(perform: deleteFolders)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var podcastsListSection: some View {
+        Section(folders.isEmpty ? "" : "All Podcasts") {
+            ForEach(podcasts) { podcast in
+                NavigationLink(value: podcast) {
+                    PodcastRowView(podcast: podcast)
+                }
+                .contextMenu {
+                    podcastContextMenu(for: podcast)
+                }
+            }
+            .onDelete(perform: deletePodcasts)
+        }
+    }
+
+    // MARK: - Grid Layout
+
+    private var gridContent: some View {
+        LibraryGridContent(
+            podcasts: podcasts,
+            folders: folders,
+            miniPlayerBottomInset: miniPlayerVisible ? 60 : 16,
+            onRefresh: {
+                await refreshManager.refreshAllPodcasts(context: modelContext)
+            },
+            onUnsubscribe: { podcastToUnsubscribe = $0 },
+            onCreateFolder: { podcast in
+                podcastForNewFolder = podcast
+                showingAddFolder = true
+            },
+            onEditFolder: { folderToEdit = $0 },
+            onDeleteFolder: { folder in
+                modelContext.delete(folder)
+                try? modelContext.save()
+            }
+        )
+    }
+
+    @ViewBuilder
+    private func podcastContextMenu(for podcast: Podcast) -> some View {
+        PodcastContextMenu(
+            podcast: podcast,
+            onUnsubscribe: {
+                podcastToUnsubscribe = podcast
+            },
+            onCreateFolder: { podcastToAdd in
+                podcastForNewFolder = podcastToAdd
+                showingAddFolder = true
+            }
+        )
+    }
+
+    @ViewBuilder
+    private func folderContextMenu(for folder: Folder) -> some View {
+        Button {
+            folderToEdit = folder
+        } label: {
+            Label("Edit Folder", systemImage: "pencil")
+        }
+
+        Button(role: .destructive) {
+            modelContext.delete(folder)
+            try? modelContext.save()
+        } label: {
+            Label("Delete Folder", systemImage: "trash")
         }
     }
 

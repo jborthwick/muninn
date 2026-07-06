@@ -56,12 +56,14 @@
 		9717F71938B0C9DD0329B5BE /* PodcastLookupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C73BA3FD53A7A3D3ECDE4AE8 /* PodcastLookupService.swift */; };
 		9AA6C2CE4B5C57DEEC48A0DC /* DownloadObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD09F282CAFCD7D9B9CB09F7 /* DownloadObserver.swift */; };
 		9CD7508B9CC835052B4E014F /* Episode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 323EB6B5F2087146317595E0 /* Episode.swift */; };
+		A61A8F4B83531D16FDF0F1CC /* LibraryGridContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5389B1317EE189025F3984DF /* LibraryGridContent.swift */; };
 		A75FC9484E8263B8A494A001 /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2ACCAC0EF1FF427EC8E14199 /* Logger.swift */; };
 		A76F93B3A0AF6699D54AD21E /* EpisodeSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51FA2CFAAE0582855AF11E7C /* EpisodeSummary.swift */; };
 		ADDC4D465AB729675910DEDF /* QueueManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED0DFB9D546228354FA1F753 /* QueueManager.swift */; };
 		AE0AFAFCB453FE1A5C08F3A5 /* Folder.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF6A37D79B1E0582537EECC6 /* Folder.swift */; };
 		B015BF959F03B2C56D695769 /* ImageCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1967F834082D93270225CBF /* ImageCache.swift */; };
 		B1AAE1AA3D286A440D2F9C52 /* EpisodeRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7057E2FF9329840C5E618047 /* EpisodeRowView.swift */; };
+		B3CA313977D0BACFF5ABCA4C /* PodcastGridItemView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01D0B6FDB577DF1944009AB /* PodcastGridItemView.swift */; };
 		B496324F6C4C849D0A47B5C8 /* ExportImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A721D52CE1E51161EFB1D9B /* ExportImportService.swift */; };
 		B7DEBFEADCDCD9B9C3C66CFE /* RefreshStatusBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27297FAC153E482E48E1E0F4 /* RefreshStatusBanner.swift */; };
 		BB7AEE31B9A671BF674C9E3E /* PodcastRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96D17A61656CAF01A1B84E7A /* PodcastRowView.swift */; };
@@ -112,6 +114,7 @@
 		48CCBFDB026179489552C0FB /* AllEpisodesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AllEpisodesView.swift; sourceTree = "<group>"; };
 		4D0377ADB2A3CD5BF0576598 /* NowPlayingEpisodeHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingEpisodeHeader.swift; sourceTree = "<group>"; };
 		51FA2CFAAE0582855AF11E7C /* EpisodeSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpisodeSummary.swift; sourceTree = "<group>"; };
+		5389B1317EE189025F3984DF /* LibraryGridContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryGridContent.swift; sourceTree = "<group>"; };
 		54F122B6B32C99226A64F26A /* DownloadsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsView.swift; sourceTree = "<group>"; };
 		59AF7D3F6DE57598F572DA42 /* PauseRecapBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PauseRecapBanner.swift; sourceTree = "<group>"; };
 		62131E72580248C5B8854E7D /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -141,6 +144,7 @@
 		C73BA3FD53A7A3D3ECDE4AE8 /* PodcastLookupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PodcastLookupService.swift; sourceTree = "<group>"; };
 		C97098C7211E59D1F92C60A6 /* Muninn.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Muninn.entitlements; sourceTree = "<group>"; };
 		CBCE02FB3271B8D25847AE0D /* TranscriptTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptTimeline.swift; sourceTree = "<group>"; };
+		D01D0B6FDB577DF1944009AB /* PodcastGridItemView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PodcastGridItemView.swift; sourceTree = "<group>"; };
 		D0E9330D5CB81C5A6772CC6E /* ChapterService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChapterService.swift; sourceTree = "<group>"; };
 		D117CA5D12B7C9362CAFF9C1 /* OPMLParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OPMLParser.swift; sourceTree = "<group>"; };
 		D5532A218847B0E747E68333 /* DownloadCleanupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadCleanupService.swift; sourceTree = "<group>"; };
@@ -193,7 +197,9 @@
 			children = (
 				84CAFAE3F8C63C17199C051B /* AddPodcastView.swift */,
 				48CCBFDB026179489552C0FB /* AllEpisodesView.swift */,
+				5389B1317EE189025F3984DF /* LibraryGridContent.swift */,
 				92D993985B5B0FB880F91849 /* LibraryView.swift */,
+				D01D0B6FDB577DF1944009AB /* PodcastGridItemView.swift */,
 				96D17A61656CAF01A1B84E7A /* PodcastRowView.swift */,
 			);
 			path = Library;
@@ -499,6 +505,7 @@
 				0E83BCCB01E3403FC14E6311 /* FolderDetailView.swift in Sources */,
 				03B792B09B32FC956F1767BE /* FolderPickerView.swift in Sources */,
 				B015BF959F03B2C56D695769 /* ImageCache.swift in Sources */,
+				A61A8F4B83531D16FDF0F1CC /* LibraryGridContent.swift in Sources */,
 				2A9136CE35EFBD3A063DCC12 /* LibraryView.swift in Sources */,
 				500555FB624853EC9CC643D2 /* ListeningStats.swift in Sources */,
 				3051B95FBD35C96009786AA1 /* LocalTranscriptionService+Control.swift in Sources */,
@@ -515,6 +522,7 @@
 				86EA42C94763CA6A930C3479 /* Podcast.swift in Sources */,
 				90566202B16374AEB02218E0 /* PodcastContextMenu.swift in Sources */,
 				9648EC6FB57BB08FA34F9341 /* PodcastDetailView.swift in Sources */,
+				B3CA313977D0BACFF5ABCA4C /* PodcastGridItemView.swift in Sources */,
 				9717F71938B0C9DD0329B5BE /* PodcastLookupService.swift in Sources */,
 				BB7AEE31B9A671BF674C9E3E /* PodcastRowView.swift in Sources */,
 				FEAED8D68C726ADAC07FCB9D /* QueueItem.swift in Sources */,
