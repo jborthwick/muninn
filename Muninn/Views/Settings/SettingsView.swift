@@ -103,6 +103,18 @@ struct SettingsView: View {
                             Text("\(Int(interval)) seconds").tag(interval)
                         }
                     }
+
+                    Toggle(isOn: Binding(
+                        get: { appSettings.smartResumeEnabled },
+                        set: { appSettings.smartResumeEnabled = $0; try? modelContext.save() }
+                    )) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Smart Resume")
+                            Text("Rewind a little when picking up after a long break")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
 
                 // Downloads section
@@ -389,7 +401,8 @@ struct SettingsView: View {
         // Clear UserDefaults keys written by AudioPlayerManager
         let defaults = UserDefaults.standard
         for key in ["playbackSpeed", "skipForwardInterval", "skipBackwardInterval",
-                    "lastEpisodeGuid", "lastPlaybackPosition", "simulateOffline"] {
+                    "lastEpisodeGuid", "lastPlaybackPosition", "lastPausedAt",
+                    "lastPausedEpisodeGuid", "simulateOffline"] {
             defaults.removeObject(forKey: key)
         }
 

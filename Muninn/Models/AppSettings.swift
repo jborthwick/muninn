@@ -40,6 +40,9 @@ final class AppSettings {
     var pauseRecapEnabledRaw: Int = 1
     var pauseRecapMinutes: Int = 5
 
+    // Smart resume — replay last 15s when resuming after a long pause
+    var smartResumeEnabledRaw: Int = 1
+
     init() {}
 
     var downloadPreference: DownloadPreference {
@@ -65,6 +68,11 @@ final class AppSettings {
     var pauseRecapEnabled: Bool {
         get { pauseRecapEnabledRaw == 1 }
         set { pauseRecapEnabledRaw = newValue ? 1 : 0 }
+    }
+
+    var smartResumeEnabled: Bool {
+        get { smartResumeEnabledRaw == 1 }
+        set { smartResumeEnabledRaw = newValue ? 1 : 0 }
     }
 
     /// Storage limit in bytes (0 = unlimited)

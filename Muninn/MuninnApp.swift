@@ -69,6 +69,7 @@ struct MuninnApp: App {
                     PlaylistManager.shared.setModelContext(context)
                     StatsService.shared.setModelContext(context)
                     AutoTranscriptionQueue.shared.setModelContext(context)
+                    AudioPlayerManager.shared.setModelContext(context)
 
                     // Migrate old absolute paths to relative filenames
                     DownloadManager.shared.migrateLocalPaths(context: context)

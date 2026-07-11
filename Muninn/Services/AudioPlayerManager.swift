@@ -21,7 +21,12 @@ final class AudioPlayerManager {
         static let skipBackwardInterval = "skipBackwardInterval"
         static let lastEpisodeGuid = "lastEpisodeGuid"
         static let lastPlaybackPosition = "lastPlaybackPosition"
+        static let lastPausedAt = "lastPausedAt"
+        static let lastPausedEpisodeGuid = "lastPausedEpisodeGuid"
     }
+
+    private static let smartResumePauseThreshold: TimeInterval = 10 * 60
+    private static let smartResumeRewindSeconds: TimeInterval = 15
 
     // MARK: - Observable State
 
@@ -111,6 +116,11 @@ final class AudioPlayerManager {
     private var didFinishObserver: NSObjectProtocol?
     private var cachedArtwork: MPMediaItemArtwork?
     private var cachedArtworkURL: String?
+    private var modelContext: ModelContext?
+
+    func setModelContext(_ context: ModelContext) {
+        modelContext = context
+    }
 
     // MARK: - Initialization
 
@@ -205,6 +215,11 @@ final class AudioPlayerManager {
         }
 
         // URL is valid - now stop old playback and switch
+        if let pausedGuid = UserDefaults.standard.string(forKey: Keys.lastPausedEpisodeGuid),
+           pausedGuid != episode.guid {
+            clearPauseTracking()
+        }
+
         if let previous = currentEpisode, previous.guid != episode.guid {
             let remaining = remainingFraction(for: previous)
             saveCurrentPosition()
@@ -301,6 +316,8 @@ final class AudioPlayerManager {
         // Re-activate audio session — some headphones need this after pause
         activateAudioSession()
 
+        applySmartResumeIfNeeded()
+
         player?.rate = Float(effectivePlaybackSpeed)
         isPlaying = true
         updateNowPlayingInfo()
@@ -351,6 +368,7 @@ final class AudioPlayerManager {
         player?.pause()
         isPlaying = false
         saveCurrentPosition()
+        recordPauseTime()
         updateNowPlayingInfo()
         StatsService.shared.pauseListening()
     }
@@ -447,6 +465,7 @@ final class AudioPlayerManager {
     func stop() {
         saveCurrentPosition()
         saveLastEpisode()  // Save before clearing so it can be restored later
+        clearPauseTracking()
         StatsService.shared.endCurrentSession()
         clearObservers()
         player?.pause()
@@ -699,6 +718,46 @@ final class AudioPlayerManager {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         cachedArtwork = nil
         cachedArtworkURL = nil
+    }
+
+    // MARK: - Smart Resume
+
+    private func recordPauseTime() {
+        guard let episode = currentEpisode else { return }
+        UserDefaults.standard.set(Date(), forKey: Keys.lastPausedAt)
+        UserDefaults.standard.set(episode.guid, forKey: Keys.lastPausedEpisodeGuid)
+    }
+
+    private func clearPauseTracking() {
+        UserDefaults.standard.removeObject(forKey: Keys.lastPausedAt)
+        UserDefaults.standard.removeObject(forKey: Keys.lastPausedEpisodeGuid)
+    }
+
+    private var isSmartResumeEnabled: Bool {
+        guard let modelContext else { return true }
+        return AppSettings.getOrCreate(context: modelContext).smartResumeEnabled
+    }
+
+    /// Seeks back 15 seconds when resuming an episode paused more than 10 minutes ago.
+    private func applySmartResumeIfNeeded() {
+        defer { clearPauseTracking() }
+
+        guard isSmartResumeEnabled,
+              let episode = currentEpisode,
+              episode.guid == UserDefaults.standard.string(forKey: Keys.lastPausedEpisodeGuid),
+              let pausedAt = UserDefaults.standard.object(forKey: Keys.lastPausedAt) as? Date else {
+            return
+        }
+
+        let elapsed = Date().timeIntervalSince(pausedAt)
+        guard elapsed >= Self.smartResumePauseThreshold else { return }
+
+        let position = max(playbackTime, episode.playbackPosition, currentTime)
+        let rewindTo = max(0, position - Self.smartResumeRewindSeconds)
+        guard rewindTo < position else { return }
+
+        seek(to: rewindTo)
+        logger.info("Smart resume: rewound \(Int(Self.smartResumeRewindSeconds))s after \(Int(elapsed / 60))m pause")
     }
 
     // MARK: - Position Saving
