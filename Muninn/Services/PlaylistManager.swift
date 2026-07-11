@@ -41,11 +41,13 @@ final class PlaylistManager {
 
     func deletePlaylist(_ playlist: Playlist) {
         guard let context = modelContext else { return }
+        SyncService.shared.recordPlaylistDeletion(playlist.id)
         context.delete(playlist)
 
         do {
             try context.save()
             logger.info("Deleted playlist: \(playlist.name)")
+            SyncService.shared.scheduleSync(context: context)
         } catch {
             logger.error("Failed to delete playlist: \(error.localizedDescription)")
         }

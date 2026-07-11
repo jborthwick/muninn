@@ -561,8 +561,7 @@ struct FolderDetailView: View {
     }
 
     private func deleteFolder() {
-        modelContext.delete(folder)
-        try? modelContext.save()
+        SyncService.shared.deleteFolder(folder, context: modelContext)
         dismiss()
     }
 }

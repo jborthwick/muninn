@@ -24,8 +24,60 @@ final class SyncService {
     private var syncDebounceTask: Task<Void, Never>?
     private let syncDebounceInterval: TimeInterval = 5.0 // Wait 5 seconds after last change
 
+    /// Local tombstones for deletions that haven't been written to the cloud file yet.
+    private static let pendingDeletedFoldersKey = "syncPendingDeletedFolderIds"
+    private static let pendingDeletedPlaylistsKey = "syncPendingDeletedPlaylistIds"
+
     private init() {
         setupContainers()
+    }
+
+    // MARK: - Deletion Tombstones
+
+    /// Deletes a folder locally, records a sync tombstone, and schedules a sync.
+    func deleteFolder(_ folder: Folder, context: ModelContext) {
+        deleteFolders([folder], context: context)
+    }
+
+    /// Deletes folders locally, records sync tombstones, and schedules a sync.
+    func deleteFolders(_ folders: [Folder], context: ModelContext) {
+        guard !folders.isEmpty else { return }
+        for folder in folders {
+            appendPendingDeletion(folder.id, key: Self.pendingDeletedFoldersKey)
+            context.delete(folder)
+        }
+        try? context.save()
+        scheduleSync(context: context)
+    }
+
+    /// Record a playlist deletion so sync won't resurrect it from an older cloud snapshot.
+    func recordPlaylistDeletion(_ id: UUID) {
+        appendPendingDeletion(id, key: Self.pendingDeletedPlaylistsKey)
+    }
+
+    private var pendingDeletedFolderIds: [String] {
+        pendingIds(forKey: Self.pendingDeletedFoldersKey)
+    }
+
+    private var pendingDeletedPlaylistIds: [String] {
+        pendingIds(forKey: Self.pendingDeletedPlaylistsKey)
+    }
+
+    private func pendingIds(forKey key: String) -> [String] {
+        UserDefaults.standard.stringArray(forKey: key) ?? []
+    }
+
+    private func appendPendingDeletion(_ id: UUID, key: String) {
+        var ids = pendingIds(forKey: key)
+        let value = id.uuidString
+        guard !ids.contains(value) else { return }
+        ids.append(value)
+        UserDefaults.standard.set(ids, forKey: key)
+    }
+
+    private func clearPendingDeletions() {
+        UserDefaults.standard.removeObject(forKey: Self.pendingDeletedFoldersKey)
+        UserDefaults.standard.removeObject(forKey: Self.pendingDeletedPlaylistsKey)
     }
 
     deinit {
@@ -41,6 +93,7 @@ final class SyncService {
     /// Overwrites the iCloud sync file with empty data. Call after a full local reset
     /// so the cloud doesn't resurrect old subscriptions on the next merge.
     func clearSyncData() async {
+        clearPendingDeletions()
         let empty = SyncData(timestamp: Date())
         try? await writeCloudData(empty)
     }
@@ -133,6 +186,11 @@ final class SyncService {
             // Write merged data to cloud
             try await writeCloudData(mergedData)
 
+            // Keep local tombstones in sync with what we just wrote so a later
+            // failed cloud read can't drop deletion history on the next export.
+            UserDefaults.standard.set(mergedData.deletedFolderIds, forKey: Self.pendingDeletedFoldersKey)
+            UserDefaults.standard.set(mergedData.deletedPlaylistIds, forKey: Self.pendingDeletedPlaylistsKey)
+
             await MainActor.run {
                 lastSyncDate = Date()
                 isSyncing = false
@@ -217,6 +275,10 @@ final class SyncService {
             skipBackwardInterval: AudioPlayerManager.shared.skipBackwardInterval
         )
 
+        // Include local deletion tombstones so merges honor deletes
+        syncData.deletedFolderIds = pendingDeletedFolderIds
+        syncData.deletedPlaylistIds = pendingDeletedPlaylistIds
+
         return syncData
     }
 
@@ -231,7 +293,7 @@ final class SyncService {
 
         let folderDescriptor = FetchDescriptor<Folder>()
         let existingFolders = try context.fetch(folderDescriptor)
-        let foldersById = Dictionary(uniqueKeysWithValues: existingFolders.compactMap { folder -> (String, Folder)? in
+        var foldersById = Dictionary(uniqueKeysWithValues: existingFolders.compactMap { folder -> (String, Folder)? in
             return (folder.id.uuidString, folder)
         })
 
@@ -253,8 +315,22 @@ final class SyncService {
             // User needs to manually add podcasts on each device
         }
 
+        let deletedFolderIds = Set(data.deletedFolderIds)
+        let deletedPlaylistIds = Set(data.deletedPlaylistIds)
+
+        // Apply folder deletions from tombstones before creating/updating
+        for folder in existingFolders {
+            let id = folder.id.uuidString
+            if deletedFolderIds.contains(id) {
+                context.delete(folder)
+                foldersById.removeValue(forKey: id)
+            }
+        }
+
         // Import folders
         for syncFolder in data.folders {
+            guard !deletedFolderIds.contains(syncFolder.id) else { continue }
+
             if let existing = foldersById[syncFolder.id] {
                 // Update existing folder
                 existing.name = syncFolder.name
@@ -264,11 +340,15 @@ final class SyncService {
                 // Update podcast assignments
                 existing.podcasts = syncFolder.podcastFeedURLs.compactMap { podcastsByURL[$0] }
             } else {
-                // Create new folder
+                // Create new folder — preserve sync ID to avoid duplicates on later merges
                 let newFolder = Folder(name: syncFolder.name, colorHex: syncFolder.colorHex)
+                if let uuid = UUID(uuidString: syncFolder.id) {
+                    newFolder.id = uuid
+                }
                 newFolder.sortOrder = syncFolder.sortOrder
                 newFolder.podcasts = syncFolder.podcastFeedURLs.compactMap { podcastsByURL[$0] }
                 context.insert(newFolder)
+                foldersById[syncFolder.id] = newFolder
             }
         }
 
@@ -277,8 +357,22 @@ final class SyncService {
         let allEpisodes = try context.fetch(episodeDescriptor)
         let episodesByGUID = Dictionary(uniqueKeysWithValues: allEpisodes.map { ($0.guid, $0) })
 
+        // Apply playlist deletions from tombstones before creating/updating
+        for playlist in existingPlaylists {
+            let id = playlist.id.uuidString
+            if deletedPlaylistIds.contains(id) {
+                for item in playlist.items {
+                    context.delete(item)
+                }
+                context.delete(playlist)
+                playlistsById.removeValue(forKey: id)
+            }
+        }
+
         // Import playlists
         for syncPlaylist in data.playlists {
+            guard !deletedPlaylistIds.contains(syncPlaylist.id) else { continue }
+
             let playlist: Playlist
             if let existing = playlistsById[syncPlaylist.id] {
                 existing.name = syncPlaylist.name
@@ -372,31 +466,41 @@ final class SyncService {
         guard let cloud = cloud else { return local }
 
         // Use newer timestamp as base, merge the other
-        let (base, other) = local.timestamp > cloud.timestamp ? (local, cloud) : (cloud, local)
+        let (newer, older) = local.timestamp > cloud.timestamp ? (local, cloud) : (cloud, local)
 
-        var merged = base
+        var merged = newer
 
         // Merge podcasts (union of both)
-        let allPodcastURLs = Set(base.podcasts.map { $0.feedURL }).union(other.podcasts.map { $0.feedURL })
+        let allPodcastURLs = Set(newer.podcasts.map { $0.feedURL }).union(older.podcasts.map { $0.feedURL })
         merged.podcasts = allPodcastURLs.compactMap { url in
-            // Prefer base data, fall back to other
-            base.podcasts.first { $0.feedURL == url } ??
-            other.podcasts.first { $0.feedURL == url }
+            // Prefer newer data, fall back to older
+            newer.podcasts.first { $0.feedURL == url } ??
+            older.podcasts.first { $0.feedURL == url }
         }
 
-        // Merge folders (base wins for conflicts, add unique from other)
-        let baseFolderIds = Set(base.folders.map { $0.id })
-        let otherUniqueFolders = other.folders.filter { !baseFolderIds.contains($0.id) }
-        merged.folders = base.folders + otherUniqueFolders
+        // Explicit tombstones only — never infer deletes from "missing on newer side"
+        // (a fresh/empty device would otherwise wipe cloud folders).
+        let (mergedFolders, deletedFolderIds) = mergeById(
+            newer: newer.folders,
+            older: older.folders,
+            localDeletedIds: local.deletedFolderIds,
+            cloudDeletedIds: cloud.deletedFolderIds
+        )
+        merged.folders = mergedFolders
+        merged.deletedFolderIds = deletedFolderIds
 
-        // Merge playlists (base wins for conflicts, add unique from other)
-        let basePlaylistIds = Set(base.playlists.map { $0.id })
-        let otherUniquePlaylists = other.playlists.filter { !basePlaylistIds.contains($0.id) }
-        merged.playlists = base.playlists + otherUniquePlaylists
+        let (mergedPlaylists, deletedPlaylistIds) = mergeById(
+            newer: newer.playlists,
+            older: older.playlists,
+            localDeletedIds: local.deletedPlaylistIds,
+            cloudDeletedIds: cloud.deletedPlaylistIds
+        )
+        merged.playlists = mergedPlaylists
+        merged.deletedPlaylistIds = deletedPlaylistIds
 
         // Merge episode states (most recent state wins)
-        var statesByGUID = Dictionary(uniqueKeysWithValues: base.episodeStates.map { ($0.guid, $0) })
-        for state in other.episodeStates {
+        var statesByGUID = Dictionary(uniqueKeysWithValues: newer.episodeStates.map { ($0.guid, $0) })
+        for state in older.episodeStates {
             if statesByGUID[state.guid] == nil {
                 statesByGUID[state.guid] = state
             }
@@ -406,9 +510,31 @@ final class SyncService {
 
         return merged
     }
+
+    /// Union newer/older items by id, then strip anything in the combined tombstone set.
+    private func mergeById<T: SyncIdentifiable>(
+        newer: [T],
+        older: [T],
+        localDeletedIds: [String],
+        cloudDeletedIds: [String]
+    ) -> (items: [T], deletedIds: [String]) {
+        let deletedIds = Set(localDeletedIds).union(cloudDeletedIds)
+        var byId = Dictionary(uniqueKeysWithValues: newer.map { ($0.id, $0) })
+        for item in older where byId[item.id] == nil {
+            byId[item.id] = item
+        }
+        for id in deletedIds {
+            byId.removeValue(forKey: id)
+        }
+        return (Array(byId.values), Array(deletedIds))
+    }
 }
 
 // MARK: - Sync Data Models
+
+private protocol SyncIdentifiable {
+    var id: String { get }
+}
 
 struct SyncData: Codable {
     var timestamp: Date
@@ -417,6 +543,10 @@ struct SyncData: Codable {
     var playlists: [SyncPlaylist]
     var episodeStates: [SyncEpisodeState]
     var settings: SyncSettings?
+    /// Folder IDs removed on any device — kept so merges don't resurrect them.
+    var deletedFolderIds: [String]
+    /// Playlist IDs removed on any device — kept so merges don't resurrect them.
+    var deletedPlaylistIds: [String]
 
     init(
         timestamp: Date,
@@ -424,7 +554,9 @@ struct SyncData: Codable {
         folders: [SyncFolder] = [],
         playlists: [SyncPlaylist] = [],
         episodeStates: [SyncEpisodeState] = [],
-        settings: SyncSettings? = nil
+        settings: SyncSettings? = nil,
+        deletedFolderIds: [String] = [],
+        deletedPlaylistIds: [String] = []
     ) {
         self.timestamp = timestamp
         self.podcasts = podcasts
@@ -432,6 +564,8 @@ struct SyncData: Codable {
         self.playlists = playlists
         self.episodeStates = episodeStates
         self.settings = settings
+        self.deletedFolderIds = deletedFolderIds
+        self.deletedPlaylistIds = deletedPlaylistIds
     }
 
     init(from decoder: Decoder) throws {
@@ -442,6 +576,8 @@ struct SyncData: Codable {
         playlists = try container.decodeIfPresent([SyncPlaylist].self, forKey: .playlists) ?? []
         episodeStates = try container.decodeIfPresent([SyncEpisodeState].self, forKey: .episodeStates) ?? []
         settings = try container.decodeIfPresent(SyncSettings.self, forKey: .settings)
+        deletedFolderIds = try container.decodeIfPresent([String].self, forKey: .deletedFolderIds) ?? []
+        deletedPlaylistIds = try container.decodeIfPresent([String].self, forKey: .deletedPlaylistIds) ?? []
     }
 }
 
@@ -450,7 +586,7 @@ struct SyncPodcast: Codable {
     var playbackSpeedOverride: Double?
 }
 
-struct SyncFolder: Codable {
+struct SyncFolder: Codable, SyncIdentifiable {
     var id: String
     var name: String
     var colorHex: String?
@@ -458,7 +594,7 @@ struct SyncFolder: Codable {
     var podcastFeedURLs: [String]
 }
 
-struct SyncPlaylist: Codable {
+struct SyncPlaylist: Codable, SyncIdentifiable {
     var id: String
     var name: String
     var colorHex: String?

@@ -247,8 +247,7 @@ struct LibraryView: View {
             },
             onEditFolder: { folderToEdit = $0 },
             onDeleteFolder: { folder in
-                modelContext.delete(folder)
-                try? modelContext.save()
+                SyncService.shared.deleteFolder(folder, context: modelContext)
             },
             onEditPlaylist: { playlistToEdit = $0 },
             onDeletePlaylist: { playlist in
@@ -295,8 +294,7 @@ struct LibraryView: View {
         }
 
         Button(role: .destructive) {
-            modelContext.delete(folder)
-            try? modelContext.save()
+            SyncService.shared.deleteFolder(folder, context: modelContext)
         } label: {
             Label("Delete Folder", systemImage: "trash")
         }
@@ -337,10 +335,8 @@ struct LibraryView: View {
     }
 
     private func deleteFolders(at offsets: IndexSet) {
-        for index in offsets {
-            modelContext.delete(folders[index])
-        }
-        try? modelContext.save()
+        let foldersToDelete = offsets.map { folders[$0] }
+        SyncService.shared.deleteFolders(foldersToDelete, context: modelContext)
     }
 }
 
