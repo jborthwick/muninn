@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 63;
+	objectVersion = 77;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -159,14 +159,14 @@
 		97F0C33635F03B71191592AD /* PodcastDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PodcastDetailView.swift; sourceTree = "<group>"; };
 		982E1DEF4F3CF5F17ED2026D /* BackgroundRefreshManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundRefreshManager.swift; sourceTree = "<group>"; };
 		991EF1F7A3FE6911D1B8733A /* PlaylistManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistManager.swift; sourceTree = "<group>"; };
-		9BCE8E1C3ACF2A90820611A9 /* Muninn.entitlements.disabled */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = Muninn.entitlements.disabled; sourceTree = "<group>"; };
+		9BCE8E1C3ACF2A90820611A9 /* Muninn.entitlements.disabled */ = {isa = PBXFileReference; path = Muninn.entitlements.disabled; sourceTree = "<group>"; };
 		A1967F834082D93270225CBF /* ImageCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCache.swift; sourceTree = "<group>"; };
 		A7CCAF875DC9E95B9D810F81 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		AE52867042859713B5E77856 /* EpisodeProcessingBackgroundManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpisodeProcessingBackgroundManager.swift; sourceTree = "<group>"; };
 		B4925A1F355EC9C04D343111 /* FolderPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderPickerView.swift; sourceTree = "<group>"; };
 		BF6A37D79B1E0582537EECC6 /* Folder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Folder.swift; sourceTree = "<group>"; };
 		C52BA9EE741453A055ACFE70 /* TranscriptSummaryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptSummaryService.swift; sourceTree = "<group>"; };
-		C6392F13DD797B81EE9B8EB2 /* Muninn.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Muninn.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C6392F13DD797B81EE9B8EB2 /* Muninn.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Muninn.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C73BA3FD53A7A3D3ECDE4AE8 /* PodcastLookupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PodcastLookupService.swift; sourceTree = "<group>"; };
 		C97098C7211E59D1F92C60A6 /* Muninn.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Muninn.entitlements; sourceTree = "<group>"; };
 		C9F46C6963895403BA90BEBC /* EditPlaylistView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditPlaylistView.swift; sourceTree = "<group>"; };
@@ -487,6 +487,7 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					3DE7E01EA50E56EE02EB40FF = {
+						DevelopmentTeam = R58AJ79B3J;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -504,6 +505,7 @@
 			packageReferences = (
 				F074D0A12C851408A5446B0B /* XCRemoteSwiftPackageReference "FeedKit" */,
 			);
+			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -631,7 +633,6 @@
 				CODE_SIGN_ENTITLEMENTS = Muninn/Muninn.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = R58AJ79B3J;
 				INFOPLIST_FILE = Muninn/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -680,7 +681,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = SHQSDJG35Q;
+				DEVELOPMENT_TEAM = R58AJ79B3J;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -738,7 +739,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = SHQSDJG35Q;
+				DEVELOPMENT_TEAM = R58AJ79B3J;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -774,7 +775,6 @@
 				CODE_SIGN_ENTITLEMENTS = Muninn/Muninn.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = R58AJ79B3J;
 				INFOPLIST_FILE = Muninn/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
