@@ -156,6 +156,9 @@ final class SyncService {
         let folderDescriptor = FetchDescriptor<Folder>()
         let folders = try context.fetch(folderDescriptor)
 
+        let playlistDescriptor = FetchDescriptor<Playlist>()
+        let playlists = try context.fetch(playlistDescriptor)
+
         let episodeDescriptor = FetchDescriptor<Episode>()
         let episodes = try context.fetch(episodeDescriptor)
 
@@ -178,6 +181,18 @@ final class SyncService {
                 colorHex: folder.colorHex,
                 sortOrder: folder.sortOrder,
                 podcastFeedURLs: folder.podcasts.map { $0.feedURL }
+            )
+        }
+
+        // Export playlists
+        syncData.playlists = playlists.map { playlist in
+            let sortedItems = playlist.items.sorted { $0.sortOrder < $1.sortOrder }
+            return SyncPlaylist(
+                id: playlist.id.uuidString,
+                name: playlist.name,
+                colorHex: playlist.colorHex,
+                sortOrder: playlist.sortOrder,
+                episodeGUIDs: sortedItems.compactMap { $0.episode?.guid }
             )
         }
 
@@ -220,6 +235,12 @@ final class SyncService {
             return (folder.id.uuidString, folder)
         })
 
+        let playlistDescriptor = FetchDescriptor<Playlist>()
+        let existingPlaylists = try context.fetch(playlistDescriptor)
+        var playlistsById = Dictionary(uniqueKeysWithValues: existingPlaylists.compactMap { playlist -> (String, Playlist)? in
+            return (playlist.id.uuidString, playlist)
+        })
+
         // Import podcasts (add new ones)
         for syncPodcast in data.podcasts {
             if let existing = podcastsByURL[syncPodcast.feedURL] {
@@ -256,6 +277,40 @@ final class SyncService {
         let allEpisodes = try context.fetch(episodeDescriptor)
         let episodesByGUID = Dictionary(uniqueKeysWithValues: allEpisodes.map { ($0.guid, $0) })
 
+        // Import playlists
+        for syncPlaylist in data.playlists {
+            let playlist: Playlist
+            if let existing = playlistsById[syncPlaylist.id] {
+                existing.name = syncPlaylist.name
+                existing.colorHex = syncPlaylist.colorHex
+                existing.sortOrder = syncPlaylist.sortOrder
+                playlist = existing
+
+                for item in existing.items {
+                    context.delete(item)
+                }
+            } else {
+                let newPlaylist = Playlist(name: syncPlaylist.name, colorHex: syncPlaylist.colorHex)
+                newPlaylist.sortOrder = syncPlaylist.sortOrder
+                if let uuid = UUID(uuidString: syncPlaylist.id) {
+                    newPlaylist.id = uuid
+                }
+                context.insert(newPlaylist)
+                playlistsById[syncPlaylist.id] = newPlaylist
+                playlist = newPlaylist
+            }
+
+            for (index, guid) in syncPlaylist.episodeGUIDs.enumerated() {
+                if let episode = episodesByGUID[guid] {
+                    let item = PlaylistItem(episode: episode, sortOrder: index)
+                    item.playlist = playlist
+                    playlist.items.append(item)
+                    context.insert(item)
+                }
+            }
+        }
+
+        // Import episode states
         for state in data.episodeStates {
             if let episode = episodesByGUID[state.guid] {
                 episode.isPlayed = state.isPlayed
@@ -291,7 +346,17 @@ final class SyncService {
         }
 
         let data = try Data(contentsOf: url)
-        return try JSONDecoder().decode(SyncData.self, from: data)
+        guard !data.isEmpty else {
+            logger.warning("Sync file is empty — treating as no cloud data")
+            return nil
+        }
+
+        do {
+            return try JSONDecoder().decode(SyncData.self, from: data)
+        } catch {
+            logger.error("Failed to decode sync file: \(error.localizedDescription)")
+            return nil
+        }
     }
 
     private func writeCloudData(_ syncData: SyncData) async throws {
@@ -324,6 +389,11 @@ final class SyncService {
         let otherUniqueFolders = other.folders.filter { !baseFolderIds.contains($0.id) }
         merged.folders = base.folders + otherUniqueFolders
 
+        // Merge playlists (base wins for conflicts, add unique from other)
+        let basePlaylistIds = Set(base.playlists.map { $0.id })
+        let otherUniquePlaylists = other.playlists.filter { !basePlaylistIds.contains($0.id) }
+        merged.playlists = base.playlists + otherUniquePlaylists
+
         // Merge episode states (most recent state wins)
         var statesByGUID = Dictionary(uniqueKeysWithValues: base.episodeStates.map { ($0.guid, $0) })
         for state in other.episodeStates {
@@ -342,10 +412,37 @@ final class SyncService {
 
 struct SyncData: Codable {
     var timestamp: Date
-    var podcasts: [SyncPodcast] = []
-    var folders: [SyncFolder] = []
-    var episodeStates: [SyncEpisodeState] = []
+    var podcasts: [SyncPodcast]
+    var folders: [SyncFolder]
+    var playlists: [SyncPlaylist]
+    var episodeStates: [SyncEpisodeState]
     var settings: SyncSettings?
+
+    init(
+        timestamp: Date,
+        podcasts: [SyncPodcast] = [],
+        folders: [SyncFolder] = [],
+        playlists: [SyncPlaylist] = [],
+        episodeStates: [SyncEpisodeState] = [],
+        settings: SyncSettings? = nil
+    ) {
+        self.timestamp = timestamp
+        self.podcasts = podcasts
+        self.folders = folders
+        self.playlists = playlists
+        self.episodeStates = episodeStates
+        self.settings = settings
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        timestamp = try container.decode(Date.self, forKey: .timestamp)
+        podcasts = try container.decodeIfPresent([SyncPodcast].self, forKey: .podcasts) ?? []
+        folders = try container.decodeIfPresent([SyncFolder].self, forKey: .folders) ?? []
+        playlists = try container.decodeIfPresent([SyncPlaylist].self, forKey: .playlists) ?? []
+        episodeStates = try container.decodeIfPresent([SyncEpisodeState].self, forKey: .episodeStates) ?? []
+        settings = try container.decodeIfPresent(SyncSettings.self, forKey: .settings)
+    }
 }
 
 struct SyncPodcast: Codable {
@@ -359,6 +456,14 @@ struct SyncFolder: Codable {
     var colorHex: String?
     var sortOrder: Int
     var podcastFeedURLs: [String]
+}
+
+struct SyncPlaylist: Codable {
+    var id: String
+    var name: String
+    var colorHex: String?
+    var sortOrder: Int
+    var episodeGUIDs: [String]
 }
 
 struct SyncEpisodeState: Codable {

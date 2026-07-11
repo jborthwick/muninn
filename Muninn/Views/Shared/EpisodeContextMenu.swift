@@ -3,9 +3,11 @@ import SwiftData
 
 struct EpisodeContextMenu: View {
     @Environment(\.modelContext) private var modelContext
+    @Query(sort: \Playlist.sortOrder) private var allPlaylists: [Playlist]
     let episode: Episode
     var onPlay: (() -> Void)?
     var onDownloadNeedsConfirmation: (() -> Void)?
+    var onShowPlaylistPicker: (() -> Void)?
 
     var body: some View {
         // Play actions
@@ -37,6 +39,16 @@ struct EpisodeContextMenu: View {
             } else {
                 Label("Add to Queue", systemImage: "text.badge.plus")
             }
+        }
+
+        if let onShowPlaylistPicker {
+            Button {
+                onShowPlaylistPicker()
+            } label: {
+                Label("Add to Playlist", systemImage: "music.note.list")
+            }
+        } else {
+            playlistMenu
         }
 
         Divider()
@@ -171,6 +183,29 @@ struct EpisodeContextMenu: View {
                 episode.isPlayed ? "Mark Unplayed" : "Mark Played",
                 systemImage: episode.isPlayed ? "circle" : "checkmark.circle"
             )
+        }
+    }
+
+    @ViewBuilder
+    private var playlistMenu: some View {
+        Menu {
+            ForEach(allPlaylists) { playlist in
+                Button {
+                    PlaylistManager.shared.addEpisode(episode, to: playlist)
+                } label: {
+                    if PlaylistManager.shared.isInPlaylist(episode, playlist: playlist) {
+                        Label(playlist.name, systemImage: "checkmark")
+                    } else {
+                        Text(playlist.name)
+                    }
+                }
+            }
+
+            if allPlaylists.isEmpty {
+                Text("No playlists yet")
+            }
+        } label: {
+            Label("Add to Playlist", systemImage: "music.note.list")
         }
     }
 }

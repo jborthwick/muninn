@@ -8,6 +8,8 @@ struct MuninnApp: App {
             Podcast.self,
             Episode.self,
             Folder.self,
+            Playlist.self,
+            PlaylistItem.self,
             QueueItem.self,
             AppSettings.self,
             ListeningSession.self
@@ -59,6 +61,7 @@ struct MuninnApp: App {
                     let context = sharedModelContainer.mainContext
                     DownloadObserver.shared.setModelContext(context)
                     QueueManager.shared.setModelContext(context)
+                    PlaylistManager.shared.setModelContext(context)
                     StatsService.shared.setModelContext(context)
                     AutoTranscriptionQueue.shared.setModelContext(context)
 

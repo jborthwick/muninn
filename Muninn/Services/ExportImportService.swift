@@ -59,7 +59,10 @@ final class ExportImportService {
         
         let folderDescriptor = FetchDescriptor<Folder>()
         let folders = try context.fetch(folderDescriptor)
-        
+
+        let playlistDescriptor = FetchDescriptor<Playlist>()
+        let playlists = try context.fetch(playlistDescriptor)
+
         let episodeDescriptor = FetchDescriptor<Episode>()
         let episodes = try context.fetch(episodeDescriptor)
         
@@ -70,7 +73,7 @@ final class ExportImportService {
         
         let settings = AppSettings.getOrCreate(context: context)
         
-        logger.info("Exporting full data: \(podcasts.count) podcasts, \(folders.count) folders, \(episodes.count) episodes")
+        logger.info("Exporting full data: \(podcasts.count) podcasts, \(folders.count) folders, \(playlists.count) playlists, \(episodes.count) episodes")
         
         // Build full export
         let exportData = FullDataExport(
@@ -93,6 +96,16 @@ final class ExportImportService {
                     colorHex: folder.colorHex,
                     sortOrder: folder.sortOrder,
                     podcastFeedURLs: folder.podcasts.map { $0.feedURL }
+                )
+            },
+            playlists: playlists.map { playlist in
+                let sortedItems = playlist.items.sorted { $0.sortOrder < $1.sortOrder }
+                return ExportPlaylist(
+                    id: playlist.id.uuidString,
+                    name: playlist.name,
+                    colorHex: playlist.colorHex,
+                    sortOrder: playlist.sortOrder,
+                    episodeGUIDs: sortedItems.compactMap { $0.episode?.guid }
                 )
             },
             episodeStates: episodes.compactMap { episode -> ExportEpisodeState? in
@@ -152,20 +165,26 @@ final class ExportImportService {
         let queueItems = try context.fetch(queueDescriptor)
         logger.info("Deleting \(queueItems.count) queue items")
         queueItems.forEach { context.delete($0) }
-        
-        // 2. Episodes (reference podcasts)
+
+        // 2. Playlist items and playlists
+        let playlistDescriptor = FetchDescriptor<Playlist>()
+        let playlists = try context.fetch(playlistDescriptor)
+        logger.info("Deleting \(playlists.count) playlists")
+        playlists.forEach { context.delete($0) }
+
+        // 4. Episodes (reference podcasts)
         let episodeDescriptor = FetchDescriptor<Episode>()
         let episodes = try context.fetch(episodeDescriptor)
         logger.info("Deleting \(episodes.count) episodes")
         episodes.forEach { context.delete($0) }
         
-        // 3. Folders (reference podcasts)
+        // 5. Folders (reference podcasts)
         let folderDescriptor = FetchDescriptor<Folder>()
         let folders = try context.fetch(folderDescriptor)
         logger.info("Deleting \(folders.count) folders")
         folders.forEach { context.delete($0) }
         
-        // 4. Podcasts
+        // 6. Podcasts
         let podcastDescriptor = FetchDescriptor<Podcast>()
         let podcasts = try context.fetch(podcastDescriptor)
         logger.info("Deleting \(podcasts.count) podcasts")
@@ -379,14 +398,55 @@ final class ExportImportService {
         
         try context.save()
         logger.info("Folders imported successfully")
-        
-        // 3. Import episode states
-        logger.info("Importing episode states for \(exportData.episodeStates.count) episodes")
+
         let episodeDescriptor = FetchDescriptor<Episode>()
         let allEpisodes = try context.fetch(episodeDescriptor)
-        logger.info("Found \(allEpisodes.count) episodes in database")
-        
         let episodesByGUID = Dictionary(uniqueKeysWithValues: allEpisodes.map { ($0.guid, $0) })
+
+        // 3. Import playlists
+        let exportPlaylists = exportData.playlists ?? []
+        logger.info("Importing \(exportPlaylists.count) playlists")
+        let existingPlaylistDescriptor = FetchDescriptor<Playlist>()
+        let existingPlaylists = try context.fetch(existingPlaylistDescriptor)
+        var playlistsById = Dictionary(uniqueKeysWithValues: existingPlaylists.map { ($0.id.uuidString, $0) })
+
+        for exportPlaylist in exportPlaylists {
+            let playlist: Playlist
+            if let existingPlaylist = playlistsById[exportPlaylist.id] {
+                existingPlaylist.name = exportPlaylist.name
+                existingPlaylist.colorHex = exportPlaylist.colorHex
+                existingPlaylist.sortOrder = exportPlaylist.sortOrder
+                for item in existingPlaylist.items {
+                    context.delete(item)
+                }
+                playlist = existingPlaylist
+            } else {
+                let newPlaylist = Playlist(name: exportPlaylist.name, colorHex: exportPlaylist.colorHex)
+                newPlaylist.sortOrder = exportPlaylist.sortOrder
+                if let uuid = UUID(uuidString: exportPlaylist.id) {
+                    newPlaylist.id = uuid
+                }
+                context.insert(newPlaylist)
+                playlistsById[exportPlaylist.id] = newPlaylist
+                playlist = newPlaylist
+            }
+
+            for (index, guid) in exportPlaylist.episodeGUIDs.enumerated() {
+                if let episode = episodesByGUID[guid] {
+                    let item = PlaylistItem(episode: episode, sortOrder: index)
+                    item.playlist = playlist
+                    playlist.items.append(item)
+                    context.insert(item)
+                }
+            }
+        }
+
+        try context.save()
+        logger.info("Playlists imported successfully")
+
+        // 4. Import episode states
+        logger.info("Importing episode states for \(exportData.episodeStates.count) episodes")
+        logger.info("Found \(allEpisodes.count) episodes in database")
         
         var statesApplied = 0
         for state in exportData.episodeStates {
@@ -591,6 +651,7 @@ struct FullDataExport: Codable {
     let appName: String
     let podcasts: [ExportPodcast]
     let folders: [ExportFolder]
+    let playlists: [ExportPlaylist]?
     let episodeStates: [ExportEpisodeState]
     let queue: [ExportQueueItem]
     let settings: ExportSettings
@@ -611,6 +672,14 @@ struct ExportFolder: Codable {
     let colorHex: String?
     let sortOrder: Int
     let podcastFeedURLs: [String]
+}
+
+struct ExportPlaylist: Codable {
+    let id: String
+    let name: String
+    let colorHex: String?
+    let sortOrder: Int
+    let episodeGUIDs: [String]
 }
 
 struct ExportEpisodeState: Codable {

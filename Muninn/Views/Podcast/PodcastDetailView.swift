@@ -6,6 +6,7 @@ struct PodcastDetailView: View {
     @Environment(\.miniPlayerVisible) private var miniPlayerVisible
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \Folder.sortOrder) private var allFolders: [Folder]
+    @Query(sort: \Playlist.sortOrder) private var allPlaylists: [Playlist]
     let podcast: Podcast
 
     private var networkMonitor: NetworkMonitor { NetworkMonitor.shared }
@@ -16,6 +17,7 @@ struct PodcastDetailView: View {
     @State private var showDownloadedOnly = false
     @State private var isRefreshing = false
     @State private var showFolderPicker = false
+    @State private var showPlaylistPicker = false
     @State private var showUnsubscribeConfirmation = false
     @State private var shareText: String?
     @State private var isPreparingShare = false
@@ -148,6 +150,11 @@ struct PodcastDetailView: View {
         }
         .sheet(isPresented: $showFolderPicker) {
             FolderPickerView(podcast: podcast, allFolders: allFolders)
+        }
+        .sheet(isPresented: $showPlaylistPicker, onDismiss: {
+            exitSelectionMode()
+        }) {
+            PlaylistPickerView(episodes: selectedEpisodes, allPlaylists: allPlaylists)
         }
         .alert("Download on Cellular?", isPresented: $showCellularConfirmation) {
             Button("Download") {
@@ -697,6 +704,10 @@ struct PodcastDetailView: View {
         exitSelectionMode()
     }
 
+    private func batchAddToPlaylist() {
+        showPlaylistPicker = true
+    }
+
     private func batchDownload() {
         var toConfirm: [Episode] = []
         for episode in selectedEpisodes where episode.localFilePath == nil && episode.downloadProgress == nil {
@@ -784,6 +795,15 @@ struct PodcastDetailView: View {
                     batchAddToQueue()
                 } label: {
                     Image(systemName: "text.badge.plus")
+                        .font(.title3)
+                        .frame(width: 40, height: 40)
+                }
+                .disabled(!hasSelection)
+
+                Button {
+                    batchAddToPlaylist()
+                } label: {
+                    Image(systemName: "music.note.list")
                         .font(.title3)
                         .frame(width: 40, height: 40)
                 }

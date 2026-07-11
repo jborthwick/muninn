@@ -70,6 +70,9 @@ final class Episode {
     @Relationship(deleteRule: .cascade)
     var queueItems: [QueueItem] = []
 
+    @Relationship(deleteRule: .cascade)
+    var playlistItems: [PlaylistItem] = []
+
     init(
         guid: String,
         title: String,
