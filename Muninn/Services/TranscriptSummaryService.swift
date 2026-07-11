@@ -1,6 +1,5 @@
 import Foundation
 import FoundationModels
-import SwiftData
 import os
 
 struct ChapterBeat: Equatable, Sendable {
@@ -18,7 +17,6 @@ struct ChapterBeatsResult: Equatable {
 final class TranscriptSummaryService {
     static let shared = TranscriptSummaryService()
 
-    private(set) var summary: EpisodeSummary?
     private(set) var pauseRecap: String?
     private(set) var pauseRecapNeedsChapters = false
     private(set) var isGeneratingRecap = false
@@ -32,26 +30,15 @@ final class TranscriptSummaryService {
     private static let maxUsableBeatSummaryCharacters = 280
     private static let maxRecapSentences = 4
     private static let storySoFarBeatLimit = 8
-    /// Keep all completed beats when their combined text fits this budget.
+    /// Keep all completed chapters when their combined summary text fits this budget.
     private static let maxBeatInputCharacters = 2_800
     private static let directJoinBeatLimit = 4
 
     private init() {}
 
-    // MARK: - Load / clear
-
-    func load(for episode: Episode) {
-        guard let url = episode.localSummaryURL,
-              FileManager.default.fileExists(atPath: url.path),
-              let data = try? Data(contentsOf: url) else {
-            summary = nil
-            return
-        }
-        summary = try? JSONDecoder().decode(EpisodeSummary.self, from: data)
-    }
+    // MARK: - Clear
 
     func clear() {
-        summary = nil
         pauseRecap = nil
         pauseRecapNeedsChapters = false
         isGeneratingRecap = false
@@ -92,36 +79,29 @@ final class TranscriptSummaryService {
     }
 
     func generateOverview(
-        beats: [SummaryBeat],
+        chapters: [Chapter],
         episodeTitle: String
     ) async -> (text: String, error: String?) {
-        guard !beats.isEmpty else { return ("", nil) }
+        let summaries = chapters.compactMap { chapter -> (TimeInterval, String)? in
+            guard let summary = chapter.summary?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !summary.isEmpty else { return nil }
+            return (chapter.startTime, summary)
+        }
+        guard !summaries.isEmpty else { return ("", nil) }
 
         if #available(iOS 26, *), SystemLanguageModel.default.isAvailable {
             do {
-                let text = try await overviewWithModel(beats: beats, episodeTitle: episodeTitle)
+                let text = try await overviewWithModel(summaries: summaries, episodeTitle: episodeTitle)
                 return (text, nil)
             } catch {
                 logger.warning("Overview generation failed: \(error.localizedDescription)")
-                let fallback = beats.map(\.summary).filter { !$0.isEmpty }.joined(separator: " ")
+                let fallback = summaries.map(\.1).joined(separator: " ")
                 return (fallback, error.localizedDescription)
             }
         }
 
-        let fallback = beats.map(\.summary).filter { !$0.isEmpty }.joined(separator: " ")
+        let fallback = summaries.map(\.1).joined(separator: " ")
         return (fallback, nil)
-    }
-
-    func persist(summary: EpisodeSummary, episode: Episode, context: ModelContext) async throws {
-        let guid = episode.guid
-        let filename = try await Task.detached { [self] in
-            try self.saveSummaryToDisk(summary: summary, guid: guid)
-        }.value
-
-        episode.localSummaryPath = filename
-        try? context.save()
-        self.summary = summary
-        logger.info("Summary saved: \(filename) (\(summary.beats.count) beats)")
     }
 
     // MARK: - Pause recap
@@ -144,14 +124,9 @@ final class TranscriptSummaryService {
             lastRecapDebug = debug
         }
 
-        if summary == nil {
-            load(for: episode)
-        }
-
-        debug.totalBeatCount = summary?.beats.count ?? 0
+        debug.totalBeatCount = chapters.count
 
         let build = await buildRecapInput(
-            summary: summary,
             chapters: chapters,
             segments: segments,
             currentTime: currentTime,
@@ -573,11 +548,13 @@ final class TranscriptSummaryService {
     }
 
     @available(iOS 26, *)
-    private func overviewWithModel(beats: [SummaryBeat], episodeTitle: String) async throws -> String {
-        let beatList = beats
-            .filter { !$0.summary.isEmpty }
-            .map { beat in
-                "- \(ChapterTitleGenerator.formatTime(beat.startTime)): \(beat.summary)"
+    private func overviewWithModel(
+        summaries: [(TimeInterval, String)],
+        episodeTitle: String
+    ) async throws -> String {
+        let beatList = summaries
+            .map { start, summary in
+                "- \(ChapterTitleGenerator.formatTime(start)): \(summary)"
             }.joined(separator: "\n")
 
         let session = LanguageModelSession(instructions: """
@@ -607,13 +584,12 @@ final class TranscriptSummaryService {
     }
 
     private func buildRecapInput(
-        summary: EpisodeSummary?,
         chapters: [Chapter],
         segments: [TranscriptSegment],
         currentTime: TimeInterval,
         episodeTitle: String
     ) async -> RecapBuildResult {
-        guard let beats = summary?.beats, !beats.isEmpty else {
+        guard !chapters.isEmpty else {
             return RecapBuildResult(
                 beatLines: [],
                 beatSummaries: [],
@@ -627,19 +603,19 @@ final class TranscriptSummaryService {
             )
         }
 
-        let completed = beats.filter { $0.endTime <= currentTime }
-        let usableCompleted = completed.filter { isUsableBeatSummary($0.summary) }
+        let completed = chapters.filter { $0.endTime <= currentTime }
+        let usableCompleted = completed.filter { isUsableBeatSummary($0.summary ?? "") }
         let skippedEmpty = completed.count - usableCompleted.count
-        let totalChars = usableCompleted.reduce(0) { $0 + $1.summary.count }
-        let selected = selectBeatsForRecap(from: usableCompleted)
+        let totalChars = usableCompleted.reduce(0) { $0 + ($1.summary?.count ?? 0) }
+        let selected = selectChaptersForRecap(from: usableCompleted)
         let cappedCount = totalChars > Self.maxBeatInputCharacters ? selected.count : 0
 
         var lines: [String] = []
         var summaries: [String] = []
-        for beat in selected {
-            let label = chapterTitle(for: beat, in: chapters) ?? "Chapter"
-            lines.append("\(ChapterTitleGenerator.formatTime(beat.startTime)) \(label): \(beat.summary)")
-            summaries.append(beat.summary)
+        for chapter in selected {
+            let summary = chapter.summary ?? ""
+            lines.append("\(ChapterTitleGenerator.formatTime(chapter.startTime)) \(chapter.title): \(summary)")
+            summaries.append(summary)
         }
 
         var inProgressTitle: String?
@@ -647,8 +623,8 @@ final class TranscriptSummaryService {
         var partialSummary: String?
         var partialExcerptPreview: String?
 
-        if let inProgress = beats.first(where: { $0.startTime <= currentTime && $0.endTime > currentTime }) {
-            inProgressTitle = chapterTitle(for: inProgress, in: chapters)
+        if let inProgress = chapters.first(where: { $0.startTime <= currentTime && $0.endTime > currentTime }) {
+            inProgressTitle = inProgress.title
             inProgressRange = "\(ChapterTitleGenerator.formatTime(inProgress.startTime))–\(ChapterTitleGenerator.formatTime(currentTime))"
             let timeline = TranscriptTimeline(segments: segments)
             let heard = timeline.heardText(from: inProgress.startTime, to: currentTime)
@@ -663,8 +639,7 @@ final class TranscriptSummaryService {
                     episodeTitle: episodeTitle
                 )
                 if let partialSummary {
-                    let label = inProgressTitle ?? "Current chapter"
-                    lines.append("\(ChapterTitleGenerator.formatTime(inProgress.startTime)) \(label) (in progress): \(partialSummary)")
+                    lines.append("\(ChapterTitleGenerator.formatTime(inProgress.startTime)) \(inProgress.title) (in progress): \(partialSummary)")
                     summaries.append(partialSummary)
                 }
             }
@@ -683,26 +658,14 @@ final class TranscriptSummaryService {
         )
     }
 
-    private func chapterTitle(for beat: SummaryBeat, in chapters: [Chapter]) -> String? {
-        if let match = chapters.first(where: { abs($0.startTime - beat.startTime) < 0.5 }) {
-            return match.title
-        }
-        if let index = chapters.firstIndex(where: {
-            $0.startTime <= beat.startTime && $0.endTime > beat.startTime
-        }) {
-            return chapters[index].title
-        }
-        return nil
-    }
+    private func selectChaptersForRecap(from completedChapters: [Chapter]) -> [Chapter] {
+        guard !completedChapters.isEmpty else { return [] }
 
-    private func selectBeatsForRecap(from completedBeats: [SummaryBeat]) -> [SummaryBeat] {
-        guard !completedBeats.isEmpty else { return [] }
-
-        let totalChars = completedBeats.reduce(0) { $0 + $1.summary.count }
+        let totalChars = completedChapters.reduce(0) { $0 + ($1.summary?.count ?? 0) }
         if totalChars <= Self.maxBeatInputCharacters {
-            return completedBeats
+            return completedChapters
         }
-        return storySoFarBeats(from: completedBeats)
+        return storySoFarChapters(from: completedChapters)
     }
 
     private func directRecap(from beatSummaries: [String]) -> String {
@@ -791,9 +754,9 @@ final class TranscriptSummaryService {
         return firstSentences(in: summaries.joined(separator: " "), max: Self.maxRecapSentences)
     }
 
-    private func storySoFarBeats(from completedBeats: [SummaryBeat]) -> [SummaryBeat] {
-        guard completedBeats.count > Self.storySoFarBeatLimit else { return completedBeats }
-        return Array(completedBeats.suffix(Self.storySoFarBeatLimit))
+    private func storySoFarChapters(from completedChapters: [Chapter]) -> [Chapter] {
+        guard completedChapters.count > Self.storySoFarBeatLimit else { return completedChapters }
+        return Array(completedChapters.suffix(Self.storySoFarBeatLimit))
     }
 
     private func isUsableBeatSummary(_ summary: String) -> Bool {
@@ -865,32 +828,6 @@ final class TranscriptSummaryService {
         return sentences.prefix(max).joined(separator: " ")
     }
 
-    // MARK: - Disk
-
-    nonisolated private func summariesDirectory() throws -> URL {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let dir = docs.appendingPathComponent("Summaries", isDirectory: true)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
-    }
-
-    nonisolated private func saveSummaryToDisk(summary: EpisodeSummary, guid: String) throws -> String {
-        let data = try JSONEncoder().encode(summary)
-        let filename = sanitizedFilename(for: guid) + ".json"
-        let url = try summariesDirectory().appendingPathComponent(filename)
-        try data.write(to: url, options: .atomic)
-        return filename
-    }
-
-    nonisolated private func sanitizedFilename(for guid: String) -> String {
-        let allowed = CharacterSet.alphanumerics.union(.init(charactersIn: "-_"))
-        return String(
-            guid.unicodeScalars
-                .filter { allowed.contains($0) }
-                .map(Character.init)
-                .prefix(128)
-        )
-    }
 }
 
 @available(iOS 26, *)

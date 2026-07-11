@@ -15,6 +15,7 @@ final class ChapterService {
     // MARK: - Observable State
 
     private(set) var chapters: [Chapter] = []
+    private(set) var overview: String = ""
     private(set) var isGenerating = false
     private(set) var generationStatus: String = ""
     private(set) var error: String?
@@ -49,20 +50,38 @@ final class ChapterService {
 
     func load(for episode: Episode) {
         loadedEpisodeGUID = episode.guid
-        guard let url = episode.localChaptersURL,
-              FileManager.default.fileExists(atPath: url.path),
-              let data = try? Data(contentsOf: url) else {
-            chapters = []
-            return
-        }
-        struct Wrapper: Decodable { let chapters: [Chapter] }
-        chapters = (try? JSONDecoder().decode(Wrapper.self, from: data))?.chapters ?? []
         error = nil
         errorEpisodeGUID = nil
+
+        // Pre-merge installs kept summaries in a separate file. Wipe both rather than migrate.
+        let hadLegacySummary = episode.localSummaryPath != nil
+        discardObsoleteSummaryArtifacts(for: episode)
+
+        if hadLegacySummary, let url = episode.localChaptersURL {
+            try? FileManager.default.removeItem(at: url)
+            episode.localChaptersPath = nil
+            try? episode.modelContext?.save()
+            chapters = []
+            overview = ""
+            return
+        }
+
+        guard let url = episode.localChaptersURL,
+              FileManager.default.fileExists(atPath: url.path),
+              let data = try? Data(contentsOf: url),
+              let document = try? JSONDecoder().decode(ChaptersDocument.self, from: data) else {
+            chapters = []
+            overview = ""
+            return
+        }
+
+        chapters = document.chapters
+        overview = document.overview ?? ""
     }
 
     func clear() {
         chapters = []
+        overview = ""
         loadedEpisodeGUID = nil
         error = nil
         errorEpisodeGUID = nil
@@ -76,29 +95,29 @@ final class ChapterService {
         lastChapterDebugEpisodeGUID = nil
     }
 
-    /// Latest generation debug for this episode, or a snapshot from persisted summary beats.
-    func chapterDebug(episodeGUID: String, summary: EpisodeSummary?, chapters: [Chapter]) -> ChapterGenerationDebugInfo? {
+    /// Latest generation debug for this episode, or a snapshot from persisted chapter summaries.
+    func chapterDebug(episodeGUID: String, chapters: [Chapter], overview: String) -> ChapterGenerationDebugInfo? {
         if lastChapterDebugEpisodeGUID == episodeGUID, let lastChapterDebug {
             return lastChapterDebug
         }
-        return persistedChapterDebug(episodeGUID: episodeGUID, summary: summary, chapters: chapters)
+        return persistedChapterDebug(episodeGUID: episodeGUID, chapters: chapters, overview: overview)
     }
 
     private func persistedChapterDebug(
         episodeGUID: String,
-        summary: EpisodeSummary?,
-        chapters: [Chapter]
+        chapters: [Chapter],
+        overview: String
     ) -> ChapterGenerationDebugInfo? {
-        guard let summary, !summary.beats.isEmpty else { return nil }
+        let summarized = chapters.filter { !($0.summary ?? "").isEmpty }
+        guard !summarized.isEmpty else { return nil }
 
-        let beats = summary.beats.enumerated().map { index, beat in
-            let chapterTitle = index < chapters.count ? chapters[index].title : "Untitled"
-            return ChapterBeatDebugEntry(
+        let beats = chapters.enumerated().map { index, chapter in
+            ChapterBeatDebugEntry(
                 index: index,
-                startTime: beat.startTime,
-                endTime: beat.endTime,
-                title: chapterTitle,
-                summary: beat.summary,
+                startTime: chapter.startTime,
+                endTime: chapter.endTime,
+                title: chapter.title,
+                summary: chapter.summary ?? "",
                 source: "persisted",
                 flaggedRollCall: false,
                 transcriptCharacters: 0,
@@ -109,11 +128,11 @@ final class ChapterService {
         }
 
         return ChapterGenerationDebugInfo(
-            generatedAt: summary.generatedAt,
+            generatedAt: Date(),
             episodeGUID: episodeGUID,
             source: "persisted",
             beats: beats,
-            overview: summary.overview,
+            overview: overview,
             succeeded: true
         )
     }
@@ -121,6 +140,17 @@ final class ChapterService {
     private func storeChapterDebug(_ debug: ChapterGenerationDebugInfo, episodeGUID: String) {
         lastChapterDebug = debug
         lastChapterDebugEpisodeGUID = episodeGUID
+    }
+
+    /// Old separate Summaries/ JSON is obsolete — delete and forget.
+    private func discardObsoleteSummaryArtifacts(for episode: Episode) {
+        if let url = episode.localSummaryURL {
+            try? FileManager.default.removeItem(at: url)
+        }
+        if episode.localSummaryPath != nil {
+            episode.localSummaryPath = nil
+            try? episode.modelContext?.save()
+        }
     }
 
     /// Generate chapters from show notes (fast path) or transcript (boundaries + titles).
@@ -137,15 +167,11 @@ final class ChapterService {
         if let oldURL = episode.localChaptersURL {
             try? FileManager.default.removeItem(at: oldURL)
         }
-        if let oldSummaryURL = episode.localSummaryURL {
-            try? FileManager.default.removeItem(at: oldSummaryURL)
-        }
+        discardObsoleteSummaryArtifacts(for: episode)
         episode.localChaptersPath = nil
-        episode.localSummaryPath = nil
         if loadedEpisodeGUID == episode.guid {
             chapters = []
-        }
-        if loadedEpisodeGUID == episode.guid {
+            overview = ""
             TranscriptSummaryService.shared.clear()
         }
 
@@ -240,7 +266,6 @@ final class ChapterService {
         )
 
         var result: [Chapter] = []
-        var beats: [SummaryBeat] = []
         for (index, start) in boundaries.enumerated() {
             let end = index + 1 < boundaries.count ? boundaries[index + 1] : duration
             let draft = drafts[index]
@@ -248,11 +273,12 @@ final class ChapterService {
                 summary: "",
                 title: ChapterTitleGenerator.lexicalTitle(from: draft.excerpt, startTime: start)
             )
-            result.append(Chapter(startTime: start, endTime: end, title: beat.title))
-            beats.append(SummaryBeat(
+            let summary = beat.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+            result.append(Chapter(
                 startTime: start,
                 endTime: end,
-                summary: beat.summary
+                title: beat.title,
+                summary: summary.isEmpty ? nil : summary
             ))
         }
 
@@ -262,6 +288,7 @@ final class ChapterService {
             updated.endTime = end
             if index < result.count {
                 updated.title = result[index].title
+                updated.summary = result[index].summary ?? updated.summary
             }
             return updated
         }
@@ -274,23 +301,19 @@ final class ChapterService {
         }
 
         generationStatus = "Building episode overview…"
-        let overviewResult = await summaryService.generateOverview(beats: beats, episodeTitle: episode.title)
+        let overviewResult = await summaryService.generateOverview(
+            chapters: result,
+            episodeTitle: episode.title
+        )
         debug.overview = overviewResult.text
         debug.overviewError = overviewResult.error
-        let episodeSummary = EpisodeSummary(
+
+        let success = await persist(
+            chapters: result,
             overview: overviewResult.text,
-            beats: beats,
-            generatedAt: Date()
+            episode: episode,
+            context: context
         )
-
-        do {
-            try await summaryService.persist(summary: episodeSummary, episode: episode, context: context)
-        } catch {
-            logger.warning("Summary save failed: \(error.localizedDescription)")
-            debug.summarySaveError = error.localizedDescription
-        }
-
-        let success = await persist(chapters: result, episode: episode, context: context)
         debug.succeeded = success
         if !success, let error {
             debug.generationError = error
@@ -300,17 +323,29 @@ final class ChapterService {
 
     // MARK: - Persistence
 
-    private func persist(chapters: [Chapter], episode: Episode, context: ModelContext) async -> Bool {
+    private func persist(
+        chapters: [Chapter],
+        overview: String = "",
+        episode: Episode,
+        context: ModelContext
+    ) async -> Bool {
         do {
             let guid = episode.guid
+            let document = ChaptersDocument(
+                chapters: chapters,
+                overview: overview.isEmpty ? nil : overview,
+                generatedAt: Date()
+            )
             let filename = try await Task.detached { [self] in
-                try self.saveChaptersToDisk(chapters: chapters, guid: guid)
+                try self.saveChaptersToDisk(document: document, guid: guid)
             }.value
 
             episode.localChaptersPath = filename
+            discardObsoleteSummaryArtifacts(for: episode)
             try? context.save()
             if loadedEpisodeGUID == guid {
                 self.chapters = chapters
+                self.overview = overview
             }
             logger.info("Chapters saved: \(filename) (\(chapters.count) chapters)")
             return true
@@ -629,9 +664,8 @@ final class ChapterService {
         return dir
     }
 
-    nonisolated private func saveChaptersToDisk(chapters: [Chapter], guid: String) throws -> String {
-        struct Wrapper: Encodable { let chapters: [Chapter] }
-        let data = try JSONEncoder().encode(Wrapper(chapters: chapters))
+    nonisolated private func saveChaptersToDisk(document: ChaptersDocument, guid: String) throws -> String {
+        let data = try JSONEncoder().encode(document)
         let filename = sanitizedFilename(for: guid) + ".json"
         let url = try chaptersDirectory().appendingPathComponent(filename)
         try data.write(to: url, options: .atomic)

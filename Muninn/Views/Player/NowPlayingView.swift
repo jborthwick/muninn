@@ -134,10 +134,6 @@ struct NowPlayingView: View {
                 }
                 chapterService.load(for: episode)
             }
-
-            if let episode = playerManager.currentEpisode {
-                summaryService.load(for: episode)
-            }
         }
         .onChange(of: playerManager.currentEpisode?.guid) { _, _ in
             // Reset transcript and chapters state when episode changes (while player is open)
@@ -526,7 +522,6 @@ struct NowPlayingView: View {
         guard let episode = playerManager.currentEpisode else { return }
         Task {
             await chapterService.generate(episode: episode, context: modelContext)
-            summaryService.load(for: episode)
         }
     }
 

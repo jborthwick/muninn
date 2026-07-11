@@ -53,10 +53,10 @@ final class Episode {
         return chaptersPath.appendingPathComponent(filename)
     }
 
-    // Episode summary (segment beats + overview from transcript)
+    /// Legacy separate summary JSON (migrated into chapters file on load).
     var localSummaryPath: String?
 
-    /// Returns the full file URL for the locally-generated episode summary JSON
+    /// Returns the full file URL for a legacy episode summary JSON, if any.
     var localSummaryURL: URL? {
         guard let filename = localSummaryPath else { return nil }
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]

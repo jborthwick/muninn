@@ -7,7 +7,6 @@ struct ChapterView: View {
     let onGenerate: () -> Void
 
     private var chapterService: ChapterService { ChapterService.shared }
-    private var summaryService: TranscriptSummaryService { TranscriptSummaryService.shared }
     private var transcriptService: TranscriptService { TranscriptService.shared }
     private var playerManager: AudioPlayerManager { AudioPlayerManager.shared }
 
@@ -51,8 +50,8 @@ struct ChapterView: View {
         guard let guid = playerManager.currentEpisode?.guid else { return nil }
         return chapterService.chapterDebug(
             episodeGUID: guid,
-            summary: summaryService.summary,
-            chapters: chapters
+            chapters: chapters,
+            overview: chapterService.overview
         )
     }
 

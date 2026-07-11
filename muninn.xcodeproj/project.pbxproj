@@ -61,7 +61,6 @@
 		9CD7508B9CC835052B4E014F /* Episode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 323EB6B5F2087146317595E0 /* Episode.swift */; };
 		A61A8F4B83531D16FDF0F1CC /* LibraryGridContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5389B1317EE189025F3984DF /* LibraryGridContent.swift */; };
 		A75FC9484E8263B8A494A001 /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2ACCAC0EF1FF427EC8E14199 /* Logger.swift */; };
-		A76F93B3A0AF6699D54AD21E /* EpisodeSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51FA2CFAAE0582855AF11E7C /* EpisodeSummary.swift */; };
 		ADDC4D465AB729675910DEDF /* QueueManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED0DFB9D546228354FA1F753 /* QueueManager.swift */; };
 		AE0AFAFCB453FE1A5C08F3A5 /* Folder.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF6A37D79B1E0582537EECC6 /* Folder.swift */; };
 		B015BF959F03B2C56D695769 /* ImageCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1967F834082D93270225CBF /* ImageCache.swift */; };
@@ -119,7 +118,6 @@
 		47298820D872D6525D85E8C8 /* StatsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsService.swift; sourceTree = "<group>"; };
 		48CCBFDB026179489552C0FB /* AllEpisodesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AllEpisodesView.swift; sourceTree = "<group>"; };
 		4D0377ADB2A3CD5BF0576598 /* NowPlayingEpisodeHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingEpisodeHeader.swift; sourceTree = "<group>"; };
-		51FA2CFAAE0582855AF11E7C /* EpisodeSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpisodeSummary.swift; sourceTree = "<group>"; };
 		5389B1317EE189025F3984DF /* LibraryGridContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryGridContent.swift; sourceTree = "<group>"; };
 		54F122B6B32C99226A64F26A /* DownloadsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsView.swift; sourceTree = "<group>"; };
 		59AF7D3F6DE57598F572DA42 /* PauseRecapBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PauseRecapBanner.swift; sourceTree = "<group>"; };
@@ -371,7 +369,6 @@
 				81BEDF9D770971DA95EC2648 /* Chapter.swift */,
 				1742B2ED7759BEC4B36DE098 /* ChapterGenerationDebugInfo.swift */,
 				323EB6B5F2087146317595E0 /* Episode.swift */,
-				51FA2CFAAE0582855AF11E7C /* EpisodeSummary.swift */,
 				BF6A37D79B1E0582537EECC6 /* Folder.swift */,
 				35D91CEB6356F96188B5A54C /* ListeningStats.swift */,
 				8C57E1118302A0FCADCDAB42 /* PauseRecapDebugInfo.swift */,
@@ -511,7 +508,6 @@
 				E86BF85CF7B32B13951CF339 /* EpisodeDetailView.swift in Sources */,
 				4B725486CC7158FD3048DBD9 /* EpisodeProcessingStatusView.swift in Sources */,
 				B1AAE1AA3D286A440D2F9C52 /* EpisodeRowView.swift in Sources */,
-				A76F93B3A0AF6699D54AD21E /* EpisodeSummary.swift in Sources */,
 				B496324F6C4C849D0A47B5C8 /* ExportImportService.swift in Sources */,
 				8D8329B0CD63F0FD81880FAD /* ExportImportView.swift in Sources */,
 				E909FA7F782171F6E74D8C96 /* FeedService.swift in Sources */,
