@@ -12,5 +12,4 @@ struct SummaryBeat: Codable, Equatable, Identifiable {
     var startTime: TimeInterval
     var endTime: TimeInterval
     var summary: String
-    var title: String?
 }

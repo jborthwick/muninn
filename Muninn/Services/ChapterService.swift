@@ -92,9 +92,7 @@ final class ChapterService {
         guard let summary, !summary.beats.isEmpty else { return nil }
 
         let beats = summary.beats.enumerated().map { index, beat in
-            let chapterTitle = index < chapters.count
-                ? chapters[index].title
-                : (beat.title ?? "Untitled")
+            let chapterTitle = index < chapters.count ? chapters[index].title : "Untitled"
             return ChapterBeatDebugEntry(
                 index: index,
                 startTime: beat.startTime,
@@ -254,8 +252,7 @@ final class ChapterService {
             beats.append(SummaryBeat(
                 startTime: start,
                 endTime: end,
-                summary: beat.summary,
-                title: beat.title
+                summary: beat.summary
             ))
         }
 

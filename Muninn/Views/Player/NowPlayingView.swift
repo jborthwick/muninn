@@ -564,10 +564,14 @@ struct NowPlayingView: View {
                 summaryService.clearPauseRecap()
                 return
             }
+            if chapterService.loadedEpisodeGUID != episode.guid {
+                chapterService.load(for: episode)
+            }
             await summaryService.generatePauseRecap(
                 episode: episode,
                 segments: transcriptService.segments,
-                currentTime: playerManager.effectivePlaybackPosition
+                currentTime: playerManager.effectivePlaybackPosition,
+                chapters: chapterService.chapters
             )
         }
     }

@@ -8,7 +8,7 @@ struct ChapterBeatDebugEntry: Equatable, Identifiable {
     var endTime: TimeInterval
     var title: String
     var summary: String
-    /// show_notes, roll_call, foundation_model, lexical_fallback, persisted
+    /// show_notes, roll_call, foundation_model, foundation_model_permissive, lexical_fallback, persisted
     var source: String
     var flaggedRollCall: Bool
     var transcriptCharacters: Int

@@ -129,7 +129,8 @@ final class TranscriptSummaryService {
     func generatePauseRecap(
         episode: Episode,
         segments: [TranscriptSegment],
-        currentTime: TimeInterval
+        currentTime: TimeInterval,
+        chapters: [Chapter] = []
     ) async {
         guard currentTime > 0 else { return }
 
@@ -151,6 +152,7 @@ final class TranscriptSummaryService {
 
         let build = await buildRecapInput(
             summary: summary,
+            chapters: chapters,
             segments: segments,
             currentTime: currentTime,
             episodeTitle: episode.title
@@ -270,7 +272,9 @@ final class TranscriptSummaryService {
                 )
                 return entry(
                     beat: modelResult.beat,
-                    source: "foundation_model",
+                    source: modelResult.usedPermissiveFallback
+                        ? "foundation_model_permissive"
+                        : "foundation_model",
                     flaggedRollCall: false,
                     usedChunking: modelResult.usedChunking,
                     error: nil
@@ -308,6 +312,7 @@ final class TranscriptSummaryService {
     private struct ChapterModelResult {
         let beat: ChapterBeat
         let usedChunking: Bool
+        let usedPermissiveFallback: Bool
     }
 
     @available(iOS 26, *)
@@ -316,25 +321,57 @@ final class TranscriptSummaryService {
         startTime: TimeInterval,
         episodeTitle: String
     ) async throws -> ChapterModelResult {
-        let instructions = chapterBeatInstructions(episodeTitle: episodeTitle)
-        let session = LanguageModelSession(instructions: instructions)
-        session.prewarm()
-
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             throw NSError(domain: "TranscriptSummary", code: 1, userInfo: nil)
         }
 
+        do {
+            let guided = try await chapterBeatWithGuidedGeneration(
+                transcript: trimmed,
+                startTime: startTime,
+                episodeTitle: episodeTitle
+            )
+            return ChapterModelResult(
+                beat: guided.beat,
+                usedChunking: guided.usedChunking,
+                usedPermissiveFallback: false
+            )
+        } catch {
+            logger.warning("Guided chapter beat failed, trying permissive String: \(error.localizedDescription)")
+            let permissive = try await chapterBeatWithPermissiveString(
+                transcript: trimmed,
+                startTime: startTime,
+                episodeTitle: episodeTitle
+            )
+            return ChapterModelResult(
+                beat: permissive.beat,
+                usedChunking: permissive.usedChunking,
+                usedPermissiveFallback: true
+            )
+        }
+    }
+
+    @available(iOS 26, *)
+    private func chapterBeatWithGuidedGeneration(
+        transcript: String,
+        startTime: TimeInterval,
+        episodeTitle: String
+    ) async throws -> (beat: ChapterBeat, usedChunking: Bool) {
+        let instructions = chapterBeatInstructions(episodeTitle: episodeTitle)
+        let session = LanguageModelSession(instructions: instructions)
+        session.prewarm()
+
         let plan: ChapterBeatPlan
         let usedChunking: Bool
-        if trimmed.count <= Self.maxChapterTranscriptCharacters {
-            let prompt = chapterBeatPrompt(transcript: trimmed, startTime: startTime)
+        if transcript.count <= Self.maxChapterTranscriptCharacters {
+            let prompt = chapterBeatPrompt(transcript: transcript, startTime: startTime)
             let response = try await session.respond(to: prompt, generating: ChapterBeatPlan.self)
             plan = response.content
             usedChunking = false
         } else {
             plan = try await chapterBeatFromChunks(
-                transcript: trimmed,
+                transcript: transcript,
                 startTime: startTime,
                 session: session
             )
@@ -346,7 +383,66 @@ final class TranscriptSummaryService {
         guard isUsableBeatSummary(summary), !title.isEmpty else {
             throw NSError(domain: "TranscriptSummary", code: 2, userInfo: nil)
         }
-        return ChapterModelResult(beat: ChapterBeat(summary: summary, title: title), usedChunking: usedChunking)
+        return (ChapterBeat(summary: summary, title: title), usedChunking)
+    }
+
+    @available(iOS 26, *)
+    private func chapterBeatWithPermissiveString(
+        transcript: String,
+        startTime: TimeInterval,
+        episodeTitle: String
+    ) async throws -> (beat: ChapterBeat, usedChunking: Bool) {
+        let model = SystemLanguageModel(guardrails: .permissiveContentTransformations)
+        let session = LanguageModelSession(
+            model: model,
+            instructions: chapterBeatInstructions(episodeTitle: episodeTitle)
+        )
+        session.prewarm()
+
+        if transcript.count <= Self.maxChapterTranscriptCharacters {
+            let prompt = chapterBeatPermissivePrompt(transcript: transcript, startTime: startTime)
+            let response = try await session.respond(to: prompt)
+            let beat = try parseTitleAndSummary(response.content)
+            return (beat, false)
+        }
+
+        let chunks = splitTranscriptIntoChunks(transcript, maxSize: Self.chunkTranscriptCharacters)
+        var partSummaries: [String] = []
+        for (index, chunk) in chunks.enumerated() {
+            let prompt = """
+            Part \(index + 1) of \(chunks.count) (chapter starts \(ChapterTitleGenerator.formatTime(startTime))):
+
+            \(chunk)
+
+            Write exactly one sentence summarizing this part.
+            """
+            let response = try await session.respond(to: prompt)
+            let part = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !part.isEmpty, !looksLikeModelRefusal(part) else { continue }
+            partSummaries.append(part)
+        }
+
+        guard !partSummaries.isEmpty else {
+            throw NSError(domain: "TranscriptSummary", code: 3, userInfo: nil)
+        }
+
+        let merged = partSummaries.enumerated().map { offset, text in
+            "Part \(offset + 1): \(text)"
+        }.joined(separator: "\n")
+
+        let prompt = """
+        Chapter starts at \(ChapterTitleGenerator.formatTime(startTime)).
+        Summaries of sequential parts:
+
+        \(merged)
+
+        Reply in exactly this format:
+        Title: <4–7 word chapter title>
+        Summary: <one clear sentence about the whole chapter>
+        """
+        let response = try await session.respond(to: prompt)
+        let beat = try parseTitleAndSummary(response.content)
+        return (beat, true)
     }
 
     @available(iOS 26, *)
@@ -412,6 +508,70 @@ final class TranscriptSummaryService {
         """
     }
 
+    private func chapterBeatPermissivePrompt(transcript: String, startTime: TimeInterval) -> String {
+        """
+        Chapter starts at \(ChapterTitleGenerator.formatTime(startTime)):
+
+        \(transcript)
+
+        Reply in exactly this format:
+        Title: <4–7 word chapter title>
+        Summary: <one clear sentence>
+        """
+    }
+
+    private func parseTitleAndSummary(_ text: String) throws -> ChapterBeat {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !looksLikeModelRefusal(trimmed) else {
+            throw NSError(domain: "TranscriptSummary", code: 6, userInfo: [
+                NSLocalizedDescriptionKey: "Permissive model returned empty or refused."
+            ])
+        }
+
+        var title = ""
+        var summary = ""
+        for rawLine in trimmed.components(separatedBy: .newlines) {
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            let lower = line.lowercased()
+            if lower.hasPrefix("title:") {
+                title = String(line.dropFirst(6)).trimmingCharacters(in: .whitespacesAndNewlines)
+            } else if lower.hasPrefix("summary:") {
+                summary = String(line.dropFirst(8)).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+
+        if title.isEmpty || summary.isEmpty {
+            // Single-block fallback: first line title-ish, rest summary.
+            let lines = trimmed.components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            if title.isEmpty, let first = lines.first {
+                title = first.replacingOccurrences(of: #"^Title:\s*"#, with: "", options: .regularExpression)
+            }
+            if summary.isEmpty {
+                let rest = lines.dropFirst().joined(separator: " ")
+                    .replacingOccurrences(of: #"^Summary:\s*"#, with: "", options: .regularExpression)
+                summary = rest.isEmpty ? trimmed : rest
+            }
+        }
+
+        title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        summary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isUsableBeatSummary(summary), !title.isEmpty else {
+            throw NSError(domain: "TranscriptSummary", code: 2, userInfo: nil)
+        }
+        return ChapterBeat(summary: summary, title: title)
+    }
+
+    private func looksLikeModelRefusal(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        if lower.hasPrefix("sorry") { return true }
+        if lower.contains("i can't help") || lower.contains("i cannot help") { return true }
+        if lower.contains("i can't assist") || lower.contains("i cannot assist") { return true }
+        if lower.contains("i'm not able to") || lower.contains("i am not able to") { return true }
+        return false
+    }
+
     @available(iOS 26, *)
     private func overviewWithModel(beats: [SummaryBeat], episodeTitle: String) async throws -> String {
         let beatList = beats
@@ -448,6 +608,7 @@ final class TranscriptSummaryService {
 
     private func buildRecapInput(
         summary: EpisodeSummary?,
+        chapters: [Chapter],
         segments: [TranscriptSegment],
         currentTime: TimeInterval,
         episodeTitle: String
@@ -476,7 +637,7 @@ final class TranscriptSummaryService {
         var lines: [String] = []
         var summaries: [String] = []
         for beat in selected {
-            let label = beat.title.flatMap { !$0.isEmpty ? $0 : nil } ?? "Chapter"
+            let label = chapterTitle(for: beat, in: chapters) ?? "Chapter"
             lines.append("\(ChapterTitleGenerator.formatTime(beat.startTime)) \(label): \(beat.summary)")
             summaries.append(beat.summary)
         }
@@ -487,7 +648,7 @@ final class TranscriptSummaryService {
         var partialExcerptPreview: String?
 
         if let inProgress = beats.first(where: { $0.startTime <= currentTime && $0.endTime > currentTime }) {
-            inProgressTitle = inProgress.title
+            inProgressTitle = chapterTitle(for: inProgress, in: chapters)
             inProgressRange = "\(ChapterTitleGenerator.formatTime(inProgress.startTime))–\(ChapterTitleGenerator.formatTime(currentTime))"
             let timeline = TranscriptTimeline(segments: segments)
             let heard = timeline.heardText(from: inProgress.startTime, to: currentTime)
@@ -502,7 +663,7 @@ final class TranscriptSummaryService {
                     episodeTitle: episodeTitle
                 )
                 if let partialSummary {
-                    let label = inProgress.title.flatMap { !$0.isEmpty ? $0 : nil } ?? "Current chapter"
+                    let label = inProgressTitle ?? "Current chapter"
                     lines.append("\(ChapterTitleGenerator.formatTime(inProgress.startTime)) \(label) (in progress): \(partialSummary)")
                     summaries.append(partialSummary)
                 }
@@ -520,6 +681,18 @@ final class TranscriptSummaryService {
             partialSummary: partialSummary,
             partialExcerptPreview: partialExcerptPreview
         )
+    }
+
+    private func chapterTitle(for beat: SummaryBeat, in chapters: [Chapter]) -> String? {
+        if let match = chapters.first(where: { abs($0.startTime - beat.startTime) < 0.5 }) {
+            return match.title
+        }
+        if let index = chapters.firstIndex(where: {
+            $0.startTime <= beat.startTime && $0.endTime > beat.startTime
+        }) {
+            return chapters[index].title
+        }
+        return nil
     }
 
     private func selectBeatsForRecap(from completedBeats: [SummaryBeat]) -> [SummaryBeat] {
