@@ -24,8 +24,10 @@ final class TranscriptSummaryService {
 
     private let logger = Logger(subsystem: "com.muninn", category: "TranscriptSummary")
 
-    private static let maxChapterTranscriptCharacters = 9_000
-    private static let chunkTranscriptCharacters = 8_000
+    /// On-device model context is ~4096 tokens (~3–4 Latin chars/token). Leave headroom
+    /// for instructions, framing, and the response — never reuse a session across chunks.
+    private static let maxChapterTranscriptCharacters = 3_500
+    private static let chunkTranscriptCharacters = 3_000
     private static let maxPartialHeardCharacters = 2_500
     private static let maxUsableBeatSummaryCharacters = 280
     private static let maxRecapSentences = 4
@@ -333,13 +335,10 @@ final class TranscriptSummaryService {
         startTime: TimeInterval,
         episodeTitle: String
     ) async throws -> (beat: ChapterBeat, usedChunking: Bool) {
-        let instructions = chapterBeatInstructions(episodeTitle: episodeTitle)
-        let session = LanguageModelSession(instructions: instructions)
-        session.prewarm()
-
         let plan: ChapterBeatPlan
         let usedChunking: Bool
         if transcript.count <= Self.maxChapterTranscriptCharacters {
+            let session = makeChapterSession(episodeTitle: episodeTitle, permissive: false)
             let prompt = chapterBeatPrompt(transcript: transcript, startTime: startTime)
             let response = try await session.respond(to: prompt, generating: ChapterBeatPlan.self)
             plan = response.content
@@ -348,17 +347,23 @@ final class TranscriptSummaryService {
             plan = try await chapterBeatFromChunks(
                 transcript: transcript,
                 startTime: startTime,
-                session: session
+                episodeTitle: episodeTitle,
+                permissive: false
             )
             usedChunking = true
         }
 
-        let summary = plan.summary.trimmingCharacters(in: .whitespacesAndNewlines)
         let title = plan.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard isUsableBeatSummary(summary), !title.isEmpty else {
-            throw NSError(domain: "TranscriptSummary", code: 2, userInfo: nil)
+        guard let summary = normalizeBeatSummary(plan.summary) else {
+            throw NSError(domain: "TranscriptSummary", code: 2, userInfo: [
+                NSLocalizedDescriptionKey: "Model returned an unusable chapter summary."
+            ])
         }
-        return (ChapterBeat(summary: summary, title: title), usedChunking)
+        let cleaned = sanitizeTitle(title)
+        let finalTitle = isUsableChapterTitle(cleaned)
+            ? cleaned
+            : ChapterTitleGenerator.lexicalTitle(from: summary, startTime: startTime)
+        return (ChapterBeat(summary: summary, title: finalTitle), usedChunking)
     }
 
     @available(iOS 26, *)
@@ -367,69 +372,45 @@ final class TranscriptSummaryService {
         startTime: TimeInterval,
         episodeTitle: String
     ) async throws -> (beat: ChapterBeat, usedChunking: Bool) {
-        let model = SystemLanguageModel(guardrails: .permissiveContentTransformations)
-        let session = LanguageModelSession(
-            model: model,
-            instructions: chapterBeatInstructions(episodeTitle: episodeTitle)
-        )
-        session.prewarm()
-
         if transcript.count <= Self.maxChapterTranscriptCharacters {
+            let session = makeChapterSession(episodeTitle: episodeTitle, permissive: true)
             let prompt = chapterBeatPermissivePrompt(transcript: transcript, startTime: startTime)
             let response = try await session.respond(to: prompt)
-            let beat = try parseTitleAndSummary(response.content)
+            let beat = try parseTitleAndSummary(response.content, startTime: startTime)
             return (beat, false)
         }
 
-        let chunks = splitTranscriptIntoChunks(transcript, maxSize: Self.chunkTranscriptCharacters)
-        var partSummaries: [String] = []
-        for (index, chunk) in chunks.enumerated() {
-            let prompt = """
-            Part \(index + 1) of \(chunks.count) (chapter starts \(ChapterTitleGenerator.formatTime(startTime))):
-
-            \(chunk)
-
-            Write exactly one sentence summarizing this part.
-            """
-            let response = try await session.respond(to: prompt)
-            let part = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !part.isEmpty, !looksLikeModelRefusal(part) else { continue }
-            partSummaries.append(part)
+        let plan = try await chapterBeatFromChunks(
+            transcript: transcript,
+            startTime: startTime,
+            episodeTitle: episodeTitle,
+            permissive: true
+        )
+        let cleaned = sanitizeTitle(plan.title)
+        guard let summary = normalizeBeatSummary(plan.summary) else {
+            throw NSError(domain: "TranscriptSummary", code: 2, userInfo: [
+                NSLocalizedDescriptionKey: "Could not parse a usable chapter summary from the model."
+            ])
         }
-
-        guard !partSummaries.isEmpty else {
-            throw NSError(domain: "TranscriptSummary", code: 3, userInfo: nil)
-        }
-
-        let merged = partSummaries.enumerated().map { offset, text in
-            "Part \(offset + 1): \(text)"
-        }.joined(separator: "\n")
-
-        let prompt = """
-        Chapter starts at \(ChapterTitleGenerator.formatTime(startTime)).
-        Summaries of sequential parts:
-
-        \(merged)
-
-        Reply in exactly this format:
-        Title: <4–7 word chapter title>
-        Summary: <one clear sentence about the whole chapter>
-        """
-        let response = try await session.respond(to: prompt)
-        let beat = try parseTitleAndSummary(response.content)
-        return (beat, true)
+        let finalTitle = isUsableChapterTitle(cleaned)
+            ? cleaned
+            : ChapterTitleGenerator.lexicalTitle(from: summary, startTime: startTime)
+        return (ChapterBeat(summary: summary, title: finalTitle), true)
     }
 
     @available(iOS 26, *)
     private func chapterBeatFromChunks(
         transcript: String,
         startTime: TimeInterval,
-        session: LanguageModelSession
+        episodeTitle: String,
+        permissive: Bool
     ) async throws -> ChapterBeatPlan {
         let chunks = splitTranscriptIntoChunks(transcript, maxSize: Self.chunkTranscriptCharacters)
         var partSummaries: [String] = []
 
         for (index, chunk) in chunks.enumerated() {
+            // Fresh session per chunk — prior turns would exhaust the 4k context window.
+            let session = makeChapterSession(episodeTitle: episodeTitle, permissive: permissive)
             let prompt = """
             Part \(index + 1) of \(chunks.count) (chapter starts \(ChapterTitleGenerator.formatTime(startTime))):
 
@@ -437,10 +418,17 @@ final class TranscriptSummaryService {
 
             Write exactly one sentence summarizing this part.
             """
-            let response = try await session.respond(to: prompt, generating: ChunkSummaryPlan.self)
-            let part = response.content.summary.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !part.isEmpty else { continue }
-            partSummaries.append(part)
+            if permissive {
+                let response = try await session.respond(to: prompt)
+                let part = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !part.isEmpty, !looksLikeModelRefusal(part) else { continue }
+                partSummaries.append(part)
+            } else {
+                let response = try await session.respond(to: prompt, generating: ChunkSummaryPlan.self)
+                let part = response.content.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !part.isEmpty else { continue }
+                partSummaries.append(part)
+            }
         }
 
         guard !partSummaries.isEmpty else {
@@ -451,51 +439,78 @@ final class TranscriptSummaryService {
             "Part \(offset + 1): \(text)"
         }.joined(separator: "\n")
 
+        let mergeSession = makeChapterSession(episodeTitle: episodeTitle, permissive: permissive)
+        if permissive {
+            let prompt = """
+            These are sequential parts of ONE chapter that starts at \(ChapterTitleGenerator.formatTime(startTime)):
+
+            \(merged)
+
+            Write a short topic title and one-sentence summary for this whole chapter.
+            Start line 1 with "Title:" and line 2 with "Summary:".
+            Use your own words. Do not number the chapter.
+            """
+            let response = try await mergeSession.respond(to: prompt)
+            let beat = try parseTitleAndSummary(response.content, startTime: startTime)
+            return ChapterBeatPlan(summary: beat.summary, title: beat.title)
+        }
+
         let prompt = """
-        Chapter starts at \(ChapterTitleGenerator.formatTime(startTime)).
-        Summaries of sequential parts:
+        These are sequential parts of ONE chapter that starts at \(ChapterTitleGenerator.formatTime(startTime)):
 
         \(merged)
 
-        Write one clear sentence summary of the whole chapter and a 4–7 word title.
+        Write one clear sentence summary of this whole chapter and a 4–7 word title.
+        Do not number the chapter. Do not mention the podcast title.
         """
-        let response = try await session.respond(to: prompt, generating: ChapterBeatPlan.self)
+        let response = try await mergeSession.respond(to: prompt, generating: ChapterBeatPlan.self)
         return response.content
+    }
+
+    @available(iOS 26, *)
+    private func makeChapterSession(episodeTitle: String, permissive: Bool) -> LanguageModelSession {
+        let instructions = chapterBeatInstructions(episodeTitle: episodeTitle)
+        if permissive {
+            let model = SystemLanguageModel(guardrails: .permissiveContentTransformations)
+            return LanguageModelSession(model: model, instructions: instructions)
+        }
+        return LanguageModelSession(instructions: instructions)
     }
 
     @available(iOS 26, *)
     private func chapterBeatInstructions(episodeTitle: String) -> String {
         """
-        You summarize podcast chapters and write concise titles.
+        You summarize one podcast chapter and write a concise title for that chapter only.
         Focus on the story beat, topic, or scene — not filler words or table talk.
         Name specific topics, people, products, or events when present.
-        Podcast: "\(episodeTitle)"
+        Never write preamble, never number chapters (no "Chapter 1"), never mention the podcast title.
+        Podcast context only: "\(episodeTitle)"
         """
     }
 
     private func chapterBeatPrompt(transcript: String, startTime: TimeInterval) -> String {
         """
-        Chapter starts at \(ChapterTitleGenerator.formatTime(startTime)):
+        One chapter starting at \(ChapterTitleGenerator.formatTime(startTime)):
 
         \(transcript)
 
-        Write one clear sentence summary and a 4–7 word chapter title.
+        Write one clear sentence summary and a 4–7 word chapter title for this chapter only.
         """
     }
 
     private func chapterBeatPermissivePrompt(transcript: String, startTime: TimeInterval) -> String {
         """
-        Chapter starts at \(ChapterTitleGenerator.formatTime(startTime)):
+        One chapter starting at \(ChapterTitleGenerator.formatTime(startTime)):
 
         \(transcript)
 
-        Reply in exactly this format:
-        Title: <4–7 word chapter title>
-        Summary: <one clear sentence>
+        Write a short topic title (about 4 to 7 words) and one clear sentence summary.
+        Start line 1 with "Title:" and line 2 with "Summary:".
+        Use your own words from the transcript. Do not number the chapter.
         """
     }
 
-    private func parseTitleAndSummary(_ text: String) throws -> ChapterBeat {
+    private func parseTitleAndSummary(_ text: String, startTime: TimeInterval = 0) throws -> ChapterBeat {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !looksLikeModelRefusal(trimmed) else {
             throw NSError(domain: "TranscriptSummary", code: 6, userInfo: [
@@ -505,37 +520,193 @@ final class TranscriptSummaryService {
 
         var title = ""
         var summary = ""
+
+        // Prefer labeled lines; also accept bold markdown (**Title:**) and same-line labels.
         for rawLine in trimmed.components(separatedBy: .newlines) {
             let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
-            let lower = line.lowercased()
-            if lower.hasPrefix("title:") {
-                title = String(line.dropFirst(6)).trimmingCharacters(in: .whitespacesAndNewlines)
-            } else if lower.hasPrefix("summary:") {
-                summary = String(line.dropFirst(8)).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !line.isEmpty else { continue }
+            if let value = labeledValue(in: line, label: "title"), title.isEmpty {
+                title = value
+            }
+            if let value = labeledValue(in: line, label: "summary") {
+                summary = summary.isEmpty ? value : summary + " " + value
             }
         }
 
+        // Same-line "Title: X Summary: Y"
+        if summary.isEmpty, let inline = labeledValue(in: trimmed, label: "summary") {
+            summary = inline
+        }
+        if title.isEmpty, let inline = labeledValue(in: trimmed, label: "title") {
+            title = inline
+        }
+
+        // If labels were missing, use non-preamble lines — never promote chatty intros to titles.
         if title.isEmpty || summary.isEmpty {
-            // Single-block fallback: first line title-ish, rest summary.
-            let lines = trimmed.components(separatedBy: .newlines)
+            let contentLines = trimmed.components(separatedBy: .newlines)
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-            if title.isEmpty, let first = lines.first {
-                title = first.replacingOccurrences(of: #"^Title:\s*"#, with: "", options: .regularExpression)
-            }
+                .filter { !$0.isEmpty && !looksLikeTitlePreamble($0) }
             if summary.isEmpty {
-                let rest = lines.dropFirst().joined(separator: " ")
-                    .replacingOccurrences(of: #"^Summary:\s*"#, with: "", options: .regularExpression)
-                summary = rest.isEmpty ? trimmed : rest
+                let body = contentLines
+                    .map { stripLabelPrefix($0, label: "summary") }
+                    .filter { labeledValue(in: $0, label: "title") == nil }
+                    .joined(separator: " ")
+                if !body.isEmpty { summary = body }
+            }
+            if title.isEmpty {
+                // Do not invent a title from freeform prose; lexical fallback after summary normalize.
+                title = ""
             }
         }
 
-        title = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        summary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard isUsableBeatSummary(summary), !title.isEmpty else {
-            throw NSError(domain: "TranscriptSummary", code: 2, userInfo: nil)
+        guard let normalizedSummary = normalizeBeatSummary(summary) else {
+            logger.warning("Permissive parse failed usable summary. Raw: \(trimmed.prefix(400))")
+            throw NSError(domain: "TranscriptSummary", code: 2, userInfo: [
+                NSLocalizedDescriptionKey: "Could not parse a usable chapter summary from the model."
+            ])
         }
-        return ChapterBeat(summary: summary, title: title)
+
+        let cleanedTitle = sanitizeTitle(title)
+        let finalTitle = isUsableChapterTitle(cleanedTitle)
+            ? cleanedTitle
+            : ChapterTitleGenerator.lexicalTitle(from: normalizedSummary, startTime: startTime)
+
+        return ChapterBeat(summary: normalizedSummary, title: finalTitle)
+    }
+
+    private func labeledValue(in line: String, label: String) -> String? {
+        let pattern = #"^\**\s*"# + NSRegularExpression.escapedPattern(for: label) + #"\**\s*:\s*(.+)$"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return nil
+        }
+        let range = NSRange(line.startIndex..<line.endIndex, in: line)
+        guard let match = regex.firstMatch(in: line, options: [], range: range),
+              match.numberOfRanges > 1,
+              let valueRange = Range(match.range(at: 1), in: line) else {
+            return nil
+        }
+        var value = String(line[valueRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+        // Cut trailing "Summary: …" if title and summary were on one line.
+        if label == "title", let cut = value.range(of: #"\s+\**Summary\**\s*:"#, options: [.regularExpression, .caseInsensitive]) {
+            value = String(value[..<cut.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        value = value.trimmingCharacters(in: CharacterSet(charactersIn: "*\"'"))
+        return value.isEmpty ? nil : value
+    }
+
+    private func stripLabelPrefix(_ text: String, label: String) -> String {
+        if let value = labeledValue(in: text, label: label) { return value }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func sanitizeTitle(_ title: String) -> String {
+        var value = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        value = value.trimmingCharacters(in: CharacterSet(charactersIn: "*\"'#"))
+        // Models often emit "Chapter 1: Real Title" — drop the bogus numbering.
+        if let range = value.range(of: #"^Chapter\s+\d+\s*:\s*"#, options: [.regularExpression, .caseInsensitive]) {
+            value = String(value[range.upperBound...])
+        }
+        value = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Keep titles short; models sometimes dump the summary into Title.
+        if value.count > 60 {
+            value = String(value.prefix(60))
+            if let lastSpace = value.lastIndex(of: " ") {
+                value = String(value[..<lastSpace])
+            }
+        }
+        return value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func isUsableChapterTitle(_ title: String) -> Bool {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 3 else { return false }
+        guard trimmed.count <= 60 else { return false }
+
+        let words = trimmed.split(whereSeparator: \.isWhitespace)
+        guard (2...10).contains(words.count) else { return false }
+
+        if looksLikeTitlePreamble(trimmed) { return false }
+        if looksLikePromptPlaceholder(trimmed) { return false }
+        if trimmed.hasSuffix(":") { return false }
+        if trimmed.lowercased().range(of: #"^chapter\s+\d+:?\s*$"#, options: .regularExpression) != nil {
+            return false
+        }
+        return true
+    }
+
+    private func looksLikePromptPlaceholder(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        if text.contains("<") || text.contains(">") { return true }
+        let stripped = lower.trimmingCharacters(in: .whitespacesAndNewlines)
+        if stripped == "…" || stripped == "..." || stripped == "title" || stripped == "summary" {
+            return true
+        }
+        if lower.contains("4-7") || lower.contains("4–7") { return true }
+        if lower.contains("word topic") || lower.contains("topic title") { return true }
+        if lower.contains("word title") || lower.contains("clear sentence") { return true }
+        if lower.contains("one clear") { return true }
+        // Former prompt examples the model loved to echo.
+        let bannedExamples = [
+            "lore versus character",
+            "lore vs. character",
+            "lore vs character",
+            "devil's advocate debate",
+            "devils advocate debate"
+        ]
+        if bannedExamples.contains(lower) { return true }
+        return false
+    }
+
+    private func looksLikeTitlePreamble(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        let prefixes = [
+            "here are", "here is", "here's", "sure,", "sure ", "okay,", "ok,",
+            "of course", "i'll ", "i will ", "let me ", "below are", "the following",
+            "as requested", "certainly"
+        ]
+        if prefixes.contains(where: { lower.hasPrefix($0) }) { return true }
+        if lower.contains("chapter summar") { return true }
+        if lower.contains("for the podcast") { return true }
+        if lower.contains("summaries for") { return true }
+        return false
+    }
+
+    /// Accepts a summary, clipping to the usable budget instead of rejecting long model output.
+    private func normalizeBeatSummary(_ summary: String) -> String? {
+        var trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        trimmed = trimmed.trimmingCharacters(in: CharacterSet(charactersIn: "*\"'"))
+        guard !trimmed.isEmpty else { return nil }
+        if trimmed.contains(" … ") { return nil }
+        if trimmed.hasPrefix("…") { return nil }
+        if looksLikeModelRefusal(trimmed) { return nil }
+        if looksLikeTitlePreamble(trimmed) {
+            // Strip a leading preamble sentence if a real summary follows.
+            if let dot = trimmed.firstIndex(of: "."), dot < trimmed.endIndex {
+                let after = trimmed[trimmed.index(after: dot)...].trimmingCharacters(in: .whitespacesAndNewlines)
+                if !after.isEmpty, !looksLikeTitlePreamble(after) {
+                    trimmed = after
+                } else {
+                    return nil
+                }
+            } else {
+                return nil
+            }
+        }
+        if looksLikePromptPlaceholder(trimmed) { return nil }
+
+        if trimmed.count > Self.maxUsableBeatSummaryCharacters {
+            let clipped = firstSentences(in: trimmed, max: 1)
+            if !clipped.isEmpty, clipped.count <= Self.maxUsableBeatSummaryCharacters {
+                return clipped
+            }
+            let end = trimmed.index(trimmed.startIndex, offsetBy: Self.maxUsableBeatSummaryCharacters)
+            var slice = String(trimmed[..<end])
+            if let lastSpace = slice.lastIndex(of: " ") {
+                slice = String(slice[..<lastSpace])
+            }
+            return slice.isEmpty ? nil : slice
+        }
+        return trimmed
     }
 
     private func looksLikeModelRefusal(_ text: String) -> Bool {
