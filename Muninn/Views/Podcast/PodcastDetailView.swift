@@ -34,6 +34,7 @@ struct PodcastDetailView: View {
     // Multi-select state
     @State private var isSelecting = false
     @State private var selectedEpisodeGUIDs: Set<String> = []
+    @State private var rangeAnchorGUID: String?
     @State private var showBatchCellularConfirmation = false
     @State private var episodesPendingBatchDownload: [Episode] = []
 
@@ -391,8 +392,14 @@ struct PodcastDetailView: View {
         .onTapGesture {
             if isSelecting {
                 toggleEpisodeSelection(episode)
+                rangeAnchorGUID = episode.guid
             } else {
                 selectedEpisode = episode
+            }
+        }
+        .onLongPressGesture(minimumDuration: 0.5) {
+            if isSelecting {
+                selectEpisodeRange(to: episode)
             }
         }
         .onAppear {
@@ -532,16 +539,6 @@ struct PodcastDetailView: View {
         loadEpisodes(limit: displayLimit)
     }
 
-    private func fetchEpisodes(withGUIDs guids: Set<String>) throws -> [Episode] {
-        guard !guids.isEmpty else { return [] }
-        let feedURL = podcast.feedURL
-        let guidList = Array(guids)
-        let predicate = #Predicate<Episode> { episode in
-            guidList.contains(episode.guid) && episode.podcast?.feedURL == feedURL
-        }
-        return try modelContext.fetch(FetchDescriptor(predicate: predicate))
-    }
-
     // MARK: - Search tag helpers
 
     /// UserDefaults key scoped to this podcast so tags persist per-show.
@@ -642,30 +639,25 @@ struct PodcastDetailView: View {
     // MARK: - Multi-Select
 
     private var selectedEpisodes: [Episode] {
-        let loadedByGUID = Dictionary(uniqueKeysWithValues: loadedEpisodes.map { ($0.guid, $0) })
-        var result: [Episode] = []
-        var missingGUIDs: Set<String> = []
-        for guid in selectedEpisodeGUIDs {
-            if let episode = loadedByGUID[guid] {
-                result.append(episode)
-            } else {
-                missingGUIDs.insert(guid)
-            }
+        guard !selectedEpisodeGUIDs.isEmpty else { return [] }
+
+        if let ordered = try? filteredEpisodesInListOrder() {
+            return ordered.filter { selectedEpisodeGUIDs.contains($0.guid) }
         }
-        if let fetched = try? fetchEpisodes(withGUIDs: missingGUIDs) {
-            result.append(contentsOf: fetched)
-        }
-        return result
+
+        return loadedEpisodes.filter { selectedEpisodeGUIDs.contains($0.guid) }
     }
 
     private func enterSelectionMode() {
         isSelecting = true
         selectedEpisodeGUIDs = []
+        rangeAnchorGUID = nil
     }
 
     private func exitSelectionMode() {
         isSelecting = false
         selectedEpisodeGUIDs = []
+        rangeAnchorGUID = nil
     }
 
     private func toggleEpisodeSelection(_ episode: Episode) {
@@ -676,15 +668,39 @@ struct PodcastDetailView: View {
         }
     }
 
+    /// Selects every episode between the anchor tap and this episode (inclusive) in list order.
+    private func selectEpisodeRange(to episode: Episode) {
+        let orderedGUIDs = filteredEpisodeGUIDsInListOrder()
+        guard let endIndex = orderedGUIDs.firstIndex(of: episode.guid) else { return }
+
+        if let anchorGUID = rangeAnchorGUID,
+           let startIndex = orderedGUIDs.firstIndex(of: anchorGUID) {
+            let low = min(startIndex, endIndex)
+            let high = max(startIndex, endIndex)
+            selectedEpisodeGUIDs = Set(orderedGUIDs[low...high])
+        } else {
+            selectedEpisodeGUIDs = [episode.guid]
+        }
+
+        rangeAnchorGUID = episode.guid
+    }
+
+    private func filteredEpisodesInListOrder() throws -> [Episode] {
+        let descriptor = FetchDescriptor<Episode>(
+            predicate: buildBasePredicate(),
+            sortBy: [SortDescriptor(\Episode.publishedDate, order: podcast.sortNewestFirst ? .reverse : .forward)]
+        )
+        let all = try modelContext.fetch(descriptor)
+        return applySearchFilters(all)
+    }
+
+    private func filteredEpisodeGUIDsInListOrder() -> [String] {
+        (try? filteredEpisodesInListOrder().map(\.guid)) ?? loadedEpisodes.map(\.guid)
+    }
+
     private func selectAll() {
         do {
-            let descriptor = FetchDescriptor<Episode>(
-                predicate: buildBasePredicate(),
-                sortBy: [SortDescriptor(\Episode.publishedDate, order: podcast.sortNewestFirst ? .reverse : .forward)]
-            )
-            let all = try modelContext.fetch(descriptor)
-            let filtered = applySearchFilters(all)
-            selectedEpisodeGUIDs = Set(filtered.map(\.guid))
+            selectedEpisodeGUIDs = Set(try filteredEpisodesInListOrder().map(\.guid))
         } catch {
             print("Error selecting all episodes: \(error)")
         }
@@ -771,7 +787,7 @@ struct PodcastDetailView: View {
                         .font(.title3)
                         .foregroundStyle(hasSelection ? Color.accentColor : .secondary)
                         .contentTransition(.symbolEffect(.replace))
-                    Text(hasSelection ? "\(selectedEpisodeGUIDs.count) Selected" : "Select episodes")
+                    Text(hasSelection ? "\(selectedEpisodeGUIDs.count) Selected" : "Tap start, hold end")
                         .font(.subheadline.weight(.medium))
                         .animation(nil, value: selectedEpisodeGUIDs.count)
                 }
