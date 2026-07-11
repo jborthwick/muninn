@@ -213,10 +213,7 @@ struct PodcastContextMenu: View {
             if episode.localFilePath == nil && episode.downloadProgress == nil {
                 // Use direct download (bypass network check for explicit user action)
                 // Or check network preference - let's respect the setting
-                let result = DownloadManager.shared.checkDownloadAllowed(episode, isAutoDownload: false, context: modelContext)
-                if case .started = result {
-                    DownloadManager.shared.download(episode)
-                }
+                _ = DownloadManager.shared.downloadWithCheck(episode, isAutoDownload: false, context: modelContext)
                 // Note: if blocked or needs confirmation, we skip silently for bulk download
                 // A more sophisticated approach would queue them or show a single confirmation
             }

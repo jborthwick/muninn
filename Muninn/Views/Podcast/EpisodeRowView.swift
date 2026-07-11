@@ -161,14 +161,9 @@ struct EpisodeRowView: View {
     }
 
     private func attemptDownload() {
-        let result = DownloadManager.shared.checkDownloadAllowed(episode, isAutoDownload: false, context: modelContext)
-        switch result {
-        case .started:
-            DownloadManager.shared.download(episode)
-        case .needsConfirmation:
+        let result = DownloadManager.shared.downloadWithCheck(episode, isAutoDownload: false, context: modelContext)
+        if case .needsConfirmation = result {
             showCellularConfirmation = true
-        case .blocked, .alreadyDownloaded, .alreadyDownloading:
-            break
         }
     }
 

@@ -179,12 +179,16 @@ final class ChapterService {
         error = nil
         errorEpisodeGUID = nil
         generatingEpisodeGUID = episode.guid
+        PendingWorkStore.addChapter(guid: episode.guid)
+        EpisodeProcessingBackgroundManager.shared.notifyWorkStateChanged()
 
         defer {
             isGenerating = false
             generationStatus = ""
             generatingEpisodeGUID = nil
+            PendingWorkStore.removeChapter(guid: episode.guid)
             storeChapterDebug(debug, episodeGUID: episode.guid)
+            EpisodeProcessingBackgroundManager.shared.notifyWorkStateChanged()
         }
 
         let transcriptService = TranscriptService.shared

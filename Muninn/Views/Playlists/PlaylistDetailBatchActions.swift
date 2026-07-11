@@ -19,14 +19,9 @@ enum PlaylistDetailBatchActions {
     ) -> [Episode] {
         var needsConfirmation: [Episode] = []
         for episode in episodes where episode.localFilePath == nil && episode.downloadProgress == nil {
-            let result = DownloadManager.shared.checkDownloadAllowed(episode, isAutoDownload: false, context: context)
-            switch result {
-            case .started:
-                DownloadManager.shared.download(episode)
-            case .needsConfirmation:
+            let result = DownloadManager.shared.downloadWithCheck(episode, isAutoDownload: false, context: context)
+            if case .needsConfirmation = result {
                 needsConfirmation.append(episode)
-            default:
-                break
             }
         }
         return needsConfirmation

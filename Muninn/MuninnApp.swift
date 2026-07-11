@@ -3,6 +3,11 @@ import SwiftData
 
 @main
 struct MuninnApp: App {
+    init() {
+        BackgroundRefreshManager.shared.registerBackgroundTask()
+        EpisodeProcessingBackgroundManager.shared.registerBackgroundTasks()
+    }
+
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Podcast.self,
@@ -71,14 +76,13 @@ struct MuninnApp: App {
                     // Clean up orphaned downloads (stuck downloads from previous sessions)
                     DownloadManager.shared.cleanupOrphanedDownloads(context: context)
 
-                    // Clear transcription progress left behind by interrupted sessions
-                    LocalTranscriptionService.cleanupOrphanedProgress(context: context)
+                    EpisodeProcessingBackgroundManager.shared.setupLifecycleObservers()
+                    EpisodeProcessingBackgroundManager.shared.resumeInterruptedWork(context: context)
 
                     // Restore active downloads from background session
                     DownloadManager.shared.restoreActiveDownloads(context: context)
 
-                    // Register and schedule background refresh
-                    BackgroundRefreshManager.shared.registerBackgroundTask()
+                    // Schedule background refresh
                     BackgroundRefreshManager.shared.scheduleAppRefresh()
 
                     // Restore last played episode (shows mini player without playing)

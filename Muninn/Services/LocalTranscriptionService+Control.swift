@@ -17,6 +17,9 @@ extension LocalTranscriptionService {
 
     func cancelTranscription(for episode: Episode, context: ModelContext) async {
         AutoTranscriptionQueue.shared.removeFromQueue(guid: episode.guid)
+        if #available(iOS 26, *) {
+            EpisodeContinuedProcessing.shared.cancelPipeline(for: episode.guid)
+        }
 
         if isActivelyTranscribing(episodeGUID: episode.guid) {
             await performCancellation()
@@ -27,7 +30,30 @@ extension LocalTranscriptionService {
     func retryTranscription(episode: Episode, context: ModelContext) async {
         AutoTranscriptionQueue.shared.removeFromQueue(guid: episode.guid)
         clearTranscriptionState(for: episode, context: context)
+        if #available(iOS 26, *) {
+            EpisodeContinuedProcessing.shared.beginTranscribe(episode: episode, context: context)
+            return
+        }
         await transcribe(episode: episode, context: context)
+    }
+
+    /// User tapped Transcribe — starts continued processing on iOS 26 when available.
+    func userInitiatedTranscribe(episode: Episode, context: ModelContext) async {
+        if episode.localFilePath == nil {
+            AutoTranscriptionQueue.shared.requestTranscribeAfterDownload(guid: episode.guid)
+            let result = DownloadManager.shared.checkDownloadAllowed(episode, isAutoDownload: false, context: context)
+            switch result {
+            case .started:
+                if #available(iOS 26, *) {
+                    EpisodeContinuedProcessing.shared.beginTranscribe(episode: episode, context: context)
+                }
+                DownloadManager.shared.download(episode)
+            case .needsConfirmation, .blocked, .alreadyDownloaded, .alreadyDownloading:
+                break
+            }
+            return
+        }
+        await retryTranscription(episode: episode, context: context)
     }
 
     /// Clears persisted progress left behind when transcription was interrupted.

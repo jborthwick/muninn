@@ -92,6 +92,11 @@ final class DownloadManager: NSObject {
 
         switch result {
         case .started:
+            if !isAutoDownload, #available(iOS 26, *) {
+                Task { @MainActor in
+                    EpisodeContinuedProcessing.shared.beginPrepareIfEligible(episode: episode, context: context)
+                }
+            }
             startDownload(episode)
         case .alreadyDownloaded, .alreadyDownloading, .blocked, .needsConfirmation:
             break

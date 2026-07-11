@@ -727,10 +727,8 @@ struct PodcastDetailView: View {
     private func batchDownload() {
         var toConfirm: [Episode] = []
         for episode in selectedEpisodes where episode.localFilePath == nil && episode.downloadProgress == nil {
-            let result = DownloadManager.shared.checkDownloadAllowed(episode, isAutoDownload: false, context: modelContext)
+            let result = DownloadManager.shared.downloadWithCheck(episode, isAutoDownload: false, context: modelContext)
             switch result {
-            case .started:
-                DownloadManager.shared.download(episode)
             case .needsConfirmation:
                 toConfirm.append(episode)
             default:

@@ -58,11 +58,14 @@ final class LocalTranscriptionService {
         error = nil
         transcribingEpisodeGUID = episode.guid
         episode.transcriptionProgress = 0
+        PendingWorkStore.addTranscription(guid: episode.guid)
+        EpisodeProcessingBackgroundManager.shared.notifyWorkStateChanged()
 
         defer {
             isTranscribing = false
             transcribingEpisodeGUID = nil
             progress = 0
+            EpisodeProcessingBackgroundManager.shared.notifyWorkStateChanged()
         }
 
         // Request speech recognition authorization
@@ -74,6 +77,7 @@ final class LocalTranscriptionService {
         guard authStatus == .authorized else {
             error = "Speech recognition permission is required. Please enable it in Settings > Muninn."
             episode.transcriptionProgress = nil
+            PendingWorkStore.removeTranscription(guid: episode.guid)
             return false
         }
 
@@ -90,6 +94,7 @@ final class LocalTranscriptionService {
             guard !segments.isEmpty else {
                 error = "No speech was detected in this episode."
                 episode.transcriptionProgress = nil
+                PendingWorkStore.removeTranscription(guid: episode.guid)
                 return false
             }
 
@@ -102,18 +107,21 @@ final class LocalTranscriptionService {
             episode.localTranscriptPath = filename
             episode.transcriptionProgress = nil
             try? context.save()
+            PendingWorkStore.removeTranscription(guid: episode.guid)
             logger.info("Transcript saved: \(filename) (\(segments.count) segments)")
             AutoChapterQueue.shared.enqueueIfEnabled(episode: episode, context: context)
             return true
         } catch is CancellationError {
             logger.info("Transcription cancelled for: \(episode.title)")
             episode.transcriptionProgress = nil
+            PendingWorkStore.removeTranscription(guid: episode.guid)
             try? context.save()
             return false
         } catch {
             logger.error("Transcription failed: \(error.localizedDescription)")
             self.error = "Transcription failed: \(error.localizedDescription)"
             episode.transcriptionProgress = nil
+            PendingWorkStore.removeTranscription(guid: episode.guid)
             return false
         }
     }

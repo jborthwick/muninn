@@ -439,14 +439,9 @@ struct EpisodeDetailView: View {
     }
 
     private func attemptDownload(isAutoDownload: Bool) {
-        let result = DownloadManager.shared.checkDownloadAllowed(episode, isAutoDownload: isAutoDownload, context: modelContext)
-        switch result {
-        case .started:
-            DownloadManager.shared.download(episode)
-        case .needsConfirmation:
+        let result = DownloadManager.shared.downloadWithCheck(episode, isAutoDownload: isAutoDownload, context: modelContext)
+        if case .needsConfirmation = result {
             showCellularConfirmation = true
-        case .blocked, .alreadyDownloaded, .alreadyDownloading:
-            break
         }
     }
 
@@ -455,7 +450,7 @@ struct EpisodeDetailView: View {
     }
 
     private func retryTranscription() async {
-        await transcriptionService.retryTranscription(episode: episode, context: modelContext)
+        await transcriptionService.userInitiatedTranscribe(episode: episode, context: modelContext)
     }
 
     // MARK: - Description Parsing

@@ -48,10 +48,9 @@ final class AutoTranscriptionQueue {
     }
 
     func enqueue(episode: Episode, context: ModelContext) {
-        if episode.localTranscriptPath != nil,
-           let url = episode.localTranscriptURL,
-           FileManager.default.fileExists(atPath: url.path) {
+        if Self.hasTranscript(episode) {
             logger.info("Skipping auto-transcription — transcript exists: \(episode.title)")
+            PendingWorkStore.removeTranscription(guid: episode.guid)
             return
         }
         guard !queue.contains(where: { $0.guid == episode.guid }) else {
@@ -62,8 +61,10 @@ final class AutoTranscriptionQueue {
         queue.append(episode)
         syncQueuedGUIDs()
         modelContext = context
+        PendingWorkStore.addTranscription(guid: episode.guid)
         logger.info("Enqueued episode for auto-transcription: \(episode.title)")
         processNextIfNeeded()
+        EpisodeProcessingBackgroundManager.shared.notifyWorkStateChanged()
     }
 
     func removeFromQueue(guid: String) {
@@ -74,6 +75,27 @@ final class AutoTranscriptionQueue {
             logger.info("Removed episode from transcription queue: \(guid)")
         }
         pendingTranscribeOnDownload.remove(guid)
+        PendingWorkStore.removeTranscription(guid: guid)
+        EpisodeProcessingBackgroundManager.shared.notifyWorkStateChanged()
+    }
+
+    /// Re-enqueues interrupted or persisted work after relaunch or BGProcessingTask.
+    func resumePersistedWork(context: ModelContext) {
+        modelContext = context
+
+        if let episodes = try? context.fetch(FetchDescriptor<Episode>()) {
+            for episode in episodes where episode.transcriptionProgress != nil && !Self.hasTranscript(episode) {
+                enqueue(episode: episode, context: context)
+            }
+        }
+
+        for guid in PendingWorkStore.transcriptionGUIDs {
+            guard let episode = Self.fetchEpisode(guid: guid, context: context) else {
+                PendingWorkStore.removeTranscription(guid: guid)
+                continue
+            }
+            enqueue(episode: episode, context: context)
+        }
     }
 
     private func syncQueuedGUIDs() {
@@ -98,10 +120,28 @@ final class AutoTranscriptionQueue {
                 logger.info("Re-queued episode (transcription service busy): \(episode.title)")
             } else if !success {
                 logger.warning("Auto-transcription failed, not retrying: \(episode.title)")
+                PendingWorkStore.removeTranscription(guid: episode.guid)
+            } else {
+                PendingWorkStore.removeTranscription(guid: episode.guid)
             }
 
             self.isProcessing = false
             self.processNextIfNeeded()
+            EpisodeProcessingBackgroundManager.shared.notifyWorkStateChanged()
         }
+    }
+
+    private static func hasTranscript(_ episode: Episode) -> Bool {
+        guard episode.localTranscriptPath != nil,
+              let url = episode.localTranscriptURL,
+              FileManager.default.fileExists(atPath: url.path) else {
+            return false
+        }
+        return true
+    }
+
+    private static func fetchEpisode(guid: String, context: ModelContext) -> Episode? {
+        let descriptor = FetchDescriptor<Episode>(predicate: #Predicate { $0.guid == guid })
+        return try? context.fetch(descriptor).first
     }
 }

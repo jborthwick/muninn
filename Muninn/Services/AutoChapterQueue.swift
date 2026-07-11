@@ -18,6 +18,10 @@ final class AutoChapterQueue {
 
     private init() {}
 
+    func setModelContext(_ context: ModelContext) {
+        modelContext = context
+    }
+
     /// Returns the 1-based position and total waiting count for the given episode GUID,
     /// or `nil` if the episode is not queued.
     func queuePosition(for guid: String) -> (position: Int, total: Int)? {
@@ -29,6 +33,7 @@ final class AutoChapterQueue {
         let settings = AppSettings.getOrCreate(context: context)
         guard settings.autoGenerateChaptersEnabled else { return }
         guard episode.localChaptersPath == nil else {
+            PendingWorkStore.removeChapter(guid: episode.guid)
             logger.info("Skipping auto chapters — already generated for: \(episode.title)")
             return
         }
@@ -37,8 +42,31 @@ final class AutoChapterQueue {
         queue.append(episode)
         syncQueuedGUIDs()
         modelContext = context
+        PendingWorkStore.addChapter(guid: episode.guid)
         logger.info("Enqueued episode for auto chapter generation: \(episode.title)")
         processNextIfNeeded()
+        EpisodeProcessingBackgroundManager.shared.notifyWorkStateChanged()
+    }
+
+    /// Re-enqueues persisted chapter work after relaunch or BGProcessingTask.
+    func resumePersistedWork(context: ModelContext) {
+        modelContext = context
+
+        for guid in PendingWorkStore.chapterGUIDs {
+            guard let episode = Self.fetchEpisode(guid: guid, context: context) else {
+                PendingWorkStore.removeChapter(guid: guid)
+                continue
+            }
+            guard episode.localChaptersPath == nil else {
+                PendingWorkStore.removeChapter(guid: guid)
+                continue
+            }
+            guard !queue.contains(where: { $0.guid == guid }) else { continue }
+            queue.append(episode)
+            syncQueuedGUIDs()
+        }
+        processNextIfNeeded()
+        EpisodeProcessingBackgroundManager.shared.notifyWorkStateChanged()
     }
 
     private func syncQueuedGUIDs() {
@@ -65,11 +93,19 @@ final class AutoChapterQueue {
             let success = await ChapterService.shared.generate(episode: episode, context: context)
             if success {
                 logger.info("Auto chapter generation succeeded: \(episode.title)")
+                PendingWorkStore.removeChapter(guid: episode.guid)
             } else {
                 logger.warning("Auto chapter generation failed: \(episode.title)")
+                PendingWorkStore.removeChapter(guid: episode.guid)
             }
             isProcessing = false
             processNextIfNeeded()
+            EpisodeProcessingBackgroundManager.shared.notifyWorkStateChanged()
         }
+    }
+
+    private static func fetchEpisode(guid: String, context: ModelContext) -> Episode? {
+        let descriptor = FetchDescriptor<Episode>(predicate: #Predicate { $0.guid == guid })
+        return try? context.fetch(descriptor).first
     }
 }

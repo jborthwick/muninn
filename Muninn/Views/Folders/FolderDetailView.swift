@@ -801,14 +801,9 @@ private struct FolderEpisodeRow: View {
     }
 
     private func attemptDownload(isAutoDownload: Bool) {
-        let result = DownloadManager.shared.checkDownloadAllowed(episode, isAutoDownload: isAutoDownload, context: modelContext)
-        switch result {
-        case .started:
-            DownloadManager.shared.download(episode)
-        case .needsConfirmation:
+        let result = DownloadManager.shared.downloadWithCheck(episode, isAutoDownload: isAutoDownload, context: modelContext)
+        if case .needsConfirmation = result {
             onDownloadNeedsConfirmation?(episode)
-        case .blocked, .alreadyDownloaded, .alreadyDownloading:
-            break
         }
     }
 }

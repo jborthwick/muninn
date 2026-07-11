@@ -44,6 +44,8 @@ targets:
           - processing
         BGTaskSchedulerPermittedIdentifiers:
           - com.personal.muninn.refresh
+          - com.personal.muninn.processing
+          - com.personal.muninn.prepare.*
         NSSpeechRecognitionUsageDescription: Muninn uses on-device speech recognition to generate transcripts for downloaded episodes. Audio is processed entirely on your device and never sent anywhere.
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

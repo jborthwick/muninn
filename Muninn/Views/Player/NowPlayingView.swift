@@ -505,7 +505,7 @@ struct NowPlayingView: View {
     private func startLocalTranscription() {
         guard let episode = playerManager.currentEpisode else { return }
         Task {
-            await localTranscriptionService.retryTranscription(episode: episode, context: modelContext)
+            await localTranscriptionService.userInitiatedTranscribe(episode: episode, context: modelContext)
         }
     }
 

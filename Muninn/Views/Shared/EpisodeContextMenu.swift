@@ -98,14 +98,9 @@ struct EpisodeContextMenu: View {
             }
         } else {
             Button {
-                let result = DownloadManager.shared.checkDownloadAllowed(episode, isAutoDownload: false, context: modelContext)
-                switch result {
-                case .started:
-                    DownloadManager.shared.download(episode)
-                case .needsConfirmation:
+                let result = DownloadManager.shared.downloadWithCheck(episode, isAutoDownload: false, context: modelContext)
+                if case .needsConfirmation = result {
                     onDownloadNeedsConfirmation?()
-                case .blocked, .alreadyDownloaded, .alreadyDownloading:
-                    break
                 }
             } label: {
                 Label("Download", systemImage: "arrow.down.circle")
@@ -156,7 +151,7 @@ struct EpisodeContextMenu: View {
                 } else {
                     Button {
                         Task {
-                            await LocalTranscriptionService.shared.transcribe(
+                            await LocalTranscriptionService.shared.userInitiatedTranscribe(
                                 episode: episode,
                                 context: modelContext
                             )
