@@ -4,17 +4,40 @@ import SwiftUI
 struct PauseRecapBanner: View {
     let text: String
     let isLoading: Bool
+    var needsChapters: Bool = false
+    var onShowDebug: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label("What's happening?", systemImage: "sparkles")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            HStack {
+                Label("What's happening?", systemImage: "sparkles")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                if let onShowDebug, !isLoading {
+                    Button(action: onShowDebug) {
+                        Image(systemName: "ladybug")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Recap debug")
+                }
+            }
 
             if isLoading {
                 ProgressView()
                     .controlSize(.small)
                     .frame(maxWidth: .infinity, alignment: .leading)
+            } else if needsChapters {
+                Text("Generate chapters to get a recap.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
                 Text(text)
                     .font(.subheadline)

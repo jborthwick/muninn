@@ -3,6 +3,16 @@ import FoundationModels
 import SwiftData
 import os
 
+struct ChapterBeat: Equatable, Sendable {
+    let summary: String
+    let title: String
+}
+
+struct ChapterBeatsResult: Equatable {
+    let beats: [ChapterBeat]
+    let entries: [ChapterBeatDebugEntry]
+}
+
 @MainActor
 @Observable
 final class TranscriptSummaryService {
@@ -10,10 +20,21 @@ final class TranscriptSummaryService {
 
     private(set) var summary: EpisodeSummary?
     private(set) var pauseRecap: String?
+    private(set) var pauseRecapNeedsChapters = false
     private(set) var isGeneratingRecap = false
+    private(set) var lastRecapDebug: PauseRecapDebugInfo?
 
     private let logger = Logger(subsystem: "com.muninn", category: "TranscriptSummary")
-    private let batchSize = 5
+
+    private static let maxChapterTranscriptCharacters = 9_000
+    private static let chunkTranscriptCharacters = 8_000
+    private static let maxPartialHeardCharacters = 2_500
+    private static let maxUsableBeatSummaryCharacters = 280
+    private static let maxRecapSentences = 4
+    private static let storySoFarBeatLimit = 8
+    /// Keep all completed beats when their combined text fits this budget.
+    private static let maxBeatInputCharacters = 2_800
+    private static let directJoinBeatLimit = 4
 
     private init() {}
 
@@ -32,52 +53,63 @@ final class TranscriptSummaryService {
     func clear() {
         summary = nil
         pauseRecap = nil
+        pauseRecapNeedsChapters = false
         isGeneratingRecap = false
     }
 
     func clearPauseRecap() {
         pauseRecap = nil
+        pauseRecapNeedsChapters = false
     }
 
-    // MARK: - Generation (chapter pipeline)
+    func clearRecapDebug() {
+        lastRecapDebug = nil
+    }
 
-    func generateSegmentSummaries(
+    // MARK: - Chapter beat generation
+
+    func generateChapterBeats(
         drafts: [ChapterTitleGenerator.SegmentDraft],
         episodeTitle: String,
         episodeDuration: TimeInterval
-    ) async -> [String] {
-        guard !drafts.isEmpty else { return [] }
+    ) async -> ChapterBeatsResult {
+        guard !drafts.isEmpty else { return ChapterBeatsResult(beats: [], entries: []) }
 
-        if #available(iOS 26, *), SystemLanguageModel.default.isAvailable {
-            do {
-                return try await summarizeWithModel(
-                    drafts: drafts,
-                    episodeTitle: episodeTitle,
-                    episodeDuration: episodeDuration
-                )
-            } catch {
-                logger.warning("Segment summarization failed: \(error.localizedDescription)")
-            }
+        var beats: [ChapterBeat] = []
+        var entries: [ChapterBeatDebugEntry] = []
+        for (index, draft) in drafts.enumerated() {
+            let result = await generateSingleChapterBeat(
+                draft: draft,
+                index: index,
+                draftCount: drafts.count,
+                episodeTitle: episodeTitle,
+                episodeDuration: episodeDuration
+            )
+            beats.append(result.beat)
+            entries.append(result.entry)
         }
-
-        return drafts.map { lexicalSummary(from: $0.excerpt, episodeDuration: episodeDuration) }
+        return ChapterBeatsResult(beats: beats, entries: entries)
     }
 
     func generateOverview(
         beats: [SummaryBeat],
         episodeTitle: String
-    ) async -> String {
-        guard !beats.isEmpty else { return "" }
+    ) async -> (text: String, error: String?) {
+        guard !beats.isEmpty else { return ("", nil) }
 
         if #available(iOS 26, *), SystemLanguageModel.default.isAvailable {
             do {
-                return try await overviewWithModel(beats: beats, episodeTitle: episodeTitle)
+                let text = try await overviewWithModel(beats: beats, episodeTitle: episodeTitle)
+                return (text, nil)
             } catch {
                 logger.warning("Overview generation failed: \(error.localizedDescription)")
+                let fallback = beats.map(\.summary).filter { !$0.isEmpty }.joined(separator: " ")
+                return (fallback, error.localizedDescription)
             }
         }
 
-        return beats.map(\.summary).joined(separator: " ")
+        let fallback = beats.map(\.summary).filter { !$0.isEmpty }.joined(separator: " ")
+        return (fallback, nil)
     }
 
     func persist(summary: EpisodeSummary, episode: Episode, context: ModelContext) async throws {
@@ -94,108 +126,299 @@ final class TranscriptSummaryService {
 
     // MARK: - Pause recap
 
-    private static let maxRecapContextCharacters = 3_500
-    private static let maxRecapSentences = 4
-    private static let maxStorySoFarSentences = 3
-    /// Cap beats fed into story-so-far on long episodes so background stays brief.
-    private static let storySoFarBeatLimit = 6
-
     func generatePauseRecap(
         episode: Episode,
         segments: [TranscriptSegment],
-        currentTime: TimeInterval,
-        windowMinutes: Int
+        currentTime: TimeInterval
     ) async {
-        guard windowMinutes > 0, currentTime > 0 else { return }
+        guard currentTime > 0 else { return }
 
         isGeneratingRecap = true
         pauseRecap = nil
-        defer { isGeneratingRecap = false }
-
-        let window = TimeInterval(windowMinutes * 60)
-        let start = max(0, currentTime - window)
+        pauseRecapNeedsChapters = false
+        var debug = PauseRecapDebugInfo()
+        debug.pausedAt = currentTime
+        defer {
+            isGeneratingRecap = false
+            lastRecapDebug = debug
+        }
 
         if summary == nil {
             load(for: episode)
         }
 
-        guard let transcriptExcerpt = transcriptExcerpt(
-            from: start,
-            to: currentTime,
-            segments: segments
-        ) else { return }
+        debug.totalBeatCount = summary?.beats.count ?? 0
 
-        let context = recapContext(from: summary, pausedAt: currentTime)
-        let storySoFar = await generateStorySoFar(
-            completedBeats: context.completedBeats,
-            episodeTitle: episode.title,
-            pausedAt: currentTime
+        let build = await buildRecapInput(
+            summary: summary,
+            segments: segments,
+            currentTime: currentTime,
+            episodeTitle: episode.title
         )
-        let input = RecapInput(
-            transcriptExcerpt: transcriptExcerpt,
-            storySoFar: storySoFar,
-            currentSegmentTitle: context.currentSegment?.title,
-            currentSegmentStart: context.currentSegment?.startTime
-        )
+        debug.completedBeatCount = build.completedCount
+        debug.skippedEmptyBeatCount = build.skippedEmpty
+        debug.cappedBeatCount = build.cappedCount
+        debug.hasInProgressChapter = build.inProgressTitle != nil
+        debug.inProgressChapterTitle = build.inProgressTitle
+        debug.inProgressRange = build.inProgressRange
+        debug.partialSummary = build.partialSummary
+        debug.partialExcerptPreview = build.partialExcerptPreview
+        debug.beatInput = build.beatLines.map { "- \($0)" }.joined(separator: "\n")
+
+        guard !build.beatLines.isEmpty else {
+            pauseRecapNeedsChapters = true
+            debug.needsChapters = true
+            return
+        }
+
+        if build.beatLines.count <= Self.directJoinBeatLimit {
+            let text = directRecap(from: build.beatSummaries)
+            pauseRecap = text
+            debug.usedDirectJoin = true
+            debug.recapFinalText = text
+            return
+        }
+
+        let beatList = build.beatLines.map { "- \($0)" }.joined(separator: "\n")
+        let prompt = "Chapters heard so far:\n\(beatList)\n\nWrite the story so far in 2–4 sentences."
+        debug.recapPrompt = prompt
 
         if #available(iOS 26, *), SystemLanguageModel.default.isAvailable {
             do {
-                pauseRecap = try await recapWithModel(
-                    input: input,
+                let result = try await compressBeatsToRecap(
+                    beatLines: build.beatLines,
                     episodeTitle: episode.title,
-                    windowMinutes: windowMinutes,
-                    pausedAt: currentTime
+                    currentTime: currentTime
                 )
+                pauseRecap = result.text
+                debug.recapRawResponse = result.raw
+                debug.usedFoundationModel = true
+                debug.recapFinalText = result.text
                 return
             } catch {
+                debug.recapError = error.localizedDescription
                 logger.warning("Pause recap failed: \(error.localizedDescription)")
+            }
+        } else {
+            debug.recapError = "Foundation Models unavailable."
+        }
+
+        let fallback = lexicalRecapFallback(from: build.beatSummaries)
+        pauseRecap = fallback
+        debug.usedFallback = true
+        debug.recapFinalText = fallback
+    }
+
+    // MARK: - Chapter beat FM helpers
+
+    private func generateSingleChapterBeat(
+        draft: ChapterTitleGenerator.SegmentDraft,
+        index: Int,
+        draftCount: Int,
+        episodeTitle: String,
+        episodeDuration: TimeInterval
+    ) async -> (beat: ChapterBeat, entry: ChapterBeatDebugEntry) {
+        let transcriptChars = draft.transcript.count
+        let excerptPreview = debugExcerptPreview(draft.excerpt)
+
+        func entry(
+            beat: ChapterBeat,
+            source: String,
+            flaggedRollCall: Bool,
+            usedChunking: Bool,
+            error: String?
+        ) -> (beat: ChapterBeat, entry: ChapterBeatDebugEntry) {
+            let debugEntry = ChapterBeatDebugEntry(
+                index: index,
+                startTime: draft.startTime,
+                endTime: 0,
+                title: beat.title,
+                summary: beat.summary,
+                source: source,
+                flaggedRollCall: flaggedRollCall,
+                transcriptCharacters: transcriptChars,
+                excerptPreview: excerptPreview,
+                usedChunking: usedChunking,
+                error: error
+            )
+            return (beat, debugEntry)
+        }
+
+        if ChapterTitleGenerator.isRollCallLike(
+            draft.transcript,
+            startTime: draft.startTime,
+            episodeDuration: episodeDuration
+        ) {
+            let beat = ChapterBeat(
+                summary: ChapterTitleGenerator.rollCallSummary(),
+                title: ChapterTitleGenerator.rollCallTitle(
+                    startTime: draft.startTime,
+                    index: index,
+                    draftCount: draftCount,
+                    episodeDuration: episodeDuration
+                )
+            )
+            return entry(beat: beat, source: "roll_call", flaggedRollCall: true, usedChunking: false, error: nil)
+        }
+
+        if #available(iOS 26, *), SystemLanguageModel.default.isAvailable {
+            do {
+                let modelResult = try await chapterBeatWithModel(
+                    transcript: draft.transcript,
+                    startTime: draft.startTime,
+                    episodeTitle: episodeTitle
+                )
+                return entry(
+                    beat: modelResult.beat,
+                    source: "foundation_model",
+                    flaggedRollCall: false,
+                    usedChunking: modelResult.usedChunking,
+                    error: nil
+                )
+            } catch {
+                logger.warning("Chapter beat generation failed: \(error.localizedDescription)")
+                let beat = ChapterBeat(
+                    summary: "",
+                    title: ChapterTitleGenerator.lexicalTitle(from: draft.excerpt, startTime: draft.startTime)
+                )
+                return entry(
+                    beat: beat,
+                    source: "lexical_fallback",
+                    flaggedRollCall: false,
+                    usedChunking: false,
+                    error: error.localizedDescription
+                )
             }
         }
 
-        pauseRecap = recapFallback(from: input.transcriptExcerpt)
+        let beat = ChapterBeat(
+            summary: "",
+            title: ChapterTitleGenerator.lexicalTitle(from: draft.excerpt, startTime: draft.startTime)
+        )
+        return entry(beat: beat, source: "lexical_fallback", flaggedRollCall: false, usedChunking: false, error: nil)
     }
 
-    // MARK: - FM helpers
+    private func debugExcerptPreview(_ text: String, limit: Int = 240) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count > limit else { return trimmed }
+        return String(trimmed.prefix(limit)) + "…"
+    }
 
     @available(iOS 26, *)
-    private func summarizeWithModel(
-        drafts: [ChapterTitleGenerator.SegmentDraft],
-        episodeTitle: String,
-        episodeDuration: TimeInterval
-    ) async throws -> [String] {
-        let instructions = """
-        You summarize podcast transcript segments in one clear sentence each.
-        Focus on the story beat, topic, or scene — not filler words or table talk.
-        For supporter roll calls or closing credits, say so briefly.
-        Podcast: "\(episodeTitle)"
-        """
+    private struct ChapterModelResult {
+        let beat: ChapterBeat
+        let usedChunking: Bool
+    }
 
+    @available(iOS 26, *)
+    private func chapterBeatWithModel(
+        transcript: String,
+        startTime: TimeInterval,
+        episodeTitle: String
+    ) async throws -> ChapterModelResult {
+        let instructions = chapterBeatInstructions(episodeTitle: episodeTitle)
         let session = LanguageModelSession(instructions: instructions)
         session.prewarm()
 
-        var results: [String] = []
-        var index = 0
-        while index < drafts.count {
-            let end = min(index + batchSize, drafts.count)
-            let chunk = Array(drafts[index..<end])
-            let prompt = summaryPromptBlock(for: chunk)
-            let response = try await session.respond(to: prompt, generating: SegmentSummaryBatch.self)
-            let batch = normalizedSummaries(
-                response.content.summaries,
-                drafts: chunk,
-                episodeDuration: episodeDuration
-            )
-            results.append(contentsOf: batch)
-            index = end
+        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw NSError(domain: "TranscriptSummary", code: 1, userInfo: nil)
         }
-        return results
+
+        let plan: ChapterBeatPlan
+        let usedChunking: Bool
+        if trimmed.count <= Self.maxChapterTranscriptCharacters {
+            let prompt = chapterBeatPrompt(transcript: trimmed, startTime: startTime)
+            let response = try await session.respond(to: prompt, generating: ChapterBeatPlan.self)
+            plan = response.content
+            usedChunking = false
+        } else {
+            plan = try await chapterBeatFromChunks(
+                transcript: trimmed,
+                startTime: startTime,
+                session: session
+            )
+            usedChunking = true
+        }
+
+        let summary = plan.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = plan.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isUsableBeatSummary(summary), !title.isEmpty else {
+            throw NSError(domain: "TranscriptSummary", code: 2, userInfo: nil)
+        }
+        return ChapterModelResult(beat: ChapterBeat(summary: summary, title: title), usedChunking: usedChunking)
+    }
+
+    @available(iOS 26, *)
+    private func chapterBeatFromChunks(
+        transcript: String,
+        startTime: TimeInterval,
+        session: LanguageModelSession
+    ) async throws -> ChapterBeatPlan {
+        let chunks = splitTranscriptIntoChunks(transcript, maxSize: Self.chunkTranscriptCharacters)
+        var partSummaries: [String] = []
+
+        for (index, chunk) in chunks.enumerated() {
+            let prompt = """
+            Part \(index + 1) of \(chunks.count) (chapter starts \(ChapterTitleGenerator.formatTime(startTime))):
+
+            \(chunk)
+
+            Write exactly one sentence summarizing this part.
+            """
+            let response = try await session.respond(to: prompt, generating: ChunkSummaryPlan.self)
+            let part = response.content.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !part.isEmpty else { continue }
+            partSummaries.append(part)
+        }
+
+        guard !partSummaries.isEmpty else {
+            throw NSError(domain: "TranscriptSummary", code: 3, userInfo: nil)
+        }
+
+        let merged = partSummaries.enumerated().map { offset, text in
+            "Part \(offset + 1): \(text)"
+        }.joined(separator: "\n")
+
+        let prompt = """
+        Chapter starts at \(ChapterTitleGenerator.formatTime(startTime)).
+        Summaries of sequential parts:
+
+        \(merged)
+
+        Write one clear sentence summary of the whole chapter and a 4–7 word title.
+        """
+        let response = try await session.respond(to: prompt, generating: ChapterBeatPlan.self)
+        return response.content
+    }
+
+    @available(iOS 26, *)
+    private func chapterBeatInstructions(episodeTitle: String) -> String {
+        """
+        You summarize podcast chapters and write concise titles.
+        Focus on the story beat, topic, or scene — not filler words or table talk.
+        Name specific topics, people, products, or events when present.
+        Podcast: "\(episodeTitle)"
+        """
+    }
+
+    private func chapterBeatPrompt(transcript: String, startTime: TimeInterval) -> String {
+        """
+        Chapter starts at \(ChapterTitleGenerator.formatTime(startTime)):
+
+        \(transcript)
+
+        Write one clear sentence summary and a 4–7 word chapter title.
+        """
     }
 
     @available(iOS 26, *)
     private func overviewWithModel(beats: [SummaryBeat], episodeTitle: String) async throws -> String {
-        let beatList = beats.map { beat in
-            "- \(ChapterTitleGenerator.formatTime(beat.startTime)): \(beat.summary)"
-        }.joined(separator: "\n")
+        let beatList = beats
+            .filter { !$0.summary.isEmpty }
+            .map { beat in
+                "- \(ChapterTitleGenerator.formatTime(beat.startTime)): \(beat.summary)"
+            }.joined(separator: "\n")
 
         let session = LanguageModelSession(instructions: """
         Write a 2–3 sentence overview of a podcast episode from timed segment summaries.
@@ -209,224 +432,240 @@ final class TranscriptSummaryService {
         return response.content.overview.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    // MARK: - Recap helpers
+
+    private struct RecapBuildResult {
+        let beatLines: [String]
+        let beatSummaries: [String]
+        let completedCount: Int
+        let skippedEmpty: Int
+        let cappedCount: Int
+        let inProgressTitle: String?
+        let inProgressRange: String?
+        let partialSummary: String?
+        let partialExcerptPreview: String?
+    }
+
+    private func buildRecapInput(
+        summary: EpisodeSummary?,
+        segments: [TranscriptSegment],
+        currentTime: TimeInterval,
+        episodeTitle: String
+    ) async -> RecapBuildResult {
+        guard let beats = summary?.beats, !beats.isEmpty else {
+            return RecapBuildResult(
+                beatLines: [],
+                beatSummaries: [],
+                completedCount: 0,
+                skippedEmpty: 0,
+                cappedCount: 0,
+                inProgressTitle: nil,
+                inProgressRange: nil,
+                partialSummary: nil,
+                partialExcerptPreview: nil
+            )
+        }
+
+        let completed = beats.filter { $0.endTime <= currentTime }
+        let usableCompleted = completed.filter { isUsableBeatSummary($0.summary) }
+        let skippedEmpty = completed.count - usableCompleted.count
+        let totalChars = usableCompleted.reduce(0) { $0 + $1.summary.count }
+        let selected = selectBeatsForRecap(from: usableCompleted)
+        let cappedCount = totalChars > Self.maxBeatInputCharacters ? selected.count : 0
+
+        var lines: [String] = []
+        var summaries: [String] = []
+        for beat in selected {
+            let label = beat.title.flatMap { !$0.isEmpty ? $0 : nil } ?? "Chapter"
+            lines.append("\(ChapterTitleGenerator.formatTime(beat.startTime)) \(label): \(beat.summary)")
+            summaries.append(beat.summary)
+        }
+
+        var inProgressTitle: String?
+        var inProgressRange: String?
+        var partialSummary: String?
+        var partialExcerptPreview: String?
+
+        if let inProgress = beats.first(where: { $0.startTime <= currentTime && $0.endTime > currentTime }) {
+            inProgressTitle = inProgress.title
+            inProgressRange = "\(ChapterTitleGenerator.formatTime(inProgress.startTime))–\(ChapterTitleGenerator.formatTime(currentTime))"
+            let timeline = TranscriptTimeline(segments: segments)
+            let heard = timeline.heardText(from: inProgress.startTime, to: currentTime)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if heard.count > 20 {
+                let excerpt = cappedExcerpt(heard, maxCharacters: Self.maxPartialHeardCharacters)
+                partialExcerptPreview = String(excerpt.prefix(400))
+                if excerpt.count > 400 { partialExcerptPreview? += "…" }
+                partialSummary = await summarizeHeardPortion(
+                    excerpt: excerpt,
+                    rangeLabel: inProgressRange ?? "",
+                    episodeTitle: episodeTitle
+                )
+                if let partialSummary {
+                    let label = inProgress.title.flatMap { !$0.isEmpty ? $0 : nil } ?? "Current chapter"
+                    lines.append("\(ChapterTitleGenerator.formatTime(inProgress.startTime)) \(label) (in progress): \(partialSummary)")
+                    summaries.append(partialSummary)
+                }
+            }
+        }
+
+        return RecapBuildResult(
+            beatLines: lines,
+            beatSummaries: summaries,
+            completedCount: completed.count,
+            skippedEmpty: skippedEmpty,
+            cappedCount: cappedCount,
+            inProgressTitle: inProgressTitle,
+            inProgressRange: inProgressRange,
+            partialSummary: partialSummary,
+            partialExcerptPreview: partialExcerptPreview
+        )
+    }
+
+    private func selectBeatsForRecap(from completedBeats: [SummaryBeat]) -> [SummaryBeat] {
+        guard !completedBeats.isEmpty else { return [] }
+
+        let totalChars = completedBeats.reduce(0) { $0 + $1.summary.count }
+        if totalChars <= Self.maxBeatInputCharacters {
+            return completedBeats
+        }
+        return storySoFarBeats(from: completedBeats)
+    }
+
+    private func directRecap(from beatSummaries: [String]) -> String {
+        return firstSentences(in: beatSummaries.joined(separator: " "), max: Self.maxRecapSentences)
+    }
+
     @available(iOS 26, *)
-    private func recapWithModel(
-        input: RecapInput,
-        episodeTitle: String,
-        windowMinutes: Int,
-        pausedAt: TimeInterval
+    private func partialChapterSummaryWithModel(
+        excerpt: String,
+        rangeLabel: String,
+        episodeTitle: String
     ) async throws -> String {
         let session = LanguageModelSession(instructions: """
-        You write a quick "catch me up" blurb for someone who paused a podcast mid-episode.
-        Write exactly 3 short sentences. Never write more than 4 sentences total.
-        Cover ONLY what happened in the RECAP WINDOW transcript — not earlier in the episode.
-        Use STORY SO FAR only to disambiguate a name or pronoun. Do not summarize it.
-        Use CURRENT SEGMENT only for orientation — never describe unheard content from it.
-        Do not quote the transcript verbatim. No bullet points.
+        Summarize only what appears in the transcript excerpt below.
+        Write exactly one clear sentence naming the specific topic discussed.
+        Do not speculate beyond the excerpt. Podcast: "\(episodeTitle)"
+        """)
+        let response = try await session.respond(
+            to: "Heard portion (\(rangeLabel)):\n\n\(excerpt)\n\nWrite one sentence.",
+            generating: ChunkSummaryPlan.self
+        )
+        let summary = response.content.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isUsableBeatSummary(summary) else {
+            throw NSError(domain: "TranscriptSummary", code: 4, userInfo: nil)
+        }
+        return summary
+    }
+
+    @available(iOS 26, *)
+    private struct CompressRecapResult {
+        let text: String
+        let raw: String
+    }
+
+    @available(iOS 26, *)
+    private func compressBeatsToRecap(
+        beatLines: [String],
+        episodeTitle: String,
+        currentTime: TimeInterval
+    ) async throws -> CompressRecapResult {
+        let beatList = beatLines.map { "- \($0)" }.joined(separator: "\n")
+        let session = LanguageModelSession(instructions: """
+        You write a "story so far" recap for someone who paused a podcast mid-episode.
+        Compress the chapter summaries below into exactly 2–4 short sentences.
+        Present events in chronological order. Cover only what appears in the chapter list.
+        Do not add topics, names, or events not mentioned in the list.
+        Be specific when the summaries name topics, people, or events. No bullet points.
         Podcast: "\(episodeTitle)"
         """)
         session.prewarm()
 
-        var prompt = """
-        Listener paused at \(ChapterTitleGenerator.formatTime(pausedAt)).
-        Summarize what happened in the last \(windowMinutes) minutes only.
-
-        === RECAP WINDOW (primary — your entire answer comes from here) ===
-        \(input.transcriptExcerpt)
-        """
-
-        if let storySoFar = input.storySoFar, !storySoFar.isEmpty {
-            prompt += "\n\n=== STORY SO FAR (background — do not recap in detail) ===\n"
-            prompt += storySoFar
-        }
-
-        if let title = input.currentSegmentTitle, !title.isEmpty {
-            let started = input.currentSegmentStart.map { ChapterTitleGenerator.formatTime($0) } ?? ""
-            prompt += "\n\n=== CURRENT SEGMENT (orientation only) ===\n"
-            if started.isEmpty {
-                prompt += "\"\(title)\" (in progress)"
-            } else {
-                prompt += "\"\(title)\" (started \(started), in progress)"
-            }
-        }
-
-        prompt += "\n\nWrite exactly 3 sentences about the recap window only."
-
+        let prompt = "Chapters heard so far (through \(ChapterTitleGenerator.formatTime(currentTime))):\n\(beatList)\n\nWrite the story so far in 2–4 sentences."
         let response = try await session.respond(
             to: prompt,
-            generating: PauseRecapPlan.self
-        )
-        return firstSentences(
-            in: response.content.recap.trimmingCharacters(in: .whitespacesAndNewlines),
-            max: Self.maxRecapSentences
-        )
-    }
-
-    @available(iOS 26, *)
-    private func storySoFarWithModel(
-        completedBeats: [SummaryBeat],
-        episodeTitle: String,
-        pausedAt: TimeInterval
-    ) async throws -> String {
-        let beatsForContext = storySoFarBeats(from: completedBeats)
-        let beatList = beatsForContext.map { beat in
-            let label = beat.title.flatMap { !$0.isEmpty ? $0 : nil } ?? "Segment"
-            return "- \(ChapterTitleGenerator.formatTime(beat.startTime)) \(label): \(beat.summary)"
-        }.joined(separator: "\n")
-
-        let session = LanguageModelSession(instructions: """
-        You write a brief "story so far" for someone partway through a podcast episode.
-        Compress only the segments listed below — the listener has fully heard each one.
-        Write exactly 2–3 short sentences. Never more than 3 sentences.
-        No bullet points. Do not include anything after \(ChapterTitleGenerator.formatTime(pausedAt)).
-        Podcast: "\(episodeTitle)"
-        """)
-        session.prewarm()
-
-        let response = try await session.respond(
-            to: "Segments heard so far:\n\(beatList)\n\nWrite exactly 2–3 sentences for the story so far.",
             generating: StorySoFarPlan.self
         )
-        return firstSentences(
-            in: response.content.storySoFar.trimmingCharacters(in: .whitespacesAndNewlines),
-            max: Self.maxStorySoFarSentences
-        )
+        let raw = response.content.storySoFar.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = firstSentences(in: raw, max: Self.maxRecapSentences)
+        guard !text.isEmpty else {
+            throw NSError(domain: "TranscriptSummary", code: 5, userInfo: nil)
+        }
+        return CompressRecapResult(text: text, raw: raw)
     }
 
-    private func summaryPromptBlock(for drafts: [ChapterTitleGenerator.SegmentDraft]) -> String {
-        let segments = drafts.enumerated().map { offset, draft -> String in
-            let label = "Segment \(offset + 1) (starts \(ChapterTitleGenerator.formatTime(draft.startTime))):"
-            if ChapterTitleGenerator.isRollCallLike(draft.excerpt) {
-                return "\(label)\nSupporter roll call or closing credits."
+    private func summarizeHeardPortion(
+        excerpt: String,
+        rangeLabel: String,
+        episodeTitle: String
+    ) async -> String? {
+        if #available(iOS 26, *), SystemLanguageModel.default.isAvailable {
+            do {
+                return try await partialChapterSummaryWithModel(
+                    excerpt: excerpt,
+                    rangeLabel: rangeLabel,
+                    episodeTitle: episodeTitle
+                )
+            } catch {
+                logger.warning("Partial chapter recap failed: \(error.localizedDescription)")
             }
-            return "\(label)\n\(draft.excerpt)"
-        }.joined(separator: "\n\n")
-
-        return """
-        Write exactly one sentence summary per segment below, in the same order.
-        Return \(drafts.count) summaries.
-
-        \(segments)
-        """
+        }
+        return nil
     }
 
-    private func normalizedSummaries(
-        _ raw: [String],
-        drafts: [ChapterTitleGenerator.SegmentDraft],
-        episodeDuration: TimeInterval
-    ) -> [String] {
-        drafts.indices.map { index in
-            let candidate = index < raw.count ? raw[index].trimmingCharacters(in: .whitespacesAndNewlines) : ""
-            if !candidate.isEmpty { return candidate }
-            return lexicalSummary(from: drafts[index].excerpt, episodeDuration: episodeDuration)
-        }
+    private func lexicalRecapFallback(from beatSummaries: [String]) -> String {
+        let summaries = beatSummaries.suffix(3)
+        return firstSentences(in: summaries.joined(separator: " "), max: Self.maxRecapSentences)
     }
 
-    private func lexicalSummary(from excerpt: String, episodeDuration: TimeInterval) -> String {
-        if ChapterTitleGenerator.isRollCallLike(excerpt) {
-            return "Supporter roll call or closing credits."
+    private func storySoFarBeats(from completedBeats: [SummaryBeat]) -> [SummaryBeat] {
+        guard completedBeats.count > Self.storySoFarBeatLimit else { return completedBeats }
+        return Array(completedBeats.suffix(Self.storySoFarBeatLimit))
+    }
+
+    private func isUsableBeatSummary(_ summary: String) -> Bool {
+        let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        guard trimmed.count <= Self.maxUsableBeatSummaryCharacters else { return false }
+        if trimmed.contains(" … ") { return false }
+        if trimmed.hasPrefix("…") { return false }
+        return true
+    }
+
+    private func splitTranscriptIntoChunks(_ text: String, maxSize: Int) -> [String] {
+        guard text.count > maxSize else { return [text] }
+
+        var chunks: [String] = []
+        var remaining = text[text.startIndex...]
+
+        while !remaining.isEmpty {
+            if remaining.count <= maxSize {
+                chunks.append(String(remaining))
+                break
+            }
+            let sliceEnd = remaining.index(remaining.startIndex, offsetBy: maxSize)
+            var breakIndex = sliceEnd
+            if let lastSpace = remaining[..<sliceEnd].lastIndex(of: " ") {
+                breakIndex = lastSpace
+            }
+            let chunk = String(remaining[..<breakIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !chunk.isEmpty { chunks.append(chunk) }
+            let nextStart = remaining.index(after: breakIndex)
+            remaining = remaining[nextStart...]
         }
-        let trimmed = excerpt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count > 120 else { return trimmed }
-        let prefix = String(trimmed.prefix(200))
+
+        return chunks.isEmpty ? [text] : chunks
+    }
+
+    private func cappedExcerpt(_ text: String, maxCharacters: Int) -> String {
+        guard text.count > maxCharacters else { return text }
+        let prefix = String(text.prefix(maxCharacters))
         if let lastSpace = prefix.lastIndex(of: " ") {
             return String(prefix[..<lastSpace]) + "…"
         }
         return prefix + "…"
     }
 
-    private struct RecapInput {
-        let transcriptExcerpt: String
-        let storySoFar: String?
-        let currentSegmentTitle: String?
-        let currentSegmentStart: TimeInterval?
-    }
-
-    private struct RecapContext {
-        let completedBeats: [SummaryBeat]
-        let currentSegment: SummaryBeat?
-    }
-
-    private func recapContext(from summary: EpisodeSummary?, pausedAt: TimeInterval) -> RecapContext {
-        guard let beats = summary?.beats, !beats.isEmpty else {
-            return RecapContext(completedBeats: [], currentSegment: nil)
-        }
-        let completed = beats.filter { $0.endTime <= pausedAt }
-        let current = beats.first { $0.startTime <= pausedAt && $0.endTime > pausedAt }
-        return RecapContext(completedBeats: completed, currentSegment: current)
-    }
-
-    private func transcriptExcerpt(
-        from start: TimeInterval,
-        to end: TimeInterval,
-        segments: [TranscriptSegment]
-    ) -> String? {
-        let timeline = TranscriptTimeline(segments: segments)
-        let transcript = timeline.text(from: start, to: end)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !transcript.isEmpty else { return nil }
-        return cappedRecapExcerpt(transcript, maxCharacters: Self.maxRecapContextCharacters)
-    }
-
-    private func generateStorySoFar(
-        completedBeats: [SummaryBeat],
-        episodeTitle: String,
-        pausedAt: TimeInterval
-    ) async -> String? {
-        guard !completedBeats.isEmpty else { return nil }
-
-        let beatsForContext = storySoFarBeats(from: completedBeats)
-
-        if #available(iOS 26, *), SystemLanguageModel.default.isAvailable {
-            do {
-                return try await storySoFarWithModel(
-                    completedBeats: beatsForContext,
-                    episodeTitle: episodeTitle,
-                    pausedAt: pausedAt
-                )
-            } catch {
-                logger.warning("Story so far failed: \(error.localizedDescription)")
-            }
-        }
-
-        return firstSentences(
-            in: storySoFarFallback(from: beatsForContext),
-            max: Self.maxStorySoFarSentences
-        )
-    }
-
-    /// On long episodes, keep only the most recent completed chapters as story-so-far input.
-    private func storySoFarBeats(from completedBeats: [SummaryBeat]) -> [SummaryBeat] {
-        guard completedBeats.count > Self.storySoFarBeatLimit else { return completedBeats }
-        return Array(completedBeats.suffix(Self.storySoFarBeatLimit))
-    }
-
-    private func storySoFarFallback(from completedBeats: [SummaryBeat]) -> String {
-        let recent = completedBeats.suffix(2).map(\.summary).filter { !$0.isEmpty }
-        if !recent.isEmpty {
-            return recent.joined(separator: " ")
-        }
-        return completedBeats.compactMap(\.title).filter { !$0.isEmpty }.joined(separator: "; ")
-    }
-
-    /// Keep the most recent speech when the window is too long for the model context.
-    private func cappedRecapExcerpt(_ text: String, maxCharacters: Int) -> String {
-        guard text.count > maxCharacters else { return text }
-        let suffix = String(text.suffix(maxCharacters))
-        if let firstSpace = suffix.firstIndex(of: " ") {
-            return "…" + String(suffix[suffix.index(after: firstSpace)...])
-        }
-        return "…" + suffix
-    }
-
-    /// Non-model fallback: last few sentences from the transcript window.
-    private func recapFallback(from excerpt: String) -> String {
-        let trimmed = excerpt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return "" }
-        return firstSentences(in: trimmed, max: Self.maxRecapSentences)
-    }
-
-    /// Hard cap on model output length when instructions are ignored.
     private func firstSentences(in text: String, max: Int) -> String {
         guard max > 0 else { return "" }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -439,9 +678,7 @@ final class TranscriptSummaryService {
             buffer.append(character)
             if ".!?…".contains(character) {
                 let sentence = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !sentence.isEmpty {
-                    sentences.append(sentence)
-                }
+                if !sentence.isEmpty { sentences.append(sentence) }
                 buffer = ""
                 if sentences.count >= max { break }
             }
@@ -449,9 +686,7 @@ final class TranscriptSummaryService {
 
         if sentences.count < max {
             let tail = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !tail.isEmpty {
-                sentences.append(tail)
-            }
+            if !tail.isEmpty { sentences.append(tail) }
         }
 
         return sentences.prefix(max).joined(separator: " ")
@@ -487,9 +722,18 @@ final class TranscriptSummaryService {
 
 @available(iOS 26, *)
 @Generable
-private struct SegmentSummaryBatch {
-    @Guide(description: "One-sentence summaries in segment order.")
-    var summaries: [String]
+private struct ChapterBeatPlan {
+    @Guide(description: "One clear sentence summarizing the chapter topic or story beat.")
+    var summary: String
+    @Guide(description: "Concise chapter title, 4–7 words.")
+    var title: String
+}
+
+@available(iOS 26, *)
+@Generable
+private struct ChunkSummaryPlan {
+    @Guide(description: "Exactly one sentence summary.")
+    var summary: String
 }
 
 @available(iOS 26, *)
@@ -502,13 +746,6 @@ private struct EpisodeOverviewPlan {
 @available(iOS 26, *)
 @Generable
 private struct StorySoFarPlan {
-    @Guide(description: "Exactly 2–3 short sentences on what the listener has heard so far. Never more than 3 sentences.")
+    @Guide(description: "Exactly 2–4 short sentences on what the listener has heard so far.")
     var storySoFar: String
-}
-
-@available(iOS 26, *)
-@Generable
-private struct PauseRecapPlan {
-    @Guide(description: "Exactly 3 short sentences on what just happened in the recap window. Maximum 4 sentences. Do not recap earlier episode content.")
-    var recap: String
 }

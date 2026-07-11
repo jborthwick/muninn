@@ -217,18 +217,6 @@ struct SettingsView: View {
                     }
                     .disabled(!LocalTranscriptionService.isSupported)
 
-                    if LocalTranscriptionService.isSupported {
-                        Picker("What's happening window", selection: Binding(
-                            get: { appSettings.pauseRecapMinutes },
-                            set: { appSettings.pauseRecapMinutes = $0; try? modelContext.save() }
-                        )) {
-                            Text("3 minutes").tag(3)
-                            Text("5 minutes").tag(5)
-                            Text("8 minutes").tag(8)
-                            Text("10 minutes").tag(10)
-                        }
-                    }
-
                     if !LocalTranscriptionService.isSupported {
                         HStack {
                             Image(systemName: "info.circle")

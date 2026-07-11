@@ -22,6 +22,8 @@ final class ChapterService {
     /// Episode whose chapters are currently loaded into `chapters` (Now Playing UI).
     private(set) var loadedEpisodeGUID: String?
     private var errorEpisodeGUID: String?
+    private(set) var lastChapterDebug: ChapterGenerationDebugInfo?
+    private(set) var lastChapterDebugEpisodeGUID: String?
 
     func isGenerating(for episodeGUID: String) -> Bool {
         isGenerating && generatingEpisodeGUID == episodeGUID
@@ -65,12 +67,74 @@ final class ChapterService {
         error = nil
         errorEpisodeGUID = nil
         generationStatus = ""
+        lastChapterDebug = nil
+        lastChapterDebugEpisodeGUID = nil
+    }
+
+    func clearChapterDebug() {
+        lastChapterDebug = nil
+        lastChapterDebugEpisodeGUID = nil
+    }
+
+    /// Latest generation debug for this episode, or a snapshot from persisted summary beats.
+    func chapterDebug(episodeGUID: String, summary: EpisodeSummary?, chapters: [Chapter]) -> ChapterGenerationDebugInfo? {
+        if lastChapterDebugEpisodeGUID == episodeGUID, let lastChapterDebug {
+            return lastChapterDebug
+        }
+        return persistedChapterDebug(episodeGUID: episodeGUID, summary: summary, chapters: chapters)
+    }
+
+    private func persistedChapterDebug(
+        episodeGUID: String,
+        summary: EpisodeSummary?,
+        chapters: [Chapter]
+    ) -> ChapterGenerationDebugInfo? {
+        guard let summary, !summary.beats.isEmpty else { return nil }
+
+        let beats = summary.beats.enumerated().map { index, beat in
+            let chapterTitle = index < chapters.count
+                ? chapters[index].title
+                : (beat.title ?? "Untitled")
+            return ChapterBeatDebugEntry(
+                index: index,
+                startTime: beat.startTime,
+                endTime: beat.endTime,
+                title: chapterTitle,
+                summary: beat.summary,
+                source: "persisted",
+                flaggedRollCall: false,
+                transcriptCharacters: 0,
+                excerptPreview: "",
+                usedChunking: false,
+                error: nil
+            )
+        }
+
+        return ChapterGenerationDebugInfo(
+            generatedAt: summary.generatedAt,
+            episodeGUID: episodeGUID,
+            source: "persisted",
+            beats: beats,
+            overview: summary.overview,
+            succeeded: true
+        )
+    }
+
+    private func storeChapterDebug(_ debug: ChapterGenerationDebugInfo, episodeGUID: String) {
+        lastChapterDebug = debug
+        lastChapterDebugEpisodeGUID = episodeGUID
     }
 
     /// Generate chapters from show notes (fast path) or transcript (boundaries + titles).
     @discardableResult
     func generate(episode: Episode, context: ModelContext) async -> Bool {
         guard !isGenerating else { return false }
+
+        var debug = ChapterGenerationDebugInfo()
+        debug.generatedAt = Date()
+        debug.episodeTitle = episode.title
+        debug.episodeGUID = episode.guid
+        debug.foundationModelAvailable = Self.titlesSupported
 
         if let oldURL = episode.localChaptersURL {
             try? FileManager.default.removeItem(at: oldURL)
@@ -96,25 +160,56 @@ final class ChapterService {
             isGenerating = false
             generationStatus = ""
             generatingEpisodeGUID = nil
+            storeChapterDebug(debug, episodeGUID: episode.guid)
         }
 
         let transcriptService = TranscriptService.shared
         await transcriptService.load(for: episode)
         let segments = transcriptService.segments
         let duration = episode.duration ?? segments.last?.endTime ?? 0
+        debug.episodeDuration = duration
+        debug.segmentCount = segments.count
 
         // Fast path: chapters already in episode show notes.
         if let rssChapters = ChapterShowNotesParser.chapters(from: episode.episodeDescription, duration: duration) {
             generationStatus = "Using show note chapters…"
-            return await persist(chapters: rssChapters, episode: episode, context: context)
+            debug.source = "show_notes"
+            debug.boundaryCount = rssChapters.count
+            debug.boundariesDescription = rssChapters
+                .map { ChapterTitleGenerator.formatTime($0.startTime) }
+                .joined(separator: ", ")
+            debug.beats = rssChapters.enumerated().map { index, chapter in
+                ChapterBeatDebugEntry(
+                    index: index,
+                    startTime: chapter.startTime,
+                    endTime: chapter.endTime,
+                    title: chapter.title,
+                    summary: "",
+                    source: "show_notes",
+                    flaggedRollCall: false,
+                    transcriptCharacters: 0,
+                    excerptPreview: "",
+                    usedChunking: false,
+                    error: nil
+                )
+            }
+            let success = await persist(chapters: rssChapters, episode: episode, context: context)
+            debug.succeeded = success
+            if !success, let error {
+                debug.generationError = error
+            }
+            return success
         }
 
         guard !segments.isEmpty else {
             error = "A transcript is required to generate chapters. Transcribe the episode first."
             errorEpisodeGUID = episode.guid
+            debug.source = "transcript"
+            debug.generationError = error
             return false
         }
 
+        debug.source = "transcript"
         generationStatus = "Detecting topic boundaries…"
 
         let boundaries = await Task.detached { [self] in
@@ -122,6 +217,10 @@ final class ChapterService {
         }.value
 
         logger.info("Detected \(boundaries.count) chapter boundaries")
+        debug.boundaryCount = boundaries.count
+        debug.boundariesDescription = boundaries
+            .map { ChapterTitleGenerator.formatTime($0) }
+            .joined(separator: ", ")
 
         let drafts: [ChapterTitleGenerator.SegmentDraft] = boundaries.enumerated().map { index, start in
             let end = index + 1 < boundaries.count ? boundaries[index + 1] : duration
@@ -129,67 +228,60 @@ final class ChapterService {
             return .init(
                 startTime: start,
                 excerpt: ChapterTitleGenerator.excerpt(from: chapterSegments),
+                transcript: ChapterTitleGenerator.fullTranscript(from: chapterSegments),
                 summary: nil
             )
         }
 
         let summaryService = TranscriptSummaryService.shared
-        generationStatus = "Summarizing segments…"
-        let summaries = await summaryService.generateSegmentSummaries(
+        generationStatus = "Summarizing chapters…"
+        let beatResult = await summaryService.generateChapterBeats(
             drafts: drafts,
             episodeTitle: episode.title,
             episodeDuration: duration
         )
 
-        let enrichedDrafts: [ChapterTitleGenerator.SegmentDraft] = drafts.indices.map { index in
-            var draft = drafts[index]
-            if index < summaries.count {
-                draft.summary = summaries[index]
-            }
-            return draft
-        }
-
-        generationStatus = "Writing chapter titles…"
-        let titles: [String]
-        if #available(iOS 26, *) {
-            titles = await ChapterTitleGenerator.titles(
-                for: enrichedDrafts,
-                episodeTitle: episode.title,
-                episodeDuration: duration
-            )
-        } else {
-            titles = enrichedDrafts.map {
-                ChapterTitleGenerator.lexicalTitle(from: $0.excerpt, startTime: $0.startTime)
-            }
-        }
-
         var result: [Chapter] = []
         var beats: [SummaryBeat] = []
         for (index, start) in boundaries.enumerated() {
             let end = index + 1 < boundaries.count ? boundaries[index + 1] : duration
-            let title = index < titles.count ? titles[index] : ChapterTitleGenerator.lexicalTitle(
-                from: enrichedDrafts[index].excerpt,
-                startTime: start
+            let draft = drafts[index]
+            let beat = index < beatResult.beats.count ? beatResult.beats[index] : ChapterBeat(
+                summary: "",
+                title: ChapterTitleGenerator.lexicalTitle(from: draft.excerpt, startTime: start)
             )
-            result.append(Chapter(startTime: start, endTime: end, title: title))
+            result.append(Chapter(startTime: start, endTime: end, title: beat.title))
             beats.append(SummaryBeat(
                 startTime: start,
                 endTime: end,
-                summary: index < summaries.count ? summaries[index] : "",
-                title: title
+                summary: beat.summary,
+                title: beat.title
             ))
+        }
+
+        debug.beats = beatResult.entries.enumerated().map { index, entry in
+            let end = index + 1 < boundaries.count ? boundaries[index + 1] : duration
+            var updated = entry
+            updated.endTime = end
+            if index < result.count {
+                updated.title = result[index].title
+            }
+            return updated
         }
 
         guard !result.isEmpty else {
             error = "No chapters could be generated."
             errorEpisodeGUID = episode.guid
+            debug.generationError = error
             return false
         }
 
         generationStatus = "Building episode overview…"
-        let overview = await summaryService.generateOverview(beats: beats, episodeTitle: episode.title)
+        let overviewResult = await summaryService.generateOverview(beats: beats, episodeTitle: episode.title)
+        debug.overview = overviewResult.text
+        debug.overviewError = overviewResult.error
         let episodeSummary = EpisodeSummary(
-            overview: overview,
+            overview: overviewResult.text,
             beats: beats,
             generatedAt: Date()
         )
@@ -198,9 +290,15 @@ final class ChapterService {
             try await summaryService.persist(summary: episodeSummary, episode: episode, context: context)
         } catch {
             logger.warning("Summary save failed: \(error.localizedDescription)")
+            debug.summarySaveError = error.localizedDescription
         }
 
-        return await persist(chapters: result, episode: episode, context: context)
+        let success = await persist(chapters: result, episode: episode, context: context)
+        debug.succeeded = success
+        if !success, let error {
+            debug.generationError = error
+        }
+        return success
     }
 
     // MARK: - Persistence

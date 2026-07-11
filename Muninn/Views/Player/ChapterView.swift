@@ -7,11 +7,13 @@ struct ChapterView: View {
     let onGenerate: () -> Void
 
     private var chapterService: ChapterService { ChapterService.shared }
+    private var summaryService: TranscriptSummaryService { TranscriptSummaryService.shared }
     private var transcriptService: TranscriptService { TranscriptService.shared }
     private var playerManager: AudioPlayerManager { AudioPlayerManager.shared }
 
     // Track which chapter is active to avoid re-scrolling on every tick
     @State private var activeChapterID: UUID? = nil
+    @State private var showChapterDebug = false
 
     // MARK: - Derived state
 
@@ -45,6 +47,15 @@ struct ChapterView: View {
             || episode.transcriptURL != nil
     }
 
+    private var chapterDebug: ChapterGenerationDebugInfo? {
+        guard let guid = playerManager.currentEpisode?.guid else { return nil }
+        return chapterService.chapterDebug(
+            episodeGUID: guid,
+            summary: summaryService.summary,
+            chapters: chapters
+        )
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -65,6 +76,26 @@ struct ChapterView: View {
                 }
             } else {
                 chapterListView
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if chapterDebug != nil, !isGenerating {
+                Button { showChapterDebug = true } label: {
+                    Image(systemName: "ladybug")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Chapter debug")
+                .padding(.top, 8)
+                .padding(.trailing, 12)
+            }
+        }
+        .sheet(isPresented: $showChapterDebug) {
+            if let debug = chapterDebug {
+                ChapterGenerationDebugView(debug: debug)
             }
         }
         .onChange(of: currentTime) { _, newTime in

@@ -19,6 +19,7 @@ struct NowPlayingView: View {
     @AppStorage("nowPlaying.chaptersEpisodeGUID") private var chaptersEpisodeGUID = ""
     @State private var showMarkPlayedConfirmation = false
     @State private var isRecapPopoverVisible = false
+    @State private var showRecapDebug = false
 
     private var appSettings: AppSettings {
         AppSettings.getOrCreate(context: modelContext)
@@ -66,7 +67,11 @@ struct NowPlayingView: View {
                     if isRecapPopoverVisible {
                         PauseRecapBanner(
                             text: summaryService.pauseRecap ?? "",
-                            isLoading: summaryService.isGeneratingRecap
+                            isLoading: summaryService.isGeneratingRecap,
+                            needsChapters: summaryService.pauseRecapNeedsChapters,
+                            onShowDebug: summaryService.lastRecapDebug == nil ? nil : {
+                                showRecapDebug = true
+                            }
                         )
                         .padding(.horizontal, 16)
                         .padding(.bottom, 8)
@@ -172,6 +177,11 @@ struct NowPlayingView: View {
                   showChapters,
                   chapterService.loadedEpisodeGUID == episode.guid else { return }
             chapterService.load(for: episode)
+        }
+        .sheet(isPresented: $showRecapDebug) {
+            if let debug = summaryService.lastRecapDebug {
+                PauseRecapDebugView(debug: debug)
+            }
         }
     }
 
@@ -557,8 +567,7 @@ struct NowPlayingView: View {
             await summaryService.generatePauseRecap(
                 episode: episode,
                 segments: transcriptService.segments,
-                currentTime: playerManager.effectivePlaybackPosition,
-                windowMinutes: appSettings.pauseRecapMinutes
+                currentTime: playerManager.effectivePlaybackPosition
             )
         }
     }

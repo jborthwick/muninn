@@ -58,6 +58,26 @@ struct TranscriptTimeline: Sendable {
         text(range(from: start, to: end))
     }
 
+    /// Transcript for `[start, end)` excluding segments that extend past `end`.
+    func heardText(from start: TimeInterval, to end: TimeInterval) -> String {
+        guard end > start else { return "" }
+        let key = range(from: start, to: end)
+        guard !key.isEmpty, key.start < segments.count else { return "" }
+
+        let upper = min(key.end, segments.count)
+        var parts: [String] = []
+        parts.reserveCapacity(upper - key.start)
+
+        for index in key.start..<upper {
+            let segment = segments[index]
+            if segment.endTime <= end {
+                parts.append(segment.text)
+            }
+        }
+
+        return parts.joined(separator: " ")
+    }
+
     /// All pause / sentence-edge breaks in the transcript (single O(n) pass).
     func naturalBreaks(minGap: TimeInterval = 0.35) -> [NaturalBreak] {
         guard segments.count > 1 else { return [] }
