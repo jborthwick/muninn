@@ -23,23 +23,33 @@
 
 ## Recently Completed
 
-### ✅ Auto-Transcription After Download
+### ✅ Background Episode Processing
 - **Status**: Complete
-- **Description**: Episodes auto-transcribe after download when "Auto-Transcribe" is enabled in Settings → Transcription.
+- **Description**: Transcription and chapter generation can resume after suspend, run via `BGProcessingTask`, and continue in the background on iOS 26+ for user-initiated downloads/transcribe actions via `BGContinuedProcessingTask`.
+- **How it works**:
+  - `PendingWorkStore` persists queued transcription/chapter GUIDs across relaunches
+  - `EpisodeProcessingBackgroundManager` resumes interrupted work and schedules deferred processing
+  - `EpisodeContinuedProcessing` drives manual download → transcribe → chapter pipelines with system progress UI on iOS 26+
+- **Files**:
+  - `EpisodeProcessingBackgroundManager.swift`, `EpisodeContinuedProcessing.swift`, `PendingWorkStore.swift`
+  - `AutoTranscriptionQueue.swift`, `AutoChapterQueue.swift`, `DownloadManager.swift`, `MuninnApp.swift`
+
+### ✅ Auto-Transcription and Auto-Chapters
+- **Status**: Complete
+- **Description**: Episodes auto-transcribe after download when "Auto-Transcribe" is enabled; chapters and summaries auto-generate when "Auto-Generate Chapters" is enabled.
 - **How it works**:
   - `AutoTranscriptionQueue` holds a FIFO queue; one episode transcribes at a time
-  - `DownloadObserver` triggers transcription after download if auto-transcribe is on, or if user explicitly tapped a transcribe action before the download finished (`pendingTranscribeOnDownload`)
+  - `AutoChapterQueue` runs after transcription completes
+  - `DownloadObserver` triggers transcription after download if auto-transcribe is on, or if user explicitly tapped transcribe before the download finished (`pendingTranscribeOnDownload`)
   - `Episode.transcriptionProgress: Double?` tracks per-episode progress (nil = idle, 0–1 = in progress)
-  - Deleting an episode's download also deletes its transcript (stale timestamps from ad re-insertion)
+  - Deleting an episode's download also deletes its transcript
 - **UI**:
-  - List rows show download state only (no transcription indicator)
-  - `EpisodeDetailView` has a dedicated "Transcript" section showing: transcribing progress bar → "Transcribed" label → queue position → "Not yet transcribed" → "Download to generate transcription"
-  - Settings → Transcription section has the Auto-Transcribe toggle (disabled with explanation on unsupported devices)
+  - `EpisodeProcessingStatusView` shows transcription/chapter queue and progress on episode rows
+  - `EpisodeDetailView` has a dedicated "Transcript" section with progress, retry, and queue state
+  - Settings → Transcription has Auto-Transcribe and Auto-Generate Chapters toggles
 - **Files**:
-  - `AutoTranscriptionQueue.swift` (new)
-  - `LocalTranscriptionService.swift`, `DownloadObserver.swift`, `DownloadManager.swift`, `MuninnApp.swift`
-  - `Episode.swift` (`transcriptionProgress`), `AppSettings.swift` (`autoTranscribeEnabled`)
-  - `EpisodeDetailView.swift`, `SettingsView.swift`
+  - `AutoTranscriptionQueue.swift`, `AutoChapterQueue.swift`, `LocalTranscriptionService.swift`
+  - `ChapterService.swift`, `TranscriptSummaryService.swift`, `EpisodeProcessingStatusView.swift`
 
 ### ✅ Navigation Transition Glitch on Podcast Show Page
 - **Status**: Complete

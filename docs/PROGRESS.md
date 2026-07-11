@@ -1,22 +1,41 @@
-# Podcash Build Progress
+# Muninn Build Progress
 
 ## Current Status
-**Milestone 1: Project Skeleton** - VERIFIED
-**Milestone 2: Data Models + Add Podcast** - VERIFIED (added search + Apple/PocketCasts URL support)
-**Milestone 3: Episode List** - VERIFIED
-**Milestone 4: Audio Playback** - VERIFIED
-**Milestone 5: Downloads + Offline Handling** - COMPLETE
-**Milestone 6: Starring + Queue** - COMPLETE
-**Milestone 7: Folders** - COMPLETE
-**Milestone 8: Playback Speed + Sleep Timer** - COMPLETE
-**Milestone 9: Polish + Sync** - COMPLETE
-**Milestone 10: Bug Fixes + UX Improvements** - COMPLETE
 
-## Completed Work
+Core playback, offline, queue, folders, sync, playlists, and transcript features are complete.
+
+**Milestones 1–10** — COMPLETE (legacy Podcash-era foundation)
+**Milestone 11: Transcripts & AI Understanding** — COMPLETE
+**Milestone 12: Playlists** — COMPLETE
+
+## Milestone 11: Transcripts & AI Understanding
+
+- [x] On-device transcription via `SpeechAnalyzer` / `SpeechTranscriber` (iOS 26+)
+- [x] Auto-transcription queue after download (`AutoTranscriptionQueue`)
+- [x] Auto chapter generation after transcription (`AutoChapterQueue`, `ChapterService`)
+- [x] Chapter boundary detection with `NLEmbedding` and transcript timeline refinement
+- [x] Chapter summaries and episode overview via on-device Foundation Models
+- [x] Transcript view with word-level playback highlighting
+- [x] Pause recap ("What's happening so far") in Now Playing
+- [x] Episode processing status indicators on list rows
+- [x] Background resume and deferred processing for transcription/chapter pipelines
+- [x] iOS 26 continued processing for user-initiated download/transcribe actions
+- **Test:** Download episode with auto-transcribe on, verify transcript and chapters generate; lock phone during manual transcribe and confirm continued processing UI on iOS 26+
+
+## Milestone 12: Playlists
+
+- [x] User-managed episode playlists (`Playlist`, `PlaylistItem`)
+- [x] Playlist CRUD and episode membership (`PlaylistManager`)
+- [x] Playlist detail browse page with filters
+- [x] Select mode with range select and batch download actions
+- [x] Playlist export/import support in `ExportImportService`
+- **Test:** Create playlist, add episodes, batch download selected episodes, export/import full data and verify playlist restore
+
+## Completed Work (Milestones 1–10)
 
 ### Milestone 1: Project Skeleton
 - [x] Created Xcode project with xcodegen
-- [x] SwiftUI app entry point (PodcashApp.swift)
+- [x] SwiftUI app entry point (`MuninnApp.swift`, formerly PodcashApp.swift)
 - [x] Tab bar with 5 tabs (ContentView.swift)
 - [x] Placeholder views: LibraryView, DownloadsView, StarredView, QueueView, SettingsView
 - [x] Info.plist with background audio mode
@@ -169,22 +188,24 @@
 
 ## Project Structure
 ```
-Podcash/
-├── PodcashApp.swift
+Muninn/
+├── MuninnApp.swift
 ├── ContentView.swift
 ├── Info.plist
 ├── Assets.xcassets/
-├── Models/           (Milestone 2)
-├── Services/         (Milestone 2+)
+├── Models/
+├── Services/
 ├── Views/
 │   ├── Library/
 │   ├── Downloads/
 │   ├── Starred/
 │   ├── Queue/
 │   ├── Settings/
-│   ├── Podcast/      (Milestone 3)
-│   ├── Player/       (Milestone 4)
-│   └── Folders/      (Milestone 7)
-├── Components/       (Milestone 6+)
-└── Extensions/       (Milestone 3)
+│   ├── Podcast/
+│   ├── Player/
+│   ├── Episode/
+│   ├── Folders/
+│   ├── Playlists/
+│   └── Shared/
+└── Extensions/
 ```

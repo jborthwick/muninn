@@ -7,6 +7,7 @@ A personal iOS podcast player built with SwiftUI and SwiftData, focused on trans
 - **Podcast Management**: Subscribe to podcasts via RSS feed URL or search
 - **Offline Playback**: Download episodes for offline listening with offline mode indicator
 - **Folders**: Organize podcasts into color-coded folders
+- **Playlists**: Curate episode playlists with batch select, range select, and batch download actions
 - **Queue**: Build a queue with "Play Next" and "Add to Queue", queue badge on tab, toggle queue membership, inline drag reorder with minus buttons
 - **Starring**: Star episodes to save them for later
 - **Sleep Timer**: Set a timer or stop at end of episode
@@ -17,12 +18,20 @@ A personal iOS podcast player built with SwiftUI and SwiftData, focused on trans
 - **Rich Episode Descriptions**: HTML descriptions with tappable links
 - **Now Playing Indicator**: Currently playing episode shows play/pause button across all episode lists
 - **Download Management**: Confirmation before deleting downloads, played/unplayed state indicators, throttled progress updates
+- **On-Device Transcription**: Generate private local transcripts for downloaded episodes on iOS 26+ using Apple SpeechAnalyzer
+- **AI Chapters**: Generate local chapter boundaries, chapter summaries, and episode overviews from transcripts
+- **Transcript Playback**: Follow along with word-level highlighting while listening
+- **Pause Recap**: On-device recap of what you've heard so far when playback pauses
+- **Background Episode Preparation**: Manual downloads and transcribe actions can continue preparing transcripts/chapters after the phone locks on iOS 26+; interrupted auto-processing resumes on relaunch or background processing
+- **Export & Import**: Back up subscriptions, folders, playlists, queue, and episode state as JSON
+- **OPML Import**: Import podcast subscriptions from OPML files
 - **iCloud Sync**: Sync subscriptions, folders, and listening progress across devices (requires paid Apple Developer account)
 - **Listening Stats**: Track your listening habits
 
 ## Requirements
 
 - iOS 18.0+
+- iOS 26+ for on-device transcription and continued background episode preparation
 - Xcode 16+
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen)
 
@@ -71,6 +80,7 @@ Without iCloud, the app works fully but sync is disabled.
 - **SwiftUI** for the UI layer
 - **SwiftData** for persistence
 - **AVFoundation** for audio playback
+- **BackgroundTasks** for feed refresh, deferred episode processing, and iOS 26 continued processing
 - **iCloud Drive** for cross-device sync (no CloudKit required)
 
 ## Project Structure
@@ -84,12 +94,23 @@ Muninn/
 │   ├── Player/
 │   ├── Podcast/
 │   ├── Folders/
+│   ├── Playlists/
 │   ├── Downloads/
 │   ├── Starred/
 │   ├── Queue/
-│   └── Settings/
+│   ├── Stats/
+│   ├── Settings/
+│   └── Shared/
 └── Extensions/      # Swift extensions
 ```
+
+## Docs
+
+- [Build progress & architecture history](docs/PROGRESS.md)
+- [Export & import guide](docs/EXPORT_IMPORT_GUIDE.md)
+- [Crash logging](docs/CRASH_LOGGING.md)
+- [Performance notes](docs/PERFORMANCE.md)
+- [Agent guide](AGENTS.md)
 
 ## License
 

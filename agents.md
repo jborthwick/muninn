@@ -32,7 +32,7 @@ Build and run from Xcode. There is no separate test suite — verify features ma
 
 ```
 Muninn/
-├── Models/           # SwiftData: Podcast, Episode, Folder, QueueItem, AppSettings, ListeningStats
+├── Models/           # SwiftData: Podcast, Episode, Folder, Playlist, PlaylistItem, QueueItem, AppSettings, ListeningStats
 ├── Services/         # Business logic (see below)
 ├── Views/
 │   ├── Library/      # LibraryView, AddPodcastView, AllEpisodesView, PodcastRowView
@@ -40,6 +40,7 @@ Muninn/
 │   ├── Podcast/      # PodcastDetailView, EpisodeRowView
 │   ├── Episode/      # EpisodeDetailView
 │   ├── Folders/      # FolderDetailView, EditFolderView, FolderPickerView
+│   ├── Playlists/    # PlaylistDetailView, EditPlaylistView, PlaylistPickerView
 │   ├── Downloads/    # DownloadsView
 │   ├── Starred/      # StarredView
 │   ├── Queue/        # QueueView
@@ -64,8 +65,15 @@ Muninn/
 | `NetworkMonitor` | NWPathMonitor, offline state |
 | `ImageCache` | Async podcast artwork cache (memory + disk) |
 | `StatsService` | Listening stats tracking |
+| `PlaylistManager` | Playlist CRUD and episode membership |
+| `ChapterService` | Chapter boundary detection, persistence, and generation orchestration |
+| `TranscriptSummaryService` | On-device chapter beats, overview, and pause recap summaries |
 | `LocalTranscriptionService` | iOS 26+ on-device transcription via SpeechAnalyzer; one episode at a time |
 | `AutoTranscriptionQueue` | FIFO queue for post-download auto-transcription; must be registered in MuninnApp |
+| `AutoChapterQueue` | FIFO queue for post-transcription chapter generation |
+| `EpisodeProcessingBackgroundManager` | Persists/resumes transcription and chapter work; schedules `BGProcessingTask` |
+| `EpisodeContinuedProcessing` | iOS 26+ `BGContinuedProcessingTask` for user-initiated download/transcribe pipelines |
+| `PendingWorkStore` | UserDefaults-backed pending transcription/chapter GUID store |
 
 ## Key Conventions
 
@@ -82,7 +90,8 @@ Muninn/
 - **SwiftUI transaction leak** — async state updates (e.g. image loads in `CachedAsyncImage`) inherit the active SwiftUI transaction. Wrap with `withTransaction(.init(animation: .easeIn(duration: 0.15))) { self.state = value }` to decouple from in-flight navigation animations.
 - **SwiftData Bool** — store Boolean settings as `Int` (0/1) with a `Bool` computed wrapper; raw `Bool` properties can cause issues across SwiftData migrations.
 - **App icon** — must be 8-bit RGB, no alpha channel. Alpha causes `CompileAssetCatalogVariant` failure at build time. Fix: `sips -s format jpeg icon.png --out /tmp/t.jpg && sips -s format png /tmp/t.jpg --out icon.png`
-- **BGTask registration** — `BGTaskSchedulerPermittedIdentifiers` in `Info.plist` must list every task ID string. `UIBackgroundModes` needs both `fetch` and `processing`.
+- **BGTask registration** — `BGTaskSchedulerPermittedIdentifiers` in `Info.plist` must list every task ID string. Current identifiers include `com.personal.muninn.refresh`, `com.personal.muninn.processing`, and `com.personal.muninn.prepare.*`. `UIBackgroundModes` needs both `fetch` and `processing`.
+- **BGContinuedProcessingTask** — iOS requires a launch handler registered for the exact submitted identifier before calling `submit`; the wildcard permitted identifier alone is not enough. `EpisodeContinuedProcessing` dynamically registers per-job identifiers.
 - **iOS 26 APIs** — `SpeechTranscriber` / `SpeechAnalyzer` require `#available(iOS 26, *)` guards and `nonisolated` on helpers called from `Task.detached`.
 
 ## Config
