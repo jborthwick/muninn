@@ -6,15 +6,12 @@ struct LibraryView: View {
     @Environment(\.miniPlayerVisible) private var miniPlayerVisible
     @Query(sort: \Podcast.title) private var podcasts: [Podcast]
     @Query(sort: \Folder.sortOrder) private var folders: [Folder]
-    @Query(sort: \Playlist.sortOrder) private var playlists: [Playlist]
 
     @State private var showingAddPodcast = false
     @State private var showingAddFolder = false
-    @State private var showingAddPlaylist = false
     @State private var showingOPMLPicker = false
     @State private var opmlImportURL: URL?
     @State private var folderToEdit: Folder?
-    @State private var playlistToEdit: Playlist?
     @State private var podcastToUnsubscribe: Podcast?
     @State private var podcastForNewFolder: Podcast?
     @AppStorage("library.useGridLayout") private var useGridLayout = false
@@ -24,7 +21,7 @@ struct LibraryView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if podcasts.isEmpty && folders.isEmpty && playlists.isEmpty {
+                if podcasts.isEmpty && folders.isEmpty {
                     ContentUnavailableView(
                         "No Podcasts",
                         systemImage: "mic",
@@ -42,9 +39,6 @@ struct LibraryView: View {
             }
             .navigationDestination(for: Folder.self) { folder in
                 FolderDetailView(folder: folder)
-            }
-            .navigationDestination(for: Playlist.self) { playlist in
-                PlaylistDetailView(playlist: playlist)
             }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -76,12 +70,6 @@ struct LibraryView: View {
                             } label: {
                                 Label("New Folder", systemImage: "folder.badge.plus")
                             }
-
-                            Button {
-                                showingAddPlaylist = true
-                            } label: {
-                                Label("New Playlist", systemImage: "music.note.list")
-                            }
                         }
                     } label: {
                         Image(systemName: "ellipsis")
@@ -95,9 +83,6 @@ struct LibraryView: View {
                 podcastForNewFolder = nil
             }) {
                 EditFolderView(folder: nil, initialPodcast: podcastForNewFolder)
-            }
-            .sheet(isPresented: $showingAddPlaylist) {
-                EditPlaylistView(playlist: nil)
             }
             .fileImporter(
                 isPresented: $showingOPMLPicker,
@@ -118,9 +103,6 @@ struct LibraryView: View {
             }
             .sheet(item: $folderToEdit) { folder in
                 EditFolderView(folder: folder)
-            }
-            .sheet(item: $playlistToEdit) { playlist in
-                EditPlaylistView(playlist: playlist)
             }
             .confirmationDialog(
                 "Unsubscribe from \(podcastToUnsubscribe?.title ?? "podcast")?",
@@ -149,34 +131,13 @@ struct LibraryView: View {
 
     private var listContent: some View {
         List {
-            libraryShortcutsSection
             foldersListSection
-            playlistsListSection
             podcastsListSection
         }
         .listStyle(.plain)
         .contentMargins(.bottom, miniPlayerVisible ? 60 : 0, for: .scrollContent)
         .refreshable {
             await refreshManager.refreshAllPodcasts(context: modelContext)
-        }
-    }
-
-    @ViewBuilder
-    private var libraryShortcutsSection: some View {
-        if !folders.isEmpty {
-            Section {
-                NavigationLink {
-                    AllEpisodesView()
-                } label: {
-                    Label("All Episodes", systemImage: "list.bullet")
-                }
-
-                NavigationLink {
-                    AllEpisodesView(showUnsortedOnly: true)
-                } label: {
-                    Label("Unsorted", systemImage: "tray")
-                }
-            }
         }
     }
 
@@ -193,23 +154,6 @@ struct LibraryView: View {
                     }
                 }
                 .onDelete(perform: deleteFolders)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var playlistsListSection: some View {
-        if !playlists.isEmpty {
-            Section("Playlists") {
-                ForEach(playlists) { playlist in
-                    NavigationLink(value: playlist) {
-                        PlaylistRowView(playlist: playlist)
-                    }
-                    .contextMenu {
-                        playlistContextMenu(for: playlist)
-                    }
-                }
-                .onDelete(perform: deletePlaylists)
             }
         }
     }
@@ -235,7 +179,6 @@ struct LibraryView: View {
         LibraryGridContent(
             podcasts: podcasts,
             folders: folders,
-            playlists: playlists,
             miniPlayerBottomInset: miniPlayerVisible ? 60 : 16,
             onRefresh: {
                 await refreshManager.refreshAllPodcasts(context: modelContext)
@@ -248,10 +191,6 @@ struct LibraryView: View {
             onEditFolder: { folderToEdit = $0 },
             onDeleteFolder: { folder in
                 SyncService.shared.deleteFolder(folder, context: modelContext)
-            },
-            onEditPlaylist: { playlistToEdit = $0 },
-            onDeletePlaylist: { playlist in
-                PlaylistManager.shared.deletePlaylist(playlist)
             }
         )
     }
@@ -268,21 +207,6 @@ struct LibraryView: View {
                 showingAddFolder = true
             }
         )
-    }
-
-    @ViewBuilder
-    private func playlistContextMenu(for playlist: Playlist) -> some View {
-        Button {
-            playlistToEdit = playlist
-        } label: {
-            Label("Edit Playlist", systemImage: "pencil")
-        }
-
-        Button(role: .destructive) {
-            PlaylistManager.shared.deletePlaylist(playlist)
-        } label: {
-            Label("Delete Playlist", systemImage: "trash")
-        }
     }
 
     @ViewBuilder
@@ -325,12 +249,6 @@ struct LibraryView: View {
     private func deletePodcasts(at offsets: IndexSet) {
         for index in offsets {
             removePodcast(podcasts[index])
-        }
-    }
-
-    private func deletePlaylists(at offsets: IndexSet) {
-        for index in offsets {
-            PlaylistManager.shared.deletePlaylist(playlists[index])
         }
     }
 

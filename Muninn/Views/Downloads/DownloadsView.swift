@@ -59,9 +59,8 @@ struct DownloadsView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if isLoadingEpisodes && loadedEpisodes.isEmpty && downloadingEpisodes.isEmpty {
+        Group {
+            if isLoadingEpisodes && loadedEpisodes.isEmpty && downloadingEpisodes.isEmpty {
                     ProgressView()
                 } else if loadedEpisodes.isEmpty && downloadingEpisodes.isEmpty {
                     ContentUnavailableView(
@@ -214,7 +213,6 @@ struct DownloadsView: View {
             .sheet(item: $selectedEpisode) { episode in
                 EpisodeDetailView(episode: episode)
             }
-        }
     }
 
     private var formattedTotalSize: String {
@@ -400,6 +398,8 @@ private struct DownloadingEpisodeRow: View {
 }
 
 #Preview {
-    DownloadsView()
-        .modelContainer(for: Episode.self, inMemory: true)
+    NavigationStack {
+        DownloadsView()
+    }
+    .modelContainer(for: Episode.self, inMemory: true)
 }

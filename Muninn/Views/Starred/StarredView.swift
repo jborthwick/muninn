@@ -66,9 +66,8 @@ struct StarredView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if isLoadingEpisodes && loadedEpisodes.isEmpty && totalStarredCountAll == 0 {
+        Group {
+            if isLoadingEpisodes && loadedEpisodes.isEmpty && totalStarredCountAll == 0 {
                     ProgressView()
                 } else if totalStarredCountAll == 0 {
                     ContentUnavailableView(
@@ -225,7 +224,6 @@ struct StarredView: View {
             .sheet(item: $selectedEpisode) { episode in
                 EpisodeDetailView(episode: episode)
             }
-        }
     }
 }
 
@@ -406,6 +404,8 @@ struct FilterToggleButton: View {
 }
 
 #Preview {
-    StarredView()
-        .modelContainer(for: Episode.self, inMemory: true)
+    NavigationStack {
+        StarredView()
+    }
+    .modelContainer(for: Episode.self, inMemory: true)
 }

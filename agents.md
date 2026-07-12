@@ -40,7 +40,7 @@ Muninn/
 │   ├── Podcast/      # PodcastDetailView, EpisodeRowView
 │   ├── Episode/      # EpisodeDetailView
 │   ├── Folders/      # FolderDetailView, EditFolderView, FolderPickerView
-│   ├── Playlists/    # PlaylistDetailView, EditPlaylistView, PlaylistPickerView
+│   ├── Playlists/    # PlaylistsView, PlaylistDetailView, EditPlaylistView, PlaylistPickerView
 │   ├── Downloads/    # DownloadsView
 │   ├── Starred/      # StarredView
 │   ├── Queue/        # QueueView
@@ -48,7 +48,7 @@ Muninn/
 │   ├── Settings/     # SettingsView, ExportImportView, CrashLogsView
 │   └── Shared/       # EpisodeContextMenu, PodcastContextMenu, RefreshStatusBanner
 ├── Extensions/       # Date+Formatting, Duration+Formatting
-├── ContentView.swift # Root tab bar (5 tabs)
+├── ContentView.swift # Root tab bar (Library, Playlists, Queue, Settings)
 └── MuninnApp.swift   # App entry point
 ```
 

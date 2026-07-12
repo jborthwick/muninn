@@ -32,7 +32,7 @@ struct ContentView: View {
     @State private var episodeSelectionBarActive = false
 
     /// Index of the Settings tab in the TabView below
-    private let settingsTabIndex = 4
+    private let settingsTabIndex = 3
 
     private var isMiniPlayerVisible: Bool {
         playerManager.currentEpisode != nil
@@ -54,30 +54,24 @@ struct ContentView: View {
                         }
                         .tag(0)
 
-                    DownloadsView()
+                    PlaylistsView()
                         .tabItem {
-                            Label("Downloads", systemImage: "arrow.down.circle")
+                            Label("Playlists", systemImage: "music.note.list")
                         }
                         .tag(1)
-
-                    StarredView()
-                        .tabItem {
-                            Label("Starred", systemImage: "star")
-                        }
-                        .tag(2)
 
                     QueueView()
                         .tabItem {
                             Label("Queue", systemImage: "list.bullet")
                         }
                         .badge(queueItems.count)
-                        .tag(3)
+                        .tag(2)
 
                     SettingsView()
                         .tabItem {
                             Label("Settings", systemImage: "gear")
                         }
-                        .tag(4)
+                        .tag(3)
                 }
                 .tabViewStyle(.tabBarOnly)
             }
