@@ -199,6 +199,7 @@ final class ChapterService {
         debug.episodeTitle = episode.title
         debug.episodeGUID = episode.guid
         debug.foundationModelAvailable = Self.titlesSupported
+        debug.foundationModelAvailabilityDetail = Self.foundationModelAvailabilityDetail
         var outcome: ChapterGenerationOutcome = .failedPermanent
 
         if let oldURL = episode.localChaptersURL {
