@@ -325,42 +325,43 @@ final class DownloadManager: NSObject {
     /// Restores active downloads after app relaunch
     /// URLSession background tasks persist across app launches
     func restoreActiveDownloads(context: ModelContext) {
-        // Get all tasks from the background session
+        // getAllTasks callback runs on a background queue — capture task URLs there,
+        // then hop to MainActor before any ModelContext / Episode access.
         urlSession.getAllTasks { [weak self] tasks in
-            guard let self = self else { return }
-            
             let downloadTasks = tasks.compactMap { $0 as? URLSessionDownloadTask }
-            
-            for task in downloadTasks {
-                guard let url = task.originalRequest?.url else { continue }
-                
-                // Find the episode for this download
-                let predicate = #Predicate<Episode> { episode in
-                    episode.audioURL == url.absoluteString && 
-                    episode.localFilePath == nil
-                }
-                let descriptor = FetchDescriptor<Episode>(predicate: predicate)
-                
-                if let episodes = try? context.fetch(descriptor),
-                   let episode = episodes.first {
-                    // Restore the download task to our tracking
+            let pairs: [(URL, URLSessionDownloadTask)] = downloadTasks.compactMap { task in
+                guard let url = task.originalRequest?.url else { return nil }
+                return (url, task)
+            }
+
+            Task { @MainActor in
+                guard let self else { return }
+
+                for (url, task) in pairs {
+                    let urlString = url.absoluteString
+                    let predicate = #Predicate<Episode> { episode in
+                        episode.audioURL == urlString &&
+                        episode.localFilePath == nil
+                    }
+                    let descriptor = FetchDescriptor<Episode>(predicate: predicate)
+
+                    guard let episodes = try? context.fetch(descriptor),
+                          let episode = episodes.first else { continue }
+
                     self.activeDownloads[url] = DownloadTask(
                         episodeGUID: episode.guid,
                         task: task,
                         progressHandler: { [weak episode] progress in
-                            DispatchQueue.main.async {
+                            Task { @MainActor in
                                 episode?.downloadProgress = progress
                             }
                         }
                     )
-                    
-                    // Ensure episode has download progress set
-                    DispatchQueue.main.async {
-                        if episode.downloadProgress == nil {
-                            episode.downloadProgress = 0
-                        }
+
+                    if episode.downloadProgress == nil {
+                        episode.downloadProgress = 0
                     }
-                    
+
                     self.logger.info("Restored active download for episode: \(episode.title)")
                 }
             }

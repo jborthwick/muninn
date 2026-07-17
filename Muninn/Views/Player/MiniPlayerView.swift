@@ -104,8 +104,9 @@ struct MiniPlayerView: View {
     }
 
     private var progress: Double {
-        guard playerManager.duration > 0 else { return 0 }
-        return min(max(playerManager.currentTime / playerManager.duration, 0), 1)
+        let total = max(playerManager.duration, playerManager.currentEpisode?.duration ?? 0)
+        guard total > 0 else { return 0 }
+        return min(max(playerManager.effectivePlaybackPosition / total, 0), 1)
     }
 
     private var skipForwardIcon: String {

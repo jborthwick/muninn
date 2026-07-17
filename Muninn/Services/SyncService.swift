@@ -405,11 +405,17 @@ final class SyncService {
         }
 
         // Import episode states
+        let currentGUID = AudioPlayerManager.shared.currentEpisode?.guid
         for state in data.episodeStates {
             if let episode = episodesByGUID[state.guid] {
                 episode.isPlayed = state.isPlayed
                 episode.isStarred = state.isStarred
-                episode.playbackPosition = state.playbackPosition
+                // Don't clobber an in-progress / restored playhead with a stale cloud zero
+                if state.guid == currentGUID {
+                    episode.playbackPosition = max(episode.playbackPosition, state.playbackPosition)
+                } else {
+                    episode.playbackPosition = state.playbackPosition
+                }
             }
         }
 

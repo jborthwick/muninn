@@ -585,14 +585,18 @@ private struct ProgressSectionView: View {
     @State private var dragTime: TimeInterval = 0
 
     private var displayTime: TimeInterval {
-        isDragging ? dragTime : playerManager.currentTime
+        isDragging ? dragTime : playerManager.effectivePlaybackPosition
+    }
+
+    private var displayDuration: TimeInterval {
+        max(playerManager.duration, playerManager.currentEpisode?.duration ?? 0, 1)
     }
 
     var body: some View {
         VStack(spacing: 4) {
             Slider(
                 value: Binding(
-                    get: { isDragging ? dragTime : playerManager.currentTime },
+                    get: { isDragging ? dragTime : playerManager.effectivePlaybackPosition },
                     set: { newValue in
                         dragTime = newValue
                         if !isDragging {
@@ -601,11 +605,11 @@ private struct ProgressSectionView: View {
                         }
                     }
                 ),
-                in: 0...max(playerManager.duration, 1),
+                in: 0...displayDuration,
                 onEditingChanged: { editing in
                     if editing {
                         if !isDragging {
-                            dragTime = playerManager.currentTime
+                            dragTime = playerManager.effectivePlaybackPosition
                             isDragging = true
                             playerManager.beginScrubbing()
                         }
@@ -627,7 +631,7 @@ private struct ProgressSectionView: View {
 
                 Spacer()
 
-                Text((playerManager.duration - displayTime).formattedRemaining)
+                Text((displayDuration - displayTime).formattedRemaining)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
@@ -650,7 +654,7 @@ private struct ProgressSectionView: View {
                 // to accommodate the thumb circle.
                 let trackInset: CGFloat = 12
                 let trackWidth = geo.size.width - trackInset * 2
-                let currentTime = isDragging ? dragTime : playerManager.currentTime
+                let currentTime = isDragging ? dragTime : playerManager.effectivePlaybackPosition
 
                 // Skip the first chapter (starts at 0 = left edge of track)
                 ForEach(chapters.dropFirst()) { chapter in

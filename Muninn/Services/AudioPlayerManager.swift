@@ -36,10 +36,15 @@ final class AudioPlayerManager {
     private(set) var duration: TimeInterval = 0
 
     /// Best-known playhead when AVPlayer isn't loaded or hasn't seeked yet (e.g. restored session).
+    /// UserDefaults `lastPlaybackPosition` is only applied when it belongs to this episode.
     var effectivePlaybackPosition: TimeInterval {
         guard let episode = currentEpisode else { return 0 }
-        let saved = UserDefaults.standard.double(forKey: Keys.lastPlaybackPosition)
-        return max(currentTime, episode.playbackPosition, saved)
+        var position = max(currentTime, episode.playbackPosition)
+        if UserDefaults.standard.string(forKey: Keys.lastEpisodeGuid) == episode.guid {
+            let saved = UserDefaults.standard.double(forKey: Keys.lastPlaybackPosition)
+            position = max(position, saved)
+        }
+        return position
     }
 
     /// True while the Now Playing scrubber is being dragged. Transcript UI uses this
@@ -54,6 +59,9 @@ final class AudioPlayerManager {
         return seconds
     }
     private(set) var isLoading = false
+    /// True from player creation until the initial restore seek finishes (or is skipped).
+    /// Prevents the time observer from writing AVPlayer's pre-seek 0 over a restored playhead.
+    private var isAwaitingInitialSeek = false
     // Global default speed (saved to UserDefaults)
     var globalPlaybackSpeed: Double {
         didSet {
@@ -238,8 +246,12 @@ final class AudioPlayerManager {
         StatsService.shared.startListening(episode: episode)
 
         currentEpisode = episode
+        // Don't carry the previous episode's playhead into seek / UI for this one
+        currentTime = episode.playbackPosition
+        duration = episode.duration ?? 0
         updateArtworkColor(for: episode)
         isLoading = true
+        isAwaitingInitialSeek = true
 
         // Activate audio session when starting playback
         activateAudioSession()
@@ -248,10 +260,12 @@ final class AudioPlayerManager {
         let playerItem = AVPlayerItem(url: url)
         player = AVPlayer(playerItem: playerItem)
 
-        // Observe status
+        // Observe status — hop via Task/@MainActor and ignore stale items
         statusObserver = playerItem.observe(\.status, options: [.new]) { [weak self] item, _ in
-            DispatchQueue.main.async {
-                self?.handleStatusChange(item.status, for: item)
+            let status = item.status
+            Task { @MainActor [weak self] in
+                guard let self, self.player?.currentItem === item else { return }
+                self.handleStatusChange(status, for: item)
             }
         }
 
@@ -278,19 +292,23 @@ final class AudioPlayerManager {
             let itemDuration = item.duration.seconds
             duration = (itemDuration.isNaN || itemDuration.isInfinite) ? 0 : itemDuration
 
-            // Seek to saved position
-            if let episode = currentEpisode, episode.playbackPosition > 0 {
-                // Validate position is within bounds
-                let validPosition = min(episode.playbackPosition, max(duration - 1, 0))
-                if validPosition > 0 {
-                    seek(to: validPosition)
+            // Seek to best-known restored position, then start playback from completion
+            let target = effectivePlaybackPosition
+            let validPosition = min(target, max(duration - 1, 0))
+            if validPosition > 0 {
+                seek(to: validPosition) { [weak self] in
+                    self?.isAwaitingInitialSeek = false
+                    self?.resume()
+                    self?.updateNowPlayingInfo()
                 }
+            } else {
+                isAwaitingInitialSeek = false
+                resume()
+                updateNowPlayingInfo()
             }
-
-            resume()
-            updateNowPlayingInfo()
         case .failed:
             isLoading = false
+            isAwaitingInitialSeek = false
             let errorMessage = item.error?.localizedDescription ?? "unknown error"
             logger.error("Playback failed: \(errorMessage)")
             
@@ -310,6 +328,11 @@ final class AudioPlayerManager {
             if let episode = currentEpisode {
                 play(episode)
             }
+            return
+        }
+
+        // Still loading / seeking to restored position — don't start from 0
+        if isLoading || isAwaitingInitialSeek {
             return
         }
 
@@ -343,6 +366,7 @@ final class AudioPlayerManager {
         player?.pause()
         player = nil
         isPlaying = false
+        isAwaitingInitialSeek = false
         currentTime = 0
         duration = 0
         clearNowPlayingInfo()
@@ -381,20 +405,34 @@ final class AudioPlayerManager {
         }
     }
 
-    func seek(to time: TimeInterval) {
+    func seek(to time: TimeInterval, completion: (() -> Void)? = nil) {
         // Validate time is not NaN or infinite
         guard !time.isNaN && !time.isInfinite && time >= 0 else {
             logger.warning("Invalid seek time: \(time)")
+            completion?()
             return
         }
         
-        // Clamp to valid range
-        let validTime = min(max(time, 0), duration)
+        // Clamp to valid range (when duration unknown, still seek to requested time)
+        let validTime = duration > 0 ? min(max(time, 0), duration) : max(time, 0)
         
         let cmTime = CMTime(seconds: validTime, preferredTimescale: 600)
-        player?.seek(to: cmTime, toleranceBefore: .zero, toleranceAfter: .zero)
         currentTime = validTime
         updateNowPlayingInfo()
+
+        guard let player else {
+            completion?()
+            return
+        }
+        player.seek(to: cmTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+            Task { @MainActor in
+                if finished {
+                    self?.currentTime = validTime
+                    self?.updateNowPlayingInfo()
+                }
+                completion?()
+            }
+        }
     }
 
     /// Marks the scrubber as active so transcript highlighting can pause.
@@ -431,7 +469,7 @@ final class AudioPlayerManager {
         sleepTimerRemaining = TimeInterval(minutes * 60)
 
         sleepTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated {
+            Task { @MainActor in
                 guard let self, let endTime = self.sleepTimerEndTime else { return }
                 let remaining = endTime.timeIntervalSinceNow
                 if remaining <= 0 {
@@ -472,6 +510,7 @@ final class AudioPlayerManager {
         player = nil
         currentEpisode = nil
         isPlaying = false
+        isAwaitingInitialSeek = false
         currentTime = 0
         duration = 0
         clearNowPlayingInfo()
@@ -592,7 +631,7 @@ final class AudioPlayerManager {
         // This avoids CoreAudio AudioDeviceGetCurrentTime calls that flood the simulator console.
         timeObserverTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
-                if let self, let player = self.player {
+                if let self, let player = self.player, !self.isAwaitingInitialSeek, !self.isLoading {
                     let newTime = player.currentTime().seconds
                     if !newTime.isNaN && !newTime.isInfinite && newTime >= 0 {
                         self.currentTime = newTime
@@ -620,21 +659,21 @@ final class AudioPlayerManager {
         let commandCenter = MPRemoteCommandCenter.shared()
 
         commandCenter.playCommand.addTarget { [weak self] _ in
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self?.resume()
             }
             return .success
         }
 
         commandCenter.pauseCommand.addTarget { [weak self] _ in
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self?.pause()
             }
             return .success
         }
 
         commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self?.togglePlayPause()
             }
             return .success
@@ -642,7 +681,7 @@ final class AudioPlayerManager {
 
         commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: skipForwardInterval)]
         commandCenter.skipForwardCommand.addTarget { [weak self] _ in
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self?.skipForward()
             }
             return .success
@@ -650,7 +689,7 @@ final class AudioPlayerManager {
 
         commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: skipBackwardInterval)]
         commandCenter.skipBackwardCommand.addTarget { [weak self] _ in
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self?.skipBackward()
             }
             return .success
@@ -660,7 +699,7 @@ final class AudioPlayerManager {
             guard let event = event as? MPChangePlaybackPositionCommandEvent else {
                 return .commandFailed
             }
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self?.seek(to: event.positionTime)
             }
             return .success
@@ -825,8 +864,10 @@ final class AudioPlayerManager {
             UserDefaults.standard.removeObject(forKey: Keys.lastPlaybackPosition)
             return
         }
+        // Prefer max so a transient 0 during load doesn't wipe a known position
+        let position = max(currentTime, episode.playbackPosition)
         UserDefaults.standard.set(episode.guid, forKey: Keys.lastEpisodeGuid)
-        UserDefaults.standard.set(currentTime, forKey: Keys.lastPlaybackPosition)
+        UserDefaults.standard.set(position, forKey: Keys.lastPlaybackPosition)
     }
 
     #if DEBUG
@@ -971,6 +1012,7 @@ final class AudioPlayerManager {
             currentEpisode = nil
             currentTime = 0
             duration = 0
+            isAwaitingInitialSeek = false
             clearNowPlayingInfo()
             deactivateAudioSession()
             return
@@ -989,6 +1031,7 @@ final class AudioPlayerManager {
             currentEpisode = nil
             currentTime = 0
             duration = 0
+            isAwaitingInitialSeek = false
             clearNowPlayingInfo()
             deactivateAudioSession()
         }
