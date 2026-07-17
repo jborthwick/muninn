@@ -749,7 +749,11 @@ struct PodcastDetailView: View {
 
     private func batchMarkPlayed(_ played: Bool) {
         for episode in selectedEpisodes {
-            episode.isPlayed = played
+            if played {
+                AudioPlayerManager.shared.markPlayed(episode)
+            } else {
+                episode.isPlayed = false
+            }
         }
         exitSelectionMode()
     }

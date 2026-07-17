@@ -74,30 +74,56 @@ final class QueueManager {
         }
     }
 
-    /// Removes an episode from the queue
+    /// Removes an episode from the queue.
+    /// Always saves the context so callers that mutate the episode first
+    /// (e.g. mark-played) still persist even when nothing was queued.
     func removeFromQueue(_ episode: Episode) {
         guard let context = modelContext else { return }
 
-        let descriptor = FetchDescriptor<QueueItem>()
-        let items: [QueueItem]
-        do {
-            items = try context.fetch(descriptor)
-        } catch {
-            logger.error("Failed to fetch queue items: \(error.localizedDescription)")
-            return
+        var didRemove = false
+
+        // Prefer the relationship — avoids missing items if a full-table fetch is stale.
+        for item in episode.queueItems {
+            context.delete(item)
+            didRemove = true
         }
 
-        for item in items {
-            if item.episode?.guid == episode.guid {
+        // Sweep by GUID in case the inverse relationship wasn't wired on older items.
+        let descriptor = FetchDescriptor<QueueItem>()
+        if let items = try? context.fetch(descriptor) {
+            for item in items where item.episode?.guid == episode.guid {
                 context.delete(item)
+                didRemove = true
             }
         }
 
         do {
             try context.save()
-            logger.info("Removed episode from queue: \(episode.title)")
+            if didRemove {
+                logger.info("Removed episode from queue: \(episode.title)")
+            }
         } catch {
             logger.error("Failed to save queue removal: \(error.localizedDescription)")
+        }
+    }
+
+    /// Drops any queue entries whose episode is already marked played.
+    func removePlayedEpisodes() {
+        guard let context = modelContext else { return }
+
+        let items = fetchQueueItems()
+        let played = items.filter { $0.episode?.isPlayed == true }
+        guard !played.isEmpty else { return }
+
+        for item in played {
+            context.delete(item)
+        }
+
+        do {
+            try context.save()
+            logger.info("Removed \(played.count) played episode(s) from queue")
+        } catch {
+            logger.error("Failed to save played-queue cleanup: \(error.localizedDescription)")
         }
     }
 

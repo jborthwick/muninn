@@ -167,11 +167,10 @@ struct EpisodeContextMenu: View {
 
         // Mark played/unplayed
         Button {
-            if !episode.isPlayed &&
-               AudioPlayerManager.shared.currentEpisode?.guid == episode.guid {
-                AudioPlayerManager.shared.markPlayedAndAdvance()
+            if episode.isPlayed {
+                episode.isPlayed = false
             } else {
-                episode.isPlayed.toggle()
+                AudioPlayerManager.shared.markPlayed(episode)
             }
         } label: {
             Label(

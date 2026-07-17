@@ -71,6 +71,9 @@ struct MuninnApp: App {
                     AutoTranscriptionQueue.shared.setModelContext(context)
                     AudioPlayerManager.shared.setModelContext(context)
 
+                    // Drop stale played episodes left in the queue by older auto-advance bugs
+                    QueueManager.shared.removePlayedEpisodes()
+
                     // Migrate old absolute paths to relative filenames
                     DownloadManager.shared.migrateLocalPaths(context: context)
 

@@ -212,7 +212,11 @@ struct EpisodeDetailView: View {
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
                         Button {
-                            episode.isPlayed.toggle()
+                            if episode.isPlayed {
+                                episode.isPlayed = false
+                            } else {
+                                AudioPlayerManager.shared.markPlayed(episode)
+                            }
                         } label: {
                             Label(
                                 episode.isPlayed ? "Mark Unplayed" : "Mark Played",

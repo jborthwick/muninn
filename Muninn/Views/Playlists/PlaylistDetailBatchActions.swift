@@ -35,7 +35,11 @@ enum PlaylistDetailBatchActions {
 
     static func markPlayed(_ episodes: [Episode], played: Bool, context: ModelContext) {
         for episode in episodes {
-            episode.isPlayed = played
+            if played {
+                AudioPlayerManager.shared.markPlayed(episode)
+            } else {
+                episode.isPlayed = false
+            }
         }
         try? context.save()
     }

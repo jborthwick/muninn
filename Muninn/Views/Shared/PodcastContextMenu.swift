@@ -184,7 +184,7 @@ struct PodcastContextMenu: View {
 
     private func markAllAsPlayed() {
         for episode in podcast.episodes {
-            episode.isPlayed = true
+            AudioPlayerManager.shared.markPlayed(episode)
         }
         try? modelContext.save()
     }

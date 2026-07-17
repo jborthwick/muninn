@@ -27,6 +27,8 @@ final class AudioPlayerManager {
 
     private static let smartResumePauseThreshold: TimeInterval = 10 * 60
     private static let smartResumeRewindSeconds: TimeInterval = 15
+    /// How often to persist playhead while audio is actively playing (crash / kill safety).
+    private static let positionPersistInterval: TimeInterval = 10
 
     // MARK: - Observable State
 
@@ -39,6 +41,10 @@ final class AudioPlayerManager {
     /// UserDefaults `lastPlaybackPosition` is only applied when it belongs to this episode.
     var effectivePlaybackPosition: TimeInterval {
         guard let episode = currentEpisode else { return 0 }
+        // Finished episodes intentionally sit at 0 — don't resurrect a stale near-end snapshot.
+        if episode.isPlayed && episode.playbackPosition == 0 {
+            return currentTime
+        }
         var position = max(currentTime, episode.playbackPosition)
         if UserDefaults.standard.string(forKey: Keys.lastEpisodeGuid) == episode.guid {
             let saved = UserDefaults.standard.double(forKey: Keys.lastPlaybackPosition)
@@ -125,6 +131,7 @@ final class AudioPlayerManager {
     private var cachedArtwork: MPMediaItemArtwork?
     private var cachedArtworkURL: String?
     private var modelContext: ModelContext?
+    private var lastPositionPersistDate: Date = .distantPast
 
     func setModelContext(_ context: ModelContext) {
         modelContext = context
@@ -150,14 +157,25 @@ final class AudioPlayerManager {
     }
 
     private func setupAppLifecycleObservers() {
-        // Save state when app goes to background
+        // Persist playhead when leaving the foreground (lock screen / multitasking).
+        // Audio may keep playing; periodic saves continue from there.
         NotificationCenter.default.addObserver(
             forName: UIApplication.willResignActiveNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.saveLastEpisode()
+                self?.saveCurrentPosition(markPlayedNearEnd: false)
+            }
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.saveCurrentPosition(markPlayedNearEnd: false)
             }
         }
 
@@ -229,9 +247,15 @@ final class AudioPlayerManager {
         }
 
         if let previous = currentEpisode, previous.guid != episode.guid {
-            let remaining = remainingFraction(for: previous)
-            saveCurrentPosition()
-            handleQueueOnSwitch(from: previous, remainingFraction: remaining)
+            // Already finished (mark-played / natural end) — never re-queue on auto-advance.
+            if !previous.isPlayed {
+                let remaining = remainingFraction(for: previous)
+                saveCurrentPosition()
+                // Near-end save may have just marked it played — don't re-queue in that case.
+                if !previous.isPlayed {
+                    handleQueueOnSwitch(from: previous, remainingFraction: remaining)
+                }
+            }
         } else {
             saveCurrentPosition()
         }
@@ -347,19 +371,22 @@ final class AudioPlayerManager {
         StatsService.shared.resumeListening()
     }
 
+    /// Marks an episode as played: zeros progress, triggers completion cleanup, removes from queue.
+    /// If it's the current episode, also stops playback and advances.
+    func markPlayed(_ episode: Episode) {
+        if currentEpisode?.guid == episode.guid {
+            markPlayedAndAdvance()
+            return
+        }
+        applyPlayedCompletion(to: episode)
+    }
+
     /// Marks the current episode as played, posts completion notification,
     /// cleans up the player, and advances to the next queue item.
     func markPlayedAndAdvance() {
         guard let episode = currentEpisode else { return }
-        episode.isPlayed = true
-        episode.playbackPosition = 0
-
-        // Notify for download cleanup
-        NotificationCenter.default.post(
-            name: .episodePlaybackCompleted,
-            object: nil,
-            userInfo: ["guid": episode.guid]
-        )
+        applyPlayedCompletion(to: episode)
+        saveLastEpisode()
 
         StatsService.shared.endCurrentSession()
         clearObservers()
@@ -369,17 +396,29 @@ final class AudioPlayerManager {
         isAwaitingInitialSeek = false
         currentTime = 0
         duration = 0
+        // Clear before auto-advance so play(next) doesn't treat this as an interruption and re-queue it.
+        currentEpisode = nil
         clearNowPlayingInfo()
 
-        // Auto-advance to next queue item
         if let nextEpisode = QueueManager.shared.popNextEpisode() {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                 self?.play(nextEpisode)
             }
         } else {
-            currentEpisode = nil
             deactivateAudioSession()
         }
+    }
+
+    /// Shared played-completion side effects (progress, cleanup notification, queue).
+    private func applyPlayedCompletion(to episode: Episode) {
+        episode.isPlayed = true
+        episode.playbackPosition = 0
+        NotificationCenter.default.post(
+            name: .episodePlaybackCompleted,
+            object: nil,
+            userInfo: ["guid": episode.guid]
+        )
+        QueueManager.shared.removeFromQueue(episode)
     }
 
     /// Immediately sets the player rate for speed preview (without saving)
@@ -428,6 +467,7 @@ final class AudioPlayerManager {
             Task { @MainActor in
                 if finished {
                     self?.currentTime = validTime
+                    self?.saveCurrentPosition(markPlayedNearEnd: false)
                     self?.updateNowPlayingInfo()
                 }
                 completion?()
@@ -636,6 +676,7 @@ final class AudioPlayerManager {
                     if !newTime.isNaN && !newTime.isInfinite && newTime >= 0 {
                         self.currentTime = newTime
                     }
+                    self.persistPositionIfNeeded()
                 }
                 try? await Task.sleep(for: .seconds(0.5))
             }
@@ -801,18 +842,28 @@ final class AudioPlayerManager {
 
     // MARK: - Position Saving
 
-    private func saveCurrentPosition() {
-        guard let episode = currentEpisode, currentTime > 0 else { return }
-        episode.playbackPosition = currentTime
+    /// Throttled persist while playing so a crash only loses ~`positionPersistInterval` of progress.
+    private func persistPositionIfNeeded() {
+        guard isPlaying, currentEpisode != nil, currentTime > 0 else { return }
+        let now = Date()
+        guard now.timeIntervalSince(lastPositionPersistDate) >= Self.positionPersistInterval else { return }
+        lastPositionPersistDate = now
+        saveCurrentPosition(markPlayedNearEnd: false)
+    }
 
-        // Mark as played if near the end (within 30 seconds)
-        if duration > 0 && currentTime >= duration - 30 {
-            episode.isPlayed = true
-            episode.playbackPosition = 0
+    private func saveCurrentPosition(markPlayedNearEnd: Bool = true) {
+        guard let episode = currentEpisode, currentTime > 0 else { return }
+
+        // Only on pause/stop/switch — not mid-playback near the end, or we'd zero the playhead early.
+        if markPlayedNearEnd, duration > 0, currentTime >= duration - 30 {
+            applyPlayedCompletion(to: episode)
+        } else {
+            episode.playbackPosition = currentTime
         }
 
         // Save last episode GUID for restoration on next launch
         saveLastEpisode()
+        lastPositionPersistDate = Date()
     }
 
     /// Share of playback time left, used when switching episodes to decide re-queue vs finish.
@@ -845,16 +896,10 @@ final class AudioPlayerManager {
 
     /// Treat a switched-away episode as finished: mark played and drop from queue.
     private func markFinishedOnSwitch(_ episode: Episode) {
-        episode.isPlayed = true
-        episode.playbackPosition = 0
-
-        NotificationCenter.default.post(
-            name: .episodePlaybackCompleted,
-            object: nil,
-            userInfo: ["guid": episode.guid]
-        )
-
-        QueueManager.shared.removeFromQueue(episode)
+        applyPlayedCompletion(to: episode)
+        if currentEpisode?.guid == episode.guid {
+            saveLastEpisode()
+        }
     }
 
     private func saveLastEpisode() {
@@ -864,9 +909,11 @@ final class AudioPlayerManager {
             UserDefaults.standard.removeObject(forKey: Keys.lastPlaybackPosition)
             return
         }
-        // Prefer max so a transient 0 during load doesn't wipe a known position
-        let position = max(currentTime, episode.playbackPosition)
         UserDefaults.standard.set(episode.guid, forKey: Keys.lastEpisodeGuid)
+        // Finished episodes are stored at 0 — don't write live currentTime over that.
+        let position = (episode.isPlayed && episode.playbackPosition == 0)
+            ? 0
+            : max(currentTime, episode.playbackPosition)
         UserDefaults.standard.set(position, forKey: Keys.lastPlaybackPosition)
     }
 
@@ -911,9 +958,18 @@ final class AudioPlayerManager {
         currentEpisode = episode
         updateArtworkColor(for: episode)
 
-        // Restore position — SwiftData is updated during playback; UserDefaults is a background snapshot.
-        let savedPosition = UserDefaults.standard.double(forKey: Keys.lastPlaybackPosition)
-        currentTime = max(savedPosition, episode.playbackPosition)
+        // Restore from the newer of SwiftData vs UserDefaults (periodic + lifecycle snapshots).
+        // Never resurrect a finished episode from a stale near-end UserDefaults value.
+        if episode.isPlayed && episode.playbackPosition == 0 {
+            currentTime = 0
+            UserDefaults.standard.set(0.0, forKey: Keys.lastPlaybackPosition)
+        } else {
+            let savedPosition = UserDefaults.standard.double(forKey: Keys.lastPlaybackPosition)
+            currentTime = max(savedPosition, episode.playbackPosition)
+            if currentTime > episode.playbackPosition {
+                episode.playbackPosition = currentTime
+            }
+        }
 
         // Get duration from episode if available
         duration = episode.duration ?? 0
@@ -992,16 +1048,9 @@ final class AudioPlayerManager {
 
     private func handlePlaybackEnded() {
         guard let episode = currentEpisode else { return }
-        episode.isPlayed = true
-        episode.playbackPosition = 0
+        applyPlayedCompletion(to: episode)
         isPlaying = false
-
-        // Notify for download cleanup
-        NotificationCenter.default.post(
-            name: .episodePlaybackCompleted,
-            object: nil,
-            userInfo: ["guid": episode.guid]
-        )
+        saveLastEpisode()
 
         // Check if sleep timer is set to end of episode
         if isSleepTimerEndOfEpisode {
@@ -1018,21 +1067,20 @@ final class AudioPlayerManager {
             return
         }
 
-        // Auto-advance to next queue item
+        // Clear before auto-advance so play(next) doesn't re-queue this finished episode.
+        clearObservers()
+        player = nil
+        currentEpisode = nil
+        currentTime = 0
+        duration = 0
+        isAwaitingInitialSeek = false
+        clearNowPlayingInfo()
+
         if let nextEpisode = QueueManager.shared.popNextEpisode() {
-            // Small delay before playing next
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                 self?.play(nextEpisode)
             }
         } else {
-            // No more items in queue - clear player
-            clearObservers()
-            player = nil
-            currentEpisode = nil
-            currentTime = 0
-            duration = 0
-            isAwaitingInitialSeek = false
-            clearNowPlayingInfo()
             deactivateAudioSession()
         }
     }
