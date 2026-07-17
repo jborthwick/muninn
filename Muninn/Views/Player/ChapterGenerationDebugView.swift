@@ -30,7 +30,10 @@ struct ChapterGenerationDebugView: View {
             debugRow("Duration", ChapterTitleGenerator.formatTime(debug.episodeDuration))
             debugRow("Source", debug.source)
             debugRow("Succeeded", debug.succeeded ? "Yes" : "No")
-            debugRow("Foundation Model", debug.foundationModelAvailable ? "Available" : "Unavailable")
+            debugRow("Foundation Model", foundationModelAvailabilityLabel)
+            if let detail = debug.foundationModelAvailabilityDetail, !detail.isEmpty {
+                debugRow("FM detail", detail)
+            }
             if debug.segmentCount > 0 {
                 debugRow("Transcript segments", "\(debug.segmentCount)")
             }
@@ -125,6 +128,15 @@ struct ChapterGenerationDebugView: View {
                 }
             }
         }
+    }
+
+    private var foundationModelAvailabilityLabel: String {
+        guard let available = debug.foundationModelAvailable else {
+            return debug.source == "persisted"
+                ? "Unknown (persisted snapshot)"
+                : "Unknown"
+        }
+        return available ? "Available" : "Unavailable"
     }
 
     private func debugRow(_ label: String, _ value: String, highlight: Bool = false) -> some View {

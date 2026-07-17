@@ -90,13 +90,20 @@ final class AutoChapterQueue {
 
         Task {
             logger.info("Starting auto chapter generation for: \(episode.title)")
-            let success = await ChapterService.shared.generate(episode: episode, context: context)
-            if success {
+            let outcome = await ChapterService.shared.generate(episode: episode, context: context)
+            switch outcome {
+            case .succeeded:
                 logger.info("Auto chapter generation succeeded: \(episode.title)")
-                PendingWorkStore.removeChapter(guid: episode.guid)
-            } else {
-                logger.warning("Auto chapter generation failed: \(episode.title)")
-                PendingWorkStore.removeChapter(guid: episode.guid)
+            case .failedPermanent:
+                logger.warning("Auto chapter generation failed permanently: \(episode.title)")
+            case .failedRetryable:
+                // Keep PendingWorkStore entry, but do not re-queue here. Immediate
+                // re-enqueue can cancel/restart-loop if generation is interrupted
+                // again (e.g. background task expiry). become-active and
+                // BGProcessingTask call resumePersistedWork instead.
+                logger.warning(
+                    "Auto chapter generation interrupted — keeping pending for retry: \(episode.title)"
+                )
             }
             isProcessing = false
             processNextIfNeeded()

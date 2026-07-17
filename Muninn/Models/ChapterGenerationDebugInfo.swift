@@ -28,7 +28,11 @@ struct ChapterGenerationDebugInfo: Equatable {
     var segmentCount = 0
     var boundaryCount = 0
     var boundariesDescription = ""
-    var foundationModelAvailable = false
+    /// Snapshot from the generation run. Nil for reconstructed "persisted" debug,
+    /// which never observed live model availability.
+    var foundationModelAvailable: Bool?
+    /// Optional detail from `SystemLanguageModel.availability` at generation time.
+    var foundationModelAvailabilityDetail: String?
     var beats: [ChapterBeatDebugEntry] = []
     var overview = ""
     var overviewError: String?
