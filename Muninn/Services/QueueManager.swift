@@ -107,26 +107,6 @@ final class QueueManager {
         }
     }
 
-    /// Drops any queue entries whose episode is already marked played.
-    func removePlayedEpisodes() {
-        guard let context = modelContext else { return }
-
-        let items = fetchQueueItems()
-        let played = items.filter { $0.episode?.isPlayed == true }
-        guard !played.isEmpty else { return }
-
-        for item in played {
-            context.delete(item)
-        }
-
-        do {
-            try context.save()
-            logger.info("Removed \(played.count) played episode(s) from queue")
-        } catch {
-            logger.error("Failed to save played-queue cleanup: \(error.localizedDescription)")
-        }
-    }
-
     /// Checks if an episode is in the queue
     func isInQueue(_ episode: Episode) -> Bool {
         let items = fetchQueueItems()

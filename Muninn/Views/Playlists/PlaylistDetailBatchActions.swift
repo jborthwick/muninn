@@ -1,5 +1,6 @@
 import SwiftData
 
+@MainActor
 enum PlaylistDetailBatchActions {
     static func playNext(_ episodes: [Episode]) {
         for episode in episodes.reversed() {

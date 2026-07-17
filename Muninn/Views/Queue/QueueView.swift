@@ -90,9 +90,6 @@ struct QueueView: View {
             .sheet(item: $selectedEpisode) { episode in
                 EpisodeDetailView(episode: episode)
             }
-            .onAppear {
-                QueueManager.shared.removePlayedEpisodes()
-            }
         }
     }
 
