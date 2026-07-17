@@ -1,6 +1,5 @@
 import Foundation
 import SwiftData
-import UIKit
 import os
 
 /// Sequential queue for auto-generating chapters and summaries after transcription.
