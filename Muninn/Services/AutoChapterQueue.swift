@@ -97,15 +97,13 @@ final class AutoChapterQueue {
             case .failedPermanent:
                 logger.warning("Auto chapter generation failed permanently: \(episode.title)")
             case .failedRetryable:
+                // Keep PendingWorkStore entry, but do not re-queue here. Immediate
+                // re-enqueue can cancel/restart-loop if generation is interrupted
+                // again (e.g. background task expiry). become-active and
+                // BGProcessingTask call resumePersistedWork instead.
                 logger.warning(
                     "Auto chapter generation interrupted — keeping pending for retry: \(episode.title)"
                 )
-                // Avoid a tight failure loop while still inactive; become-active / BG task resumes.
-                if UIApplication.shared.applicationState == .active,
-                   !self.queue.contains(where: { $0.guid == episode.guid }) {
-                    self.queue.append(episode)
-                    self.syncQueuedGUIDs()
-                }
             }
             isProcessing = false
             processNextIfNeeded()
