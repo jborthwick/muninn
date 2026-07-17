@@ -1,20 +1,8 @@
 import SwiftUI
 import SwiftData
 
-// Environment key for mini player visibility
-private struct MiniPlayerVisibleKey: EnvironmentKey {
-    static let defaultValue: Bool = false
-}
-
-extension EnvironmentValues {
-    var miniPlayerVisible: Bool {
-        get { self[MiniPlayerVisibleKey.self] }
-        set { self[MiniPlayerVisibleKey.self] = newValue }
-    }
-}
-
 // Preference key: PodcastDetailView bubbles up selection state so ContentView
-// can slide the mini player out while the action bar slides in.
+// can hide the tab accessory while the action bar slides in.
 struct EpisodeSelectionActivePreference: PreferenceKey {
     static var defaultValue = false
     static func reduce(value: inout Bool, nextValue: () -> Bool) {
@@ -39,50 +27,45 @@ struct ContentView: View {
     }
 
     /// Mini player is hidden while episode selection is active so the two pills
-    /// don't overlap. Views that inset scroll content use this value.
+    /// don't overlap.
     private var effectiveMiniPlayerVisible: Bool {
         isMiniPlayerVisible && !episodeSelectionBarActive
     }
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            VStack(spacing: 0) {
-                TabView(selection: $selectedTab) {
-                    LibraryView()
-                        .tabItem {
-                            Label("Library", systemImage: "books.vertical")
-                        }
-                        .tag(0)
+            TabView(selection: $selectedTab) {
+                LibraryView()
+                    .tabItem {
+                        Label("Library", systemImage: "books.vertical")
+                    }
+                    .tag(0)
 
-                    PlaylistsView()
-                        .tabItem {
-                            Label("Playlists", systemImage: "music.note.list")
-                        }
-                        .tag(1)
+                PlaylistsView()
+                    .tabItem {
+                        Label("Playlists", systemImage: "music.note.list")
+                    }
+                    .tag(1)
 
-                    QueueView()
-                        .tabItem {
-                            Label("Queue", systemImage: "list.bullet")
-                        }
-                        .badge(queueItems.count)
-                        .tag(2)
+                QueueView()
+                    .tabItem {
+                        Label("Queue", systemImage: "list.bullet")
+                    }
+                    .badge(queueItems.count)
+                    .tag(2)
 
-                    SettingsView()
-                        .tabItem {
-                            Label("Settings", systemImage: "gear")
-                        }
-                        .tag(3)
-                }
-                .tabViewStyle(.tabBarOnly)
+                SettingsView()
+                    .tabItem {
+                        Label("Settings", systemImage: "gear")
+                    }
+                    .tag(3)
             }
-            .environment(\.miniPlayerVisible, effectiveMiniPlayerVisible)
-
-            // Mini player slides out when episode selection is active so it
-            // doesn't sit behind the selection action bar.
-            if effectiveMiniPlayerVisible {
-                MiniPlayerView(showNowPlaying: $showNowPlaying)
-                    .padding(.bottom, 57) // Tab bar height (49) + spacing (8)
-                    .transition(.move(edge: .bottom))
+            .tabViewStyle(.tabBarOnly)
+            .tabBarMinimizeBehavior(.onScrollDown)
+            .tabViewBottomAccessory {
+                if effectiveMiniPlayerVisible {
+                    MiniPlayerView(showNowPlaying: $showNowPlaying)
+                }
             }
 
             // Offline indicator
@@ -109,7 +92,7 @@ struct ContentView: View {
                     .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
-                .padding(.bottom, effectiveMiniPlayerVisible ? 105 : 55)
+                .padding(.bottom, 8)
                 .animation(.default, value: isSimulated)
             }
         }

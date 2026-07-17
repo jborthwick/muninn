@@ -3,7 +3,6 @@ import SwiftData
 
 struct DownloadsView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.miniPlayerVisible) private var miniPlayerVisible
 
     private var networkMonitor: NetworkMonitor { NetworkMonitor.shared }
 
@@ -158,7 +157,6 @@ struct DownloadsView: View {
                             }
                         }
                     }
-                    .contentMargins(.bottom, miniPlayerVisible ? 60 : 0, for: .scrollContent)
                 }
             }
             .navigationTitle("Downloads")

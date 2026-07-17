@@ -3,7 +3,6 @@ import SwiftData
 
 struct PlaylistsView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.miniPlayerVisible) private var miniPlayerVisible
     @Query(sort: \Folder.sortOrder) private var folders: [Folder]
     @Query(sort: \Playlist.sortOrder) private var playlists: [Playlist]
 
@@ -30,7 +29,6 @@ struct PlaylistsView: View {
                 }
             }
             .listStyle(.plain)
-            .contentMargins(.bottom, miniPlayerVisible ? 60 : 0, for: .scrollContent)
             .navigationTitle("Playlists")
             .navigationDestination(for: Playlist.self) { playlist in
                 PlaylistDetailView(playlist: playlist)

@@ -92,12 +92,12 @@ Muninn/
 - **App icon** — must be 8-bit RGB, no alpha channel. Alpha causes `CompileAssetCatalogVariant` failure at build time. Fix: `sips -s format jpeg icon.png --out /tmp/t.jpg && sips -s format png /tmp/t.jpg --out icon.png`
 - **BGTask registration** — `BGTaskSchedulerPermittedIdentifiers` in `Info.plist` must list every task ID string. Current identifiers include `com.personal.muninn.refresh`, `com.personal.muninn.processing`, and `com.personal.muninn.prepare.*`. `UIBackgroundModes` needs both `fetch` and `processing`.
 - **BGContinuedProcessingTask** — iOS requires a launch handler registered for the exact submitted identifier before calling `submit`; the wildcard permitted identifier alone is not enough. `EpisodeContinuedProcessing` dynamically registers per-job identifiers.
-- **iOS 26 APIs** — `SpeechTranscriber` / `SpeechAnalyzer` require `#available(iOS 26, *)` guards and `nonisolated` on helpers called from `Task.detached`.
+- **iOS 26 APIs** — `SpeechTranscriber` / `SpeechAnalyzer` and Foundation Models still need device capability checks (`SpeechTranscriber.isAvailable`, `SystemLanguageModel.default.isAvailable`). Use `nonisolated` on helpers called from `Task.detached`.
 
 ## Config
 
 - **Bundle ID:** `com.personal.muninn`
-- **Deployment target:** iOS 18.0
+- **Deployment target:** iOS 26.0
 - **Swift version:** 5.9
 - **Development team:** set in `project.yml` → `DEVELOPMENT_TEAM`
 - **iCloud:** enabled via `Muninn/Muninn.entitlements` (container: `iCloud.com.personal.muninn`). Requires a paid Apple Developer account with the iCloud container registered in the portal. SwiftData uses `cloudKitDatabase: .none` — sync is handled independently by `SyncService` via JSON files in iCloud Drive, not CloudKit.

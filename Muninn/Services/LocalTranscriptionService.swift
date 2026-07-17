@@ -23,25 +23,18 @@ final class LocalTranscriptionService {
 
     // MARK: - Availability
 
-    /// True on iOS 26+ with a device that supports SpeechTranscriber.
+    /// True on devices that support SpeechTranscriber.
     nonisolated static var isSupported: Bool {
-        if #available(iOS 26, *) {
-            return SpeechTranscriber.isAvailable
-        }
-        return false
+        SpeechTranscriber.isAvailable
     }
 
     // MARK: - Public API
 
-    /// Transcribes the episode's downloaded audio file using SpeechAnalyzer (iOS 26+).
+    /// Transcribes the episode's downloaded audio file using SpeechAnalyzer.
     /// Saves the result to disk and sets `episode.localTranscriptPath`.
     /// Returns `false` if transcription was skipped (already in progress or unavailable).
     @discardableResult
     func transcribe(episode: Episode, context: ModelContext) async -> Bool {
-        guard #available(iOS 26, *) else {
-            error = "On-device transcription requires iOS 26 or later."
-            return false
-        }
         guard let audioURL = episode.localFileURL else {
             error = "Episode must be downloaded before it can be transcribed."
             return false
@@ -126,9 +119,8 @@ final class LocalTranscriptionService {
         }
     }
 
-    // MARK: - SpeechAnalyzer (iOS 26+)
+    // MARK: - SpeechAnalyzer
 
-    @available(iOS 26, *)
     nonisolated private func runSpeechAnalyzer(
         audioURL: URL,
         estimatedDuration: TimeInterval,

@@ -40,10 +40,7 @@ final class ChapterService {
     nonisolated static var isSupported: Bool { true }
 
     nonisolated static var titlesSupported: Bool {
-        if #available(iOS 26, *) {
-            return SystemLanguageModel.default.isAvailable
-        }
-        return false
+        SystemLanguageModel.default.isAvailable
     }
 
     // MARK: - Public API

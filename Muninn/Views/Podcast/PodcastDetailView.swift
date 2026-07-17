@@ -3,7 +3,6 @@ import SwiftData
 
 struct PodcastDetailView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.miniPlayerVisible) private var miniPlayerVisible
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \Folder.sortOrder) private var allFolders: [Folder]
     @Query(sort: \Playlist.sortOrder) private var allPlaylists: [Playlist]
@@ -67,7 +66,6 @@ struct PodcastDetailView: View {
             episodesSection
         }
         .listStyle(.plain)
-        .contentMargins(.bottom, miniPlayerVisible ? 60 : 0, for: .scrollContent)
         .navigationTitle(podcast.title)
         .navigationBarTitleDisplayMode(.inline)
         .refreshable {

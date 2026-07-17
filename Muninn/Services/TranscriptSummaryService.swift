@@ -91,7 +91,7 @@ final class TranscriptSummaryService {
         }
         guard !summaries.isEmpty else { return ("", nil) }
 
-        if #available(iOS 26, *), SystemLanguageModel.default.isAvailable {
+        if SystemLanguageModel.default.isAvailable {
             do {
                 let text = try await overviewWithModel(summaries: summaries, episodeTitle: episodeTitle)
                 return (text, nil)
@@ -162,7 +162,7 @@ final class TranscriptSummaryService {
         let prompt = "Chapters heard so far:\n\(beatList)\n\nWrite the story so far in 2–4 sentences."
         debug.recapPrompt = prompt
 
-        if #available(iOS 26, *), SystemLanguageModel.default.isAvailable {
+        if SystemLanguageModel.default.isAvailable {
             do {
                 let result = try await compressBeatsToRecap(
                     beatLines: build.beatLines,
@@ -240,7 +240,7 @@ final class TranscriptSummaryService {
             return entry(beat: beat, source: "roll_call", flaggedRollCall: true, usedChunking: false, error: nil)
         }
 
-        if #available(iOS 26, *), SystemLanguageModel.default.isAvailable {
+        if SystemLanguageModel.default.isAvailable {
             do {
                 let modelResult = try await chapterBeatWithModel(
                     transcript: draft.transcript,
@@ -285,14 +285,12 @@ final class TranscriptSummaryService {
         return String(trimmed.prefix(limit)) + "…"
     }
 
-    @available(iOS 26, *)
     private struct ChapterModelResult {
         let beat: ChapterBeat
         let usedChunking: Bool
         let usedPermissiveFallback: Bool
     }
 
-    @available(iOS 26, *)
     private func chapterBeatWithModel(
         transcript: String,
         startTime: TimeInterval,
@@ -329,7 +327,6 @@ final class TranscriptSummaryService {
         }
     }
 
-    @available(iOS 26, *)
     private func chapterBeatWithGuidedGeneration(
         transcript: String,
         startTime: TimeInterval,
@@ -366,7 +363,6 @@ final class TranscriptSummaryService {
         return (ChapterBeat(summary: summary, title: finalTitle), usedChunking)
     }
 
-    @available(iOS 26, *)
     private func chapterBeatWithPermissiveString(
         transcript: String,
         startTime: TimeInterval,
@@ -398,7 +394,6 @@ final class TranscriptSummaryService {
         return (ChapterBeat(summary: summary, title: finalTitle), true)
     }
 
-    @available(iOS 26, *)
     private func chapterBeatFromChunks(
         transcript: String,
         startTime: TimeInterval,
@@ -467,7 +462,6 @@ final class TranscriptSummaryService {
         return response.content
     }
 
-    @available(iOS 26, *)
     private func makeChapterSession(episodeTitle: String, permissive: Bool) -> LanguageModelSession {
         let instructions = chapterBeatInstructions(episodeTitle: episodeTitle)
         if permissive {
@@ -477,7 +471,6 @@ final class TranscriptSummaryService {
         return LanguageModelSession(instructions: instructions)
     }
 
-    @available(iOS 26, *)
     private func chapterBeatInstructions(episodeTitle: String) -> String {
         """
         You summarize one podcast chapter and write a concise title for that chapter only.
@@ -718,7 +711,6 @@ final class TranscriptSummaryService {
         return false
     }
 
-    @available(iOS 26, *)
     private func overviewWithModel(
         summaries: [(TimeInterval, String)],
         episodeTitle: String
@@ -843,7 +835,6 @@ final class TranscriptSummaryService {
         return firstSentences(in: beatSummaries.joined(separator: " "), max: Self.maxRecapSentences)
     }
 
-    @available(iOS 26, *)
     private func partialChapterSummaryWithModel(
         excerpt: String,
         rangeLabel: String,
@@ -865,13 +856,11 @@ final class TranscriptSummaryService {
         return summary
     }
 
-    @available(iOS 26, *)
     private struct CompressRecapResult {
         let text: String
         let raw: String
     }
 
-    @available(iOS 26, *)
     private func compressBeatsToRecap(
         beatLines: [String],
         episodeTitle: String,
@@ -906,7 +895,7 @@ final class TranscriptSummaryService {
         rangeLabel: String,
         episodeTitle: String
     ) async -> String? {
-        if #available(iOS 26, *), SystemLanguageModel.default.isAvailable {
+        if SystemLanguageModel.default.isAvailable {
             do {
                 return try await partialChapterSummaryWithModel(
                     excerpt: excerpt,
@@ -1001,7 +990,6 @@ final class TranscriptSummaryService {
 
 }
 
-@available(iOS 26, *)
 @Generable
 private struct ChapterBeatPlan {
     @Guide(description: "One clear sentence summarizing the chapter topic or story beat.")
@@ -1010,21 +998,18 @@ private struct ChapterBeatPlan {
     var title: String
 }
 
-@available(iOS 26, *)
 @Generable
 private struct ChunkSummaryPlan {
     @Guide(description: "Exactly one sentence summary.")
     var summary: String
 }
 
-@available(iOS 26, *)
 @Generable
 private struct EpisodeOverviewPlan {
     @Guide(description: "2–3 sentence episode overview.")
     var overview: String
 }
 
-@available(iOS 26, *)
 @Generable
 private struct StorySoFarPlan {
     @Guide(description: "Exactly 2–4 short sentences on what the listener has heard so far.")

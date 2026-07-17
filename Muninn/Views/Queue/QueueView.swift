@@ -3,7 +3,6 @@ import SwiftData
 
 struct QueueView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.miniPlayerVisible) private var miniPlayerVisible
     @Query(sort: \QueueItem.sortOrder) private var queueItems: [QueueItem]
 
     private var networkMonitor: NetworkMonitor { NetworkMonitor.shared }
@@ -62,7 +61,6 @@ struct QueueView: View {
                         .environment(\.editMode, .constant(.active))
                     }
                     .listStyle(.plain)
-                    .contentMargins(.bottom, miniPlayerVisible ? 60 : 0, for: .scrollContent)
                 }
             }
             .navigationTitle("Up Next")

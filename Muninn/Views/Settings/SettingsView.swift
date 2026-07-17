@@ -3,7 +3,6 @@ import SwiftData
 
 struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.miniPlayerVisible) private var miniPlayerVisible
     @Query private var allEpisodes: [Episode]
     @Query private var settings: [AppSettings]
 
@@ -233,7 +232,7 @@ struct SettingsView: View {
                         HStack {
                             Image(systemName: "info.circle")
                                 .foregroundStyle(.secondary)
-                            Text("On-device transcription requires iOS 26+ with Apple Intelligence")
+                            Text("On-device transcription requires Apple Intelligence")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -327,7 +326,6 @@ struct SettingsView: View {
                     }
                 }
             }
-            .contentMargins(.bottom, miniPlayerVisible ? 60 : 0, for: .scrollContent)
             .navigationTitle("Settings")
             .onAppear {
                 updateDownloadSize()

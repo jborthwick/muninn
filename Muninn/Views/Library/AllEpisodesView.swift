@@ -3,7 +3,6 @@ import SwiftData
 
 struct AllEpisodesView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.miniPlayerVisible) private var miniPlayerVisible
     @Query(sort: \Podcast.title) private var allPodcasts: [Podcast]
     @Query(sort: \Folder.sortOrder) private var allFolders: [Folder]
 
@@ -95,7 +94,6 @@ struct AllEpisodesView: View {
                     }
                 }
                 .listStyle(.plain)
-                .contentMargins(.bottom, miniPlayerVisible ? 60 : 0, for: .scrollContent)
                 .refreshable {
                     await refreshManager.refreshPodcasts(podcasts, context: modelContext)
                 }

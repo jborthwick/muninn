@@ -3,103 +3,109 @@ import SwiftUI
 struct MiniPlayerView: View {
     var playerManager = AudioPlayerManager.shared
     @Binding var showNowPlaying: Bool
+    @Environment(\.tabViewBottomAccessoryPlacement) private var placement
+
+    private var isInline: Bool {
+        placement == .inline
+    }
 
     var body: some View {
         if let episode = playerManager.currentEpisode {
-            HStack(spacing: 12) {
-                // Artwork with circular progress ring
-                CachedAsyncImage(url: URL(string: episode.displayArtworkURL ?? "")) { image in
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    Circle()
-                        .fill(Color.secondary.opacity(0.2))
-                        .overlay {
-                            Image(systemName: "mic")
-                                .foregroundStyle(.secondary)
-                        }
-                }
-                .frame(width: 48, height: 48)
-                .clipShape(Circle())
-                .overlay {
-                    ZStack {
-                        // Background track — strokeBorder keeps it fully inside the circle
-                        Circle()
-                            .strokeBorder(Color.white.opacity(0.1), lineWidth: 6)
-                        // Progress arc — padding(lineWidth/2) insets the stroke path
-                        // so it sits fully inside, matching the background track
-                        Circle()
-                            .trim(from: 0, to: progress)
-                            .stroke(Color.white.opacity(0.4),
-                                    style: StrokeStyle(lineWidth: 6, lineCap: .round))
-                            .padding(3)
-                            .rotationEffect(.degrees(-90))
-                    }
-                }
+            HStack(spacing: isInline ? 8 : 12) {
+                artwork(for: episode)
 
-                // Title and podcast
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: isInline ? 4 : 6) {
                     Text(episode.title)
-                        .font(.subheadline)
+                        .font(isInline ? .footnote : .subheadline)
                         .fontWeight(.medium)
                         .lineLimit(1)
 
-                    if let podcast = episode.podcast {
-                        Text(podcast.title)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
+                    progressBar
                 }
 
-                Spacer(minLength: 8)
+                Spacer(minLength: isInline ? 4 : 8)
 
-                // Play/Pause button
                 Button {
                     playerManager.togglePlayPause()
                 } label: {
                     Image(systemName: playerManager.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.title2)
-                        .frame(width: 40, height: 40)
+                        .font(isInline ? .body : .title2)
+                        .frame(width: isInline ? 32 : 40, height: isInline ? 32 : 40)
                 }
 
-                // Forward button
                 Button {
                     playerManager.skipForward()
                 } label: {
                     Image(systemName: skipForwardIcon)
-                        .font(.title3)
-                        .frame(width: 40, height: 40)
+                        .font(isInline ? .subheadline : .title3)
+                        .frame(width: isInline ? 32 : 40, height: isInline ? 32 : 40)
                 }
                 .contextMenu {
-                    Button {
-                        playerManager.skipBackward()
-                    } label: {
-                        Label("Skip Backward", systemImage: skipBackwardIcon)
-                    }
-                    
-                    Button {
-                        playerManager.markPlayedAndAdvance()
-                    } label: {
-                        Label("Mark as Played", systemImage: "checkmark.circle")
-                    }
+                    skipContextMenuItems
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .modifier(GlassBackgroundModifier())
+            .padding(.horizontal, isInline ? 12 : 16)
+            .padding(.vertical, isInline ? 6 : 12)
             .contentShape(Rectangle())
             .onTapGesture {
                 showNowPlaying = true
             }
-            .padding(.horizontal, 16)
+        }
+    }
+
+    @ViewBuilder
+    private func artwork(for episode: Episode) -> some View {
+        let size: CGFloat = isInline ? 36 : 48
+        CachedAsyncImage(url: URL(string: episode.displayArtworkURL ?? "")) { image in
+            image
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+        } placeholder: {
+            RoundedRectangle(cornerRadius: isInline ? 8 : 10, style: .continuous)
+                .fill(Color.secondary.opacity(0.2))
+                .overlay {
+                    Image(systemName: "mic")
+                        .font(isInline ? .caption : .body)
+                        .foregroundStyle(.secondary)
+                }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: isInline ? 8 : 10, style: .continuous))
+    }
+
+    private var progressBar: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.secondary.opacity(0.25))
+                Capsule()
+                    .fill(Color.primary.opacity(0.55))
+                    .frame(width: max(0, geo.size.width * progress))
+            }
+        }
+        .frame(height: isInline ? 3 : 4)
+        .accessibilityLabel("Playback progress")
+        .accessibilityValue("\(Int(progress * 100)) percent")
+    }
+
+    @ViewBuilder
+    private var skipContextMenuItems: some View {
+        Button {
+            playerManager.skipBackward()
+        } label: {
+            Label("Skip Backward", systemImage: skipBackwardIcon)
+        }
+
+        Button {
+            playerManager.markPlayedAndAdvance()
+        } label: {
+            Label("Mark as Played", systemImage: "checkmark.circle")
         }
     }
 
     private var progress: Double {
         guard playerManager.duration > 0 else { return 0 }
-        return playerManager.currentTime / playerManager.duration
+        return min(max(playerManager.currentTime / playerManager.duration, 0), 1)
     }
 
     private var skipForwardIcon: String {
@@ -124,17 +130,12 @@ struct MiniPlayerView: View {
 #Preview {
     MiniPlayerView(showNowPlaying: .constant(false))
 }
+
 // MARK: - Glass Background Modifier
 
 struct GlassBackgroundModifier: ViewModifier {
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content
-                .glassEffect(.regular, in: .capsule)
-        } else {
-            content
-                .background(.ultraThinMaterial, in: Capsule())
-        }
+        content
+            .glassEffect(.regular, in: .capsule)
     }
 }
-

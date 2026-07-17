@@ -18,11 +18,11 @@ A personal iOS podcast player built with SwiftUI and SwiftData, focused on trans
 - **Rich Episode Descriptions**: HTML descriptions with tappable links
 - **Now Playing Indicator**: Currently playing episode shows play/pause button across all episode lists
 - **Download Management**: Confirmation before deleting downloads, played/unplayed state indicators, throttled progress updates
-- **On-Device Transcription**: Generate private local transcripts for downloaded episodes on iOS 26+ using Apple SpeechAnalyzer
+- **On-Device Transcription**: Generate private local transcripts for downloaded episodes using Apple SpeechAnalyzer (requires Apple Intelligence)
 - **AI Chapters**: Generate local chapter boundaries, chapter summaries, and episode overviews from transcripts
 - **Transcript Playback**: Follow along with word-level highlighting while listening
 - **Pause Recap**: On-device recap of what you've heard so far when playback pauses
-- **Background Episode Preparation**: Manual downloads and transcribe actions can continue preparing transcripts/chapters after the phone locks on iOS 26+; interrupted auto-processing resumes on relaunch or background processing
+- **Background Episode Preparation**: Manual downloads and transcribe actions can continue preparing transcripts/chapters after the phone locks; interrupted auto-processing resumes on relaunch or background processing
 - **Export & Import**: Back up subscriptions, folders, playlists, queue, and episode state as JSON
 - **OPML Import**: Import podcast subscriptions from OPML files
 - **iCloud Sync**: Sync subscriptions, folders, and listening progress across devices (requires paid Apple Developer account)
@@ -30,9 +30,9 @@ A personal iOS podcast player built with SwiftUI and SwiftData, focused on trans
 
 ## Requirements
 
-- iOS 18.0+
-- iOS 26+ for on-device transcription and continued background episode preparation
-- Xcode 16+
+- iOS 26.0+
+- Apple Intelligence–capable device for on-device transcription and Foundation Models features
+- Xcode 26+
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen)
 
 ## Setup

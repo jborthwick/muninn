@@ -2,9 +2,8 @@ import BackgroundTasks
 import SwiftData
 import os
 
-/// User-initiated episode preparation using BGContinuedProcessingTask (iOS 26+).
+/// User-initiated episode preparation using BGContinuedProcessingTask.
 /// Covers manual download → transcribe → chapters pipelines and explicit transcribe taps.
-@available(iOS 26, *)
 @MainActor
 final class EpisodeContinuedProcessing {
     static let shared = EpisodeContinuedProcessing()

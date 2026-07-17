@@ -2,7 +2,7 @@ name: muninn
 options:
   bundleIdPrefix: com.personal
   deploymentTarget:
-    iOS: "18.0"
+    iOS: "26.0"
   generateEmptyDirectories: true
 
 packages:

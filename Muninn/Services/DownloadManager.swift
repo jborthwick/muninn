@@ -92,7 +92,7 @@ final class DownloadManager: NSObject {
 
         switch result {
         case .started:
-            if !isAutoDownload, #available(iOS 26, *) {
+            if !isAutoDownload {
                 Task { @MainActor in
                     EpisodeContinuedProcessing.shared.beginPrepareIfEligible(episode: episode, context: context)
                 }

@@ -3,7 +3,6 @@ import SwiftUI
 struct LibraryGridContent: View {
     let podcasts: [Podcast]
     let folders: [Folder]
-    let miniPlayerBottomInset: CGFloat
     let onRefresh: () async -> Void
     let onUnsubscribe: (Podcast) -> Void
     let onCreateFolder: (Podcast) -> Void
@@ -80,7 +79,7 @@ struct LibraryGridContent: View {
                 }
             }
             .padding(.top, 8)
-            .padding(.bottom, miniPlayerBottomInset)
+            .padding(.bottom, 16)
         }
         .refreshable {
             await onRefresh()

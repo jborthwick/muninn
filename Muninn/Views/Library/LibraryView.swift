@@ -3,7 +3,6 @@ import SwiftData
 
 struct LibraryView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.miniPlayerVisible) private var miniPlayerVisible
     @Query(sort: \Podcast.title) private var podcasts: [Podcast]
     @Query(sort: \Folder.sortOrder) private var folders: [Folder]
 
@@ -135,7 +134,6 @@ struct LibraryView: View {
             podcastsListSection
         }
         .listStyle(.plain)
-        .contentMargins(.bottom, miniPlayerVisible ? 60 : 0, for: .scrollContent)
         .refreshable {
             await refreshManager.refreshAllPodcasts(context: modelContext)
         }
@@ -179,7 +177,6 @@ struct LibraryView: View {
         LibraryGridContent(
             podcasts: podcasts,
             folders: folders,
-            miniPlayerBottomInset: miniPlayerVisible ? 60 : 16,
             onRefresh: {
                 await refreshManager.refreshAllPodcasts(context: modelContext)
             },

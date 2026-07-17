@@ -3,7 +3,6 @@ import SwiftData
 
 struct FolderDetailView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.miniPlayerVisible) private var miniPlayerVisible
     @Query(sort: \Podcast.title) private var allPodcasts: [Podcast]
     @Bindable var folder: Folder
 
@@ -80,7 +79,6 @@ struct FolderDetailView: View {
                     }
                 }
                 .listStyle(.plain)
-                .contentMargins(.bottom, miniPlayerVisible ? 60 : 0, for: .scrollContent)
                 .refreshable {
                     await refreshManager.refreshPodcasts(cachedPodcastsInFolder, context: modelContext)
                 }

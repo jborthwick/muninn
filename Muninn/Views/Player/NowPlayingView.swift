@@ -671,21 +671,13 @@ private struct ProgressSectionView: View {
 
 private struct GlassCapsuleButtonModifier: ViewModifier {
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content.glassEffect(.regular.interactive(), in: .capsule)
-        } else {
-            content.background(.ultraThinMaterial, in: Capsule())
-        }
+        content.glassEffect(.regular.interactive(), in: .capsule)
     }
 }
 
 private struct GlassCircleModifier: ViewModifier {
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content.glassEffect(.regular.interactive(), in: .circle)
-        } else {
-            content.background(.ultraThinMaterial, in: Circle())
-        }
+        content.glassEffect(.regular.interactive(), in: .circle)
     }
 }
 

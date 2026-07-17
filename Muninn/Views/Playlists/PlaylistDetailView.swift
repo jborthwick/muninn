@@ -3,7 +3,6 @@ import SwiftData
 
 struct PlaylistDetailView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.miniPlayerVisible) private var miniPlayerVisible
     @Bindable var playlist: Playlist
 
     @State private var showEditSheet = false
@@ -51,13 +50,6 @@ struct PlaylistDetailView: View {
         return browseDisplayedItems.compactMap(\.episode).filter { selectedEpisodeGUIDs.contains($0.guid) }
     }
 
-    private var bottomScrollInset: CGFloat {
-        var inset: CGFloat = 0
-        if miniPlayerVisible { inset += 60 }
-        if isSelecting { inset += 60 }
-        return inset
-    }
-
     private var hasAnyEpisodes: Bool { !playlistOrderedItems.isEmpty }
 
     var body: some View {
@@ -77,7 +69,6 @@ struct PlaylistDetailView: View {
                     episodesSection
                 }
                 .listStyle(.plain)
-                .contentMargins(.bottom, bottomScrollInset, for: .scrollContent)
                 .environment(\.editMode, $editMode)
             }
         }

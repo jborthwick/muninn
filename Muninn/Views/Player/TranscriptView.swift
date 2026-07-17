@@ -457,14 +457,10 @@ struct TranscriptView: View {
     }
 
     private var noTranscriptMessage: String {
-        if #available(iOS 26, *) {
-            if LocalTranscriptionService.isSupported {
-                return "Download this episode to enable on-device transcription."
-            } else {
-                return "On-device transcription requires a device with Apple Intelligence."
-            }
+        if LocalTranscriptionService.isSupported {
+            return "Download this episode to enable on-device transcription."
         } else {
-            return "On-device transcription requires iOS 26 or later."
+            return "On-device transcription requires a device with Apple Intelligence."
         }
     }
 
