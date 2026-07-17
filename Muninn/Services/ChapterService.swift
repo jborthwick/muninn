@@ -50,6 +50,21 @@ final class ChapterService {
         SystemLanguageModel.default.isAvailable
     }
 
+    nonisolated static var foundationModelAvailabilityDetail: String {
+        switch SystemLanguageModel.default.availability {
+        case .available:
+            return "available"
+        case .unavailable(.deviceNotEligible):
+            return "unavailable: deviceNotEligible"
+        case .unavailable(.appleIntelligenceNotEnabled):
+            return "unavailable: appleIntelligenceNotEnabled"
+        case .unavailable(.modelNotReady):
+            return "unavailable: modelNotReady"
+        case .unavailable(let other):
+            return "unavailable: \(String(describing: other))"
+        }
+    }
+
     // MARK: - Public API
 
     func load(for episode: Episode) {
