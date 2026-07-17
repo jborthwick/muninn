@@ -96,7 +96,7 @@ struct TranscriptView: View {
             await Task.yield()
             guard !Task.isCancelled else { return }
             guard !playerManager.isScrubbing, let groupID = activeGroupID else {
-                await fadeInTranscript()
+                fadeInTranscript()
                 return
             }
             scrollToGroup(groupID, proxy: proxy, animation: animation)
@@ -109,11 +109,10 @@ struct TranscriptView: View {
             // Brief hold so the scroll commit isn't visible, then fade in.
             try? await Task.sleep(for: .milliseconds(40))
             guard !Task.isCancelled else { return }
-            await fadeInTranscript()
+            fadeInTranscript()
         }
     }
 
-    @MainActor
     private func fadeInTranscript() {
         withAnimation(.easeOut(duration: 0.2)) {
             hasSettledInitialPosition = true

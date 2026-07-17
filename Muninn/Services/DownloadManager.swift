@@ -325,45 +325,50 @@ final class DownloadManager: NSObject {
     /// Restores active downloads after app relaunch
     /// URLSession background tasks persist across app launches
     func restoreActiveDownloads(context: ModelContext) {
-        // getAllTasks callback runs on a background queue — capture task URLs there,
-        // then hop to MainActor before any ModelContext / Episode access.
-        urlSession.getAllTasks { [weak self] tasks in
-            let downloadTasks = tasks.compactMap { $0 as? URLSessionDownloadTask }
-            let pairs: [(URL, URLSessionDownloadTask)] = downloadTasks.compactMap { task in
-                guard let url = task.originalRequest?.url else { return nil }
-                return (url, task)
-            }
+        // getAllTasks runs on a background queue. Fetch task pairs via continuation
+        // so ModelContext is never captured into that non-Sendable closure.
+        Task { @MainActor in
+            let pairs = await activeDownloadTaskPairs()
 
-            Task { @MainActor in
-                guard let self else { return }
-
-                for (url, task) in pairs {
-                    let urlString = url.absoluteString
-                    let predicate = #Predicate<Episode> { episode in
-                        episode.audioURL == urlString &&
-                        episode.localFilePath == nil
-                    }
-                    let descriptor = FetchDescriptor<Episode>(predicate: predicate)
-
-                    guard let episodes = try? context.fetch(descriptor),
-                          let episode = episodes.first else { continue }
-
-                    self.activeDownloads[url] = DownloadTask(
-                        episodeGUID: episode.guid,
-                        task: task,
-                        progressHandler: { [weak episode] progress in
-                            Task { @MainActor in
-                                episode?.downloadProgress = progress
-                            }
-                        }
-                    )
-
-                    if episode.downloadProgress == nil {
-                        episode.downloadProgress = 0
-                    }
-
-                    self.logger.info("Restored active download for episode: \(episode.title)")
+            for (url, task) in pairs {
+                let urlString = url.absoluteString
+                let predicate = #Predicate<Episode> { episode in
+                    episode.audioURL == urlString &&
+                    episode.localFilePath == nil
                 }
+                let descriptor = FetchDescriptor<Episode>(predicate: predicate)
+
+                guard let episodes = try? context.fetch(descriptor),
+                      let episode = episodes.first else { continue }
+
+                activeDownloads[url] = DownloadTask(
+                    episodeGUID: episode.guid,
+                    task: task,
+                    progressHandler: { [weak episode] progress in
+                        Task { @MainActor in
+                            episode?.downloadProgress = progress
+                        }
+                    }
+                )
+
+                if episode.downloadProgress == nil {
+                    episode.downloadProgress = 0
+                }
+
+                logger.info("Restored active download for episode: \(episode.title)")
+            }
+        }
+    }
+
+    private func activeDownloadTaskPairs() async -> [(URL, URLSessionDownloadTask)] {
+        await withCheckedContinuation { continuation in
+            urlSession.getAllTasks { tasks in
+                let pairs: [(URL, URLSessionDownloadTask)] = tasks.compactMap { task in
+                    guard let downloadTask = task as? URLSessionDownloadTask,
+                          let url = downloadTask.originalRequest?.url else { return nil }
+                    return (url, downloadTask)
+                }
+                continuation.resume(returning: pairs)
             }
         }
     }
