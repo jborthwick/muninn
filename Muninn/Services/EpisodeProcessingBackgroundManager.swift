@@ -13,6 +13,7 @@ final class EpisodeProcessingBackgroundManager {
     private let logger = Logger(subsystem: "com.personal.muninn", category: "EpisodeProcessingBG")
     private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
     private var lifecycleObservers: [NSObjectProtocol] = []
+    private var modelContext: ModelContext?
 
     private init() {}
 
@@ -53,7 +54,7 @@ final class EpisodeProcessingBackgroundManager {
                 queue: .main
             ) { [weak self] _ in
                 Task { @MainActor in
-                    self?.endBackgroundExecution()
+                    self?.handleDidBecomeActive()
                 }
             }
         )
@@ -80,6 +81,7 @@ final class EpisodeProcessingBackgroundManager {
     }
 
     func resumeInterruptedWork(context: ModelContext) {
+        modelContext = context
         AutoTranscriptionQueue.shared.setModelContext(context)
         AutoChapterQueue.shared.setModelContext(context)
         AutoTranscriptionQueue.shared.resumePersistedWork(context: context)
@@ -90,10 +92,12 @@ final class EpisodeProcessingBackgroundManager {
     func notifyWorkStateChanged() {
         if hasActiveOrPendingWork() {
             beginBackgroundExecutionIfNeeded()
-            scheduleProcessingIfNeeded()
         } else {
             endBackgroundExecution()
         }
+        // Keep a BGProcessingTask armed whenever persisted work remains, even if
+        // in-memory queues are idle after a background interrupt.
+        scheduleProcessingIfNeeded()
     }
 
     // MARK: - beginBackgroundTask
@@ -104,7 +108,12 @@ final class EpisodeProcessingBackgroundManager {
 
         backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "EpisodeProcessing") { [weak self] in
             Task { @MainActor in
-                self?.logger.warning("beginBackgroundTask expired — scheduling BGProcessingTask")
+                self?.logger.warning(
+                    "beginBackgroundTask expired — cancelling chapter generation and scheduling BGProcessingTask"
+                )
+                // Foundation Models degrade badly once execution is about to suspend.
+                // Cancel so we keep pending work and retry instead of saving empty stubs.
+                ChapterService.shared.cancelActiveGeneration()
                 self?.scheduleProcessingIfNeeded()
                 self?.endBackgroundExecution()
             }
@@ -116,6 +125,15 @@ final class EpisodeProcessingBackgroundManager {
         guard backgroundTaskID != .invalid else { return }
         UIApplication.shared.endBackgroundTask(backgroundTaskID)
         backgroundTaskID = .invalid
+    }
+
+    private func handleDidBecomeActive() {
+        endBackgroundExecution()
+        if let modelContext {
+            resumeInterruptedWork(context: modelContext)
+        } else {
+            scheduleProcessingIfNeeded()
+        }
     }
 
     // MARK: - BGProcessingTask
@@ -131,6 +149,9 @@ final class EpisodeProcessingBackgroundManager {
         task.expirationHandler = {
             self.logger.warning("BGProcessingTask expired")
             work.cancel()
+            Task { @MainActor in
+                ChapterService.shared.cancelActiveGeneration()
+            }
         }
 
         await work.value

@@ -4,6 +4,12 @@ import FoundationModels
 import SwiftData
 import os
 
+enum ChapterGenerationOutcome: Equatable {
+    case succeeded
+    case failedPermanent
+    case failedRetryable
+}
+
 @MainActor
 @Observable
 final class ChapterService {
@@ -25,6 +31,7 @@ final class ChapterService {
     private var errorEpisodeGUID: String?
     private(set) var lastChapterDebug: ChapterGenerationDebugInfo?
     private(set) var lastChapterDebugEpisodeGUID: String?
+    private var generationTask: Task<ChapterGenerationOutcome, Never>?
 
     func isGenerating(for episodeGUID: String) -> Bool {
         isGenerating && generatingEpisodeGUID == episodeGUID
@@ -150,16 +157,34 @@ final class ChapterService {
         }
     }
 
+    /// Cancel in-flight chapter generation so background expiry can retry later.
+    func cancelActiveGeneration() {
+        guard let generationTask else { return }
+        logger.warning("Cancelling in-flight chapter generation")
+        generationTask.cancel()
+    }
+
     /// Generate chapters from show notes (fast path) or transcript (boundaries + titles).
     @discardableResult
-    func generate(episode: Episode, context: ModelContext) async -> Bool {
-        guard !isGenerating else { return false }
+    func generate(episode: Episode, context: ModelContext) async -> ChapterGenerationOutcome {
+        guard !isGenerating, generationTask == nil else { return .failedPermanent }
 
+        let task = Task { @MainActor in
+            await self.performGenerate(episode: episode, context: context)
+        }
+        generationTask = task
+        let outcome = await task.value
+        generationTask = nil
+        return outcome
+    }
+
+    private func performGenerate(episode: Episode, context: ModelContext) async -> ChapterGenerationOutcome {
         var debug = ChapterGenerationDebugInfo()
         debug.generatedAt = Date()
         debug.episodeTitle = episode.title
         debug.episodeGUID = episode.guid
         debug.foundationModelAvailable = Self.titlesSupported
+        var outcome: ChapterGenerationOutcome = .failedPermanent
 
         if let oldURL = episode.localChaptersURL {
             try? FileManager.default.removeItem(at: oldURL)
@@ -183,7 +208,13 @@ final class ChapterService {
             isGenerating = false
             generationStatus = ""
             generatingEpisodeGUID = nil
-            PendingWorkStore.removeChapter(guid: episode.guid)
+            switch outcome {
+            case .succeeded, .failedPermanent:
+                PendingWorkStore.removeChapter(guid: episode.guid)
+            case .failedRetryable:
+                break
+            }
+            debug.succeeded = outcome == .succeeded
             storeChapterDebug(debug, episodeGUID: episode.guid)
             EpisodeProcessingBackgroundManager.shared.notifyWorkStateChanged()
         }
@@ -219,11 +250,15 @@ final class ChapterService {
                 )
             }
             let success = await persist(chapters: rssChapters, episode: episode, context: context)
-            debug.succeeded = success
-            if !success, let error {
-                debug.generationError = error
+            if success {
+                outcome = .succeeded
+            } else {
+                outcome = .failedPermanent
+                if let error {
+                    debug.generationError = error
+                }
             }
-            return success
+            return outcome
         }
 
         guard !segments.isEmpty else {
@@ -231,7 +266,15 @@ final class ChapterService {
             errorEpisodeGUID = episode.guid
             debug.source = "transcript"
             debug.generationError = error
-            return false
+            outcome = .failedPermanent
+            return outcome
+        }
+
+        if Task.isCancelled {
+            debug.source = "transcript"
+            debug.generationError = "Chapter generation interrupted before summarization."
+            outcome = .failedRetryable
+            return outcome
         }
 
         debug.source = "transcript"
@@ -240,6 +283,12 @@ final class ChapterService {
         let boundaries = await Task.detached { [self] in
             self.detectBoundaries(in: segments, duration: duration)
         }.value
+
+        if Task.isCancelled {
+            debug.generationError = "Chapter generation interrupted during boundary detection."
+            outcome = .failedRetryable
+            return outcome
+        }
 
         logger.info("Detected \(boundaries.count) chapter boundaries")
         debug.boundaryCount = boundaries.count
@@ -260,11 +309,39 @@ final class ChapterService {
 
         let summaryService = TranscriptSummaryService.shared
         generationStatus = "Summarizing chapters…"
-        let beatResult = await summaryService.generateChapterBeats(
-            drafts: drafts,
-            episodeTitle: episode.title,
-            episodeDuration: duration
-        )
+
+        let beatResult: ChapterBeatsResult
+        do {
+            beatResult = try await summaryService.generateChapterBeats(
+                drafts: drafts,
+                episodeTitle: episode.title,
+                episodeDuration: duration
+            )
+        } catch is CancellationError {
+            logger.warning("Chapter beat generation cancelled for: \(episode.title)")
+            debug.generationError = "Chapter generation interrupted. Will retry when the app is active."
+            outcome = .failedRetryable
+            return outcome
+        } catch let interrupt as OnDeviceGenerationInterrupt {
+            logger.warning("Chapter beat generation interrupted for: \(episode.title) (\(String(describing: interrupt)))")
+            debug.generationError = "Chapter generation interrupted while backgrounded. Will retry when active."
+            outcome = .failedRetryable
+            return outcome
+        } catch {
+            let message = "Chapter generation failed: \(error.localizedDescription)"
+            logger.error("\(message)")
+            self.error = message
+            errorEpisodeGUID = episode.guid
+            debug.generationError = message
+            outcome = .failedPermanent
+            return outcome
+        }
+
+        if Task.isCancelled {
+            debug.generationError = "Chapter generation interrupted after summarization."
+            outcome = .failedRetryable
+            return outcome
+        }
 
         var result: [Chapter] = []
         for (index, start) in boundaries.enumerated() {
@@ -298,7 +375,8 @@ final class ChapterService {
             error = "No chapters could be generated."
             errorEpisodeGUID = episode.guid
             debug.generationError = error
-            return false
+            outcome = .failedPermanent
+            return outcome
         }
 
         generationStatus = "Building episode overview…"
@@ -309,17 +387,27 @@ final class ChapterService {
         debug.overview = overviewResult.text
         debug.overviewError = overviewResult.error
 
+        if Task.isCancelled {
+            debug.generationError = "Chapter generation interrupted before save."
+            outcome = .failedRetryable
+            return outcome
+        }
+
         let success = await persist(
             chapters: result,
             overview: overviewResult.text,
             episode: episode,
             context: context
         )
-        debug.succeeded = success
-        if !success, let error {
-            debug.generationError = error
+        if success {
+            outcome = .succeeded
+        } else {
+            outcome = .failedPermanent
+            if let error {
+                debug.generationError = error
+            }
         }
-        return success
+        return outcome
     }
 
     // MARK: - Persistence

@@ -1,5 +1,6 @@
 import Foundation
 import FoundationModels
+import UIKit
 import os
 
 struct ChapterBeat: Equatable, Sendable {
@@ -10,6 +11,13 @@ struct ChapterBeat: Equatable, Sendable {
 struct ChapterBeatsResult: Equatable {
     let beats: [ChapterBeat]
     let entries: [ChapterBeatDebugEntry]
+}
+
+/// Thrown when on-device chapter generation should stop and retry later
+/// (app backgrounded / locked, or the generation task was cancelled).
+enum OnDeviceGenerationInterrupt: Error, Equatable {
+    case backgroundUnavailable
+    case cancelled
 }
 
 @MainActor
@@ -61,13 +69,14 @@ final class TranscriptSummaryService {
         drafts: [ChapterTitleGenerator.SegmentDraft],
         episodeTitle: String,
         episodeDuration: TimeInterval
-    ) async -> ChapterBeatsResult {
+    ) async throws -> ChapterBeatsResult {
         guard !drafts.isEmpty else { return ChapterBeatsResult(beats: [], entries: []) }
 
         var beats: [ChapterBeat] = []
         var entries: [ChapterBeatDebugEntry] = []
         for (index, draft) in drafts.enumerated() {
-            let result = await generateSingleChapterBeat(
+            try checkOnDeviceGenerationStillAllowed()
+            let result = try await generateSingleChapterBeat(
                 draft: draft,
                 index: index,
                 draftCount: drafts.count,
@@ -196,7 +205,7 @@ final class TranscriptSummaryService {
         draftCount: Int,
         episodeTitle: String,
         episodeDuration: TimeInterval
-    ) async -> (beat: ChapterBeat, entry: ChapterBeatDebugEntry) {
+    ) async throws -> (beat: ChapterBeat, entry: ChapterBeatDebugEntry) {
         let transcriptChars = draft.transcript.count
         let excerptPreview = debugExcerptPreview(draft.excerpt)
 
@@ -242,11 +251,13 @@ final class TranscriptSummaryService {
 
         if SystemLanguageModel.default.isAvailable {
             do {
+                try checkOnDeviceGenerationStillAllowed()
                 let modelResult = try await chapterBeatWithModel(
                     transcript: draft.transcript,
                     startTime: draft.startTime,
                     episodeTitle: episodeTitle
                 )
+                try checkOnDeviceGenerationStillAllowed()
                 return entry(
                     beat: modelResult.beat,
                     source: modelResult.usedPermissiveFallback
@@ -256,7 +267,19 @@ final class TranscriptSummaryService {
                     usedChunking: modelResult.usedChunking,
                     error: nil
                 )
+            } catch is CancellationError {
+                throw OnDeviceGenerationInterrupt.cancelled
+            } catch let interrupt as OnDeviceGenerationInterrupt {
+                throw interrupt
             } catch {
+                // Locking/backgrounding often surfaces as model failures. Abort so we
+                // retry in the foreground instead of persisting empty lexical stubs.
+                if Self.shouldAbortModelFailure() {
+                    logger.warning(
+                        "Chapter beat generation interrupted in background: \(error.localizedDescription)"
+                    )
+                    throw OnDeviceGenerationInterrupt.backgroundUnavailable
+                }
                 logger.warning("Chapter beat generation failed: \(error.localizedDescription)")
                 let beat = ChapterBeat(
                     summary: "",
@@ -272,11 +295,30 @@ final class TranscriptSummaryService {
             }
         }
 
+        // Model unavailable while inactive is often temporary (locked / suspended).
+        if Self.shouldAbortModelFailure() {
+            throw OnDeviceGenerationInterrupt.backgroundUnavailable
+        }
+
         let beat = ChapterBeat(
             summary: "",
             title: ChapterTitleGenerator.lexicalTitle(from: draft.excerpt, startTime: draft.startTime)
         )
         return entry(beat: beat, source: "lexical_fallback", flaggedRollCall: false, usedChunking: false, error: nil)
+    }
+
+    private func checkOnDeviceGenerationStillAllowed() throws {
+        if Task.isCancelled {
+            throw OnDeviceGenerationInterrupt.cancelled
+        }
+        if Self.shouldAbortModelFailure() {
+            throw OnDeviceGenerationInterrupt.backgroundUnavailable
+        }
+    }
+
+    /// When inactive/backgrounded, Foundation Models are unreliable — prefer retry over lexical stubs.
+    private static func shouldAbortModelFailure() -> Bool {
+        UIApplication.shared.applicationState != .active
     }
 
     private func debugExcerptPreview(_ text: String, limit: Int = 240) -> String {

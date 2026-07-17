@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import UIKit
 import os
 
 /// Sequential queue for auto-generating chapters and summaries after transcription.
@@ -90,13 +91,22 @@ final class AutoChapterQueue {
 
         Task {
             logger.info("Starting auto chapter generation for: \(episode.title)")
-            let success = await ChapterService.shared.generate(episode: episode, context: context)
-            if success {
+            let outcome = await ChapterService.shared.generate(episode: episode, context: context)
+            switch outcome {
+            case .succeeded:
                 logger.info("Auto chapter generation succeeded: \(episode.title)")
-                PendingWorkStore.removeChapter(guid: episode.guid)
-            } else {
-                logger.warning("Auto chapter generation failed: \(episode.title)")
-                PendingWorkStore.removeChapter(guid: episode.guid)
+            case .failedPermanent:
+                logger.warning("Auto chapter generation failed permanently: \(episode.title)")
+            case .failedRetryable:
+                logger.warning(
+                    "Auto chapter generation interrupted — keeping pending for retry: \(episode.title)"
+                )
+                // Avoid a tight failure loop while still inactive; become-active / BG task resumes.
+                if UIApplication.shared.applicationState == .active,
+                   !self.queue.contains(where: { $0.guid == episode.guid }) {
+                    self.queue.append(episode)
+                    self.syncQueuedGUIDs()
+                }
             }
             isProcessing = false
             processNextIfNeeded()
