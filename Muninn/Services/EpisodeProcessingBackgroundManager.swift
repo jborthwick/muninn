@@ -94,9 +94,9 @@ final class EpisodeProcessingBackgroundManager {
     }
 
     func notifyWorkStateChanged() {
-        if hasActiveOrPendingWork() {
-            beginBackgroundExecutionIfNeeded()
-        } else {
+        // Never start a UIKit background task from work-state changes — that assertion
+        // is only for a brief resign-active cleanup. Long work uses BGContinuedProcessingTask.
+        if !hasActiveRunningWork() {
             endBackgroundExecution()
         }
         // Keep a BGProcessingTask armed whenever persisted work remains, even if
@@ -107,19 +107,29 @@ final class EpisodeProcessingBackgroundManager {
     // MARK: - beginBackgroundTask
 
     private func handleWillResignActive() {
+        // User-initiated pipelines already have BGContinuedProcessingTask. Holding a
+        // UIKit beginBackgroundTask for them trips the 30s warning and risk of kill.
+        if EpisodeContinuedProcessing.shared.hasActivePipelines {
+            logger.info("Leaving continued processing running — skipping UIKit background task")
+            endBackgroundExecution()
+            scheduleProcessingIfNeeded()
+            return
+        }
+
+        let wasRunning = hasActiveRunningWork()
         suspendAutoProcessingIfNeeded()
-        beginBackgroundExecutionIfNeeded()
+
+        if wasRunning {
+            // Brief assertion so cancel/teardown can finish, then end promptly.
+            beginBriefCleanupBackgroundTask()
+        } else {
+            endBackgroundExecution()
+        }
         scheduleProcessingIfNeeded()
     }
 
     /// Pause auto transcription/chapters when leaving the foreground.
-    /// User-initiated BGContinuedProcessingTask pipelines are left alone.
     private func suspendAutoProcessingIfNeeded() {
-        if EpisodeContinuedProcessing.shared.hasActivePipelines {
-            logger.info("Leaving processing running — continued processing pipeline active")
-            return
-        }
-
         guard hasActiveRunningWork() || hasActiveOrPendingWork() || PendingWorkStore.hasPendingWork else {
             return
         }
@@ -130,9 +140,9 @@ final class EpisodeProcessingBackgroundManager {
         LocalTranscriptionService.shared.cancelActiveForBackgroundExpiry()
     }
 
-    private func beginBackgroundExecutionIfNeeded() {
+    /// Short-lived UIKit assertion for cancel teardown only — must not outlive ~a few seconds.
+    private func beginBriefCleanupBackgroundTask() {
         guard backgroundTaskID == .invalid else { return }
-        guard hasActiveRunningWork() else { return }
 
         // Expiration handler is already invoked synchronously on the main thread.
         // Must end the task before returning or iOS watchdog-kills the app (0x8badf00d).
@@ -141,15 +151,19 @@ final class EpisodeProcessingBackgroundManager {
             self.logger.warning(
                 "beginBackgroundTask expired — ending assertion and scheduling BGProcessingTask"
             )
-            if !EpisodeContinuedProcessing.shared.hasActivePipelines {
-                self.isAutoProcessingSuspended = true
-                ChapterService.shared.cancelActiveGeneration()
-                LocalTranscriptionService.shared.cancelActiveForBackgroundExpiry()
-            }
+            self.isAutoProcessingSuspended = true
+            ChapterService.shared.cancelActiveGeneration()
+            LocalTranscriptionService.shared.cancelActiveForBackgroundExpiry()
             self.scheduleProcessingIfNeeded()
             self.endBackgroundExecution()
         }
-        logger.info("beginBackgroundTask started for episode processing")
+        logger.info("beginBackgroundTask started for brief episode-processing cleanup")
+
+        // End well before the 30s system warning once cancel has had a chance to run.
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            self.endBackgroundExecution()
+        }
     }
 
     private func endBackgroundExecution() {
