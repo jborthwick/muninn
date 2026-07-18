@@ -15,10 +15,15 @@ struct InsightXRayView: View {
                         description: Text("The wiki page didn’t list characters for this episode.")
                     )
                 } else {
-                    List(insight.characters) { character in
-                        InsightCharacterRow(character: character)
+                    ScrollView {
+                        LazyVStack(spacing: 12) {
+                            ForEach(insight.characters) { character in
+                                InsightCharacterRow(character: character)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
                     }
-                    .listStyle(.plain)
                 }
             }
             .navigationTitle("Insight")
@@ -29,29 +34,17 @@ struct InsightXRayView: View {
                 }
             }
             .safeAreaInset(edge: .bottom) {
-                VStack(spacing: 2) {
-                    Text("Spoiler-safe as of this episode · \(insight.attribution)")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    if !SpoilerSafeBioRewriter.isAvailable {
-                        Text("Apple Intelligence unavailable — showing short wiki intros")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(.bar)
+                InsightAttributionFooter(insight: insight)
             }
         }
     }
 }
 
-private struct InsightCharacterRow: View {
+struct InsightCharacterRow: View {
     let character: InsightCharacter
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 Text(character.name)
                     .font(.headline)
@@ -76,6 +69,28 @@ private struct InsightCharacterRow: View {
                     .font(.caption.weight(.semibold))
             }
         }
-        .padding(.vertical, 4)
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+    }
+}
+
+struct InsightAttributionFooter: View {
+    let insight: EpisodeInsight
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Text("Spoiler-safe as of this episode · \(insight.attribution)")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            if !SpoilerSafeBioRewriter.isAvailable {
+                Text("Apple Intelligence unavailable — showing short wiki intros")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .background(.bar)
     }
 }

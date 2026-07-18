@@ -6,11 +6,13 @@ struct NowPlayingEpisodeHeader: View {
     enum Panel: Equatable {
         case transcript
         case chapters
+        case insight
 
         var dismissIcon: String {
             switch self {
             case .transcript: "quote.bubble.fill"
             case .chapters: "list.bullet.rectangle.fill"
+            case .insight: "sparkles.rectangle.stack.fill"
             }
         }
     }

@@ -18,7 +18,11 @@ struct NowPlayingView: View {
     @AppStorage("nowPlaying.showChapters") private var showChapters = false
     /// GUID of the episode that was playing when showChapters was last set to true.
     @AppStorage("nowPlaying.chaptersEpisodeGUID") private var chaptersEpisodeGUID = ""
+    @AppStorage("nowPlaying.showInsight") private var showInsight = false
+    /// GUID of the episode that was playing when showInsight was last set to true.
+    @AppStorage("nowPlaying.insightEpisodeGUID") private var insightEpisodeGUID = ""
     @State private var showMarkPlayedConfirmation = false
+    private var insightService = EpisodeInsightService.shared
     @State private var isRecapPopoverVisible = false
     @State private var showRecapDebug = false
 
@@ -30,6 +34,7 @@ struct NowPlayingView: View {
         LocalTranscriptionService.isSupported
             && !showTranscript
             && !showChapters
+            && !showInsight
     }
 
     /// Backed by AudioPlayerManager so the color is pre-computed before the sheet opens.
@@ -64,6 +69,7 @@ struct NowPlayingView: View {
                     topSection(for: episode)
                         .animation(.easeInOut(duration: 0.35), value: showTranscript)
                         .animation(.easeInOut(duration: 0.35), value: showChapters)
+                        .animation(.easeInOut(duration: 0.35), value: showInsight)
 
                     if isRecapPopoverVisible {
                         PauseRecapBanner(
@@ -135,6 +141,14 @@ struct NowPlayingView: View {
                     chaptersEpisodeGUID = episode.guid
                 }
                 chapterService.load(for: episode)
+
+                if showInsight {
+                    if insightEpisodeGUID != episode.guid {
+                        insightService.reset()
+                        insightEpisodeGUID = episode.guid
+                    }
+                    insightService.load(for: episode)
+                }
             }
         }
         .onChange(of: playerManager.currentEpisode?.guid) { _, _ in
@@ -145,6 +159,9 @@ struct NowPlayingView: View {
             showChapters = false
             chaptersEpisodeGUID = ""
             chapterService.clear()
+            showInsight = false
+            insightEpisodeGUID = ""
+            insightService.reset()
             summaryService.clear()
             isRecapPopoverVisible = false
             if let episode = playerManager.currentEpisode {
@@ -163,6 +180,9 @@ struct NowPlayingView: View {
             if isOpen { isRecapPopoverVisible = false }
         }
         .onChange(of: showChapters) { _, isOpen in
+            if isOpen { isRecapPopoverVisible = false }
+        }
+        .onChange(of: showInsight) { _, isOpen in
             if isOpen { isRecapPopoverVisible = false }
         }
         .onChange(of: localTranscriptionService.isTranscribing) { wasTranscribing, isTranscribing in
@@ -197,7 +217,10 @@ struct NowPlayingView: View {
                 onDismissPanel: dismissActivePanel
             )
 
-            if showChapters {
+            if showInsight {
+                NowPlayingInsightView(episode: episode)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            } else if showChapters {
                 ChapterView(
                     onGenerate: startChapterGeneration,
                     onCancel: cancelChapterGeneration
@@ -216,6 +239,7 @@ struct NowPlayingView: View {
     }
 
     private var activePanel: NowPlayingEpisodeHeader.Panel? {
+        if showInsight { return .insight }
         if showChapters { return .chapters }
         if showTranscript { return .transcript }
         return nil
@@ -223,6 +247,7 @@ struct NowPlayingView: View {
 
     private func dismissActivePanel() {
         withAnimation(.easeInOut(duration: 0.35)) {
+            if showInsight { showInsight = false }
             if showChapters { showChapters = false }
             if showTranscript { showTranscript = false }
         }
@@ -270,12 +295,13 @@ struct NowPlayingView: View {
         .padding(.top, 24)
     }
 
-    /// Transcript and chapter toggles — other actions live in the top-right more menu.
+    /// Transcript, chapter, and insight toggles — other actions live in the top-right more menu.
     @ViewBuilder
     private func actionsRow(for episode: Episode) -> some View {
-        HStack(spacing: 48) {
+        HStack(spacing: 40) {
             transcriptButton(for: episode)
             chapterButton(for: episode)
+            insightButton(for: episode)
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 24)
@@ -405,7 +431,10 @@ struct NowPlayingView: View {
     private func transcriptButton(for episode: Episode) -> some View {
         Button {
             withAnimation(.easeInOut(duration: 0.35)) {
-                if !showTranscript { showChapters = false }  // mutual exclusion
+                if !showTranscript {
+                    showChapters = false
+                    showInsight = false
+                }
                 showTranscript.toggle()
             }
             if showTranscript {
@@ -417,12 +446,16 @@ struct NowPlayingView: View {
                 .font(.title2)
                 .foregroundStyle(showTranscript ? dominantColor : Color.secondary)
         }
+        .accessibilityLabel("Transcript")
     }
 
     private func chapterButton(for episode: Episode) -> some View {
         Button {
             withAnimation(.easeInOut(duration: 0.35)) {
-                if !showChapters { showTranscript = false }  // mutual exclusion
+                if !showChapters {
+                    showTranscript = false
+                    showInsight = false
+                }
                 showChapters.toggle()
             }
             if showChapters {
@@ -434,6 +467,28 @@ struct NowPlayingView: View {
                 .font(.title2)
                 .foregroundStyle(showChapters ? dominantColor : Color.secondary)
         }
+        .accessibilityLabel("Chapters")
+    }
+
+    private func insightButton(for episode: Episode) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.35)) {
+                if !showInsight {
+                    showTranscript = false
+                    showChapters = false
+                }
+                showInsight.toggle()
+            }
+            if showInsight {
+                insightEpisodeGUID = episode.guid
+                insightService.load(for: episode)
+            }
+        } label: {
+            Image(systemName: showInsight ? "sparkles.rectangle.stack.fill" : "sparkles.rectangle.stack")
+                .font(.title2)
+                .foregroundStyle(showInsight ? dominantColor : Color.secondary)
+        }
+        .accessibilityLabel("Insight")
     }
 
     @ViewBuilder

@@ -36,22 +36,24 @@ actor FandomWikiClient {
         }
 
         let parsed = try await parsePage(mapping: mapping, title: pageTitle)
-        let synopsis = WikiTextParsing.extractSection(
+        let synopsisWikitext = WikiTextParsing.extractSection(
             from: parsed.wikitext,
             named: mapping.synopsisSectionTitle
-        ).map(WikiTextParsing.wikitextToPlain)
+        )
+        let synopsisPlain = synopsisWikitext.map(WikiTextParsing.wikitextToPlain)?.nilIfBlank
+            ?? WikiTextParsing.episodeLedeSynopsis(from: parsed.wikitext)
 
         let lede = WikiTextParsing.lede(from: parsed.wikitext)
         let names = WikiTextParsing.characterNames(
             fromLede: lede,
-            synopsis: synopsis ?? "",
+            synopsis: synopsisWikitext.map(WikiTextParsing.wikitextToPlain) ?? "",
             knownPCs: mapping.knownPlayerCharacters
         )
 
         return ResolvedEpisodePage(
             title: pageTitle,
             pageURL: mapping.pageURL(title: pageTitle),
-            synopsis: synopsis?.nilIfBlank,
+            synopsis: synopsisPlain,
             characterNames: names
         )
     }
@@ -198,6 +200,16 @@ actor FandomWikiClient {
         var titles: [String] = []
         let title = episodeTitle.trimmingCharacters(in: .whitespacesAndNewlines)
 
+        if let abbr = parseCampaignAbbreviation(title) {
+            if let saga = abbr.saga {
+                titles.append(
+                    "Campaign \(abbr.campaign), Episode \(abbr.episode): \(abbr.body) (\(saga))"
+                )
+            }
+            titles.append("Campaign \(abbr.campaign), Episode \(abbr.episode): \(abbr.body)")
+            titles.append("Campaign \(abbr.campaign), Episode \(abbr.episode)")
+        }
+
         if let parsed = parseEpStyleTitle(title) {
             let body = parsed.body
             if let saga = parsed.saga {
@@ -220,6 +232,14 @@ actor FandomWikiClient {
     nonisolated static func searchQueries(from episodeTitle: String) -> [String] {
         var queries: [String] = []
         let title = episodeTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let abbr = parseCampaignAbbreviation(title) {
+            queries.append("Campaign \(abbr.campaign), Episode \(abbr.episode)")
+            queries.append(abbr.body)
+            if let saga = abbr.saga {
+                queries.append("\(abbr.body) (\(saga))")
+            }
+        }
 
         if let parsed = parseEpStyleTitle(title) {
             queries.append("Episode \(parsed.number): \(parsed.body)")
@@ -275,9 +295,13 @@ actor FandomWikiClient {
         if looksLikeEpisodePage(pageTitle) {
             score += 0.05
         }
-        if let rssCampaign = namedCampaignPrefix(episodeTitle),
-           let pageCampaign = namedCampaignPrefix(pageTitle),
+        if let rssCampaign = campaignNumber(in: episodeTitle),
+           let pageCampaign = campaignNumber(in: pageTitle),
            rssCampaign != pageCampaign {
+            score -= 0.5
+        } else if let rssCampaign = namedCampaignPrefix(episodeTitle),
+                  let pageCampaign = namedCampaignPrefix(pageTitle),
+                  rssCampaign != pageCampaign {
             score -= 0.5
         }
         return score
@@ -290,16 +314,19 @@ actor FandomWikiClient {
     }
 
     /// "Ep. 1 Green Teens Gone (The Moonstone Saga)" / "Episode 2: Into the Muck (…)"
+    /// Also accepts a leading "C3 " campaign abbreviation.
     private nonisolated static func parseEpStyleTitle(
         _ title: String
     ) -> (number: Int, body: String, saga: String?)? {
+        if let abbr = parseCampaignAbbreviation(title) {
+            return (abbr.episode, abbr.body, abbr.saga)
+        }
         let pattern = #"(?i)^(?:ep\.?|episode)\s*(\d+)\s*[:.\-]?\s+(.+?)(?:\s*\(([^)]+)\))?\s*$"#
         guard let match = WikiTextParsing.firstMatch(pattern, in: title),
               match.numberOfRanges >= 3,
               let number = Int(WikiTextParsing.substring(match, 1, in: title)) else { return nil }
         var body = WikiTextParsing.substring(match, 2, in: title)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        // If body still ends with "(Saga)" because group 3 missed, strip it.
         var saga: String?
         if match.numberOfRanges >= 4 {
             let raw = WikiTextParsing.substring(match, 3, in: title)
@@ -313,6 +340,41 @@ actor FandomWikiClient {
         }
         guard body.count >= 3 else { return nil }
         return (number, body, saga)
+    }
+
+    /// "C3 Ep. 31: Peaks and Valleys (Legends of Irondeep)"
+    private nonisolated static func parseCampaignAbbreviation(
+        _ title: String
+    ) -> (campaign: Int, episode: Int, body: String, saga: String?)? {
+        let pattern = #"(?i)^c(\d+)\s+ep\.?\s*(\d+)\s*:\s*(.+?)(?:\s*\(([^)]+)\))?\s*$"#
+        guard let match = WikiTextParsing.firstMatch(pattern, in: title),
+              match.numberOfRanges >= 4,
+              let campaign = Int(WikiTextParsing.substring(match, 1, in: title)),
+              let episode = Int(WikiTextParsing.substring(match, 2, in: title)) else { return nil }
+        var body = WikiTextParsing.substring(match, 3, in: title)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        var saga: String?
+        if match.numberOfRanges >= 5 {
+            let raw = WikiTextParsing.substring(match, 4, in: title)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            saga = raw.isEmpty ? nil : raw
+        }
+        if saga == nil, let open = body.lastIndex(of: "("), body.hasSuffix(")") {
+            saga = String(body[body.index(after: open)..<body.index(before: body.endIndex)])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            body = String(body[..<open]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        guard body.count >= 3 else { return nil }
+        return (campaign, episode, body, saga)
+    }
+
+    private nonisolated static func campaignNumber(in title: String) -> Int? {
+        if let abbr = parseCampaignAbbreviation(title) { return abbr.campaign }
+        if let c = matchCampaignEpisode(title) { return c.campaign }
+        let pattern = #"(?i)^c(\d+)\b"#
+        guard let match = WikiTextParsing.firstMatch(pattern, in: title),
+              match.numberOfRanges >= 2 else { return nil }
+        return Int(WikiTextParsing.substring(match, 1, in: title))
     }
 
     private nonisolated static func namedCampaignEpisodeQuery(_ title: String) -> String? {
@@ -348,6 +410,9 @@ actor FandomWikiClient {
     }
 
     private nonisolated static func matchCampaignEpisode(_ title: String) -> (campaign: Int, episode: Int)? {
+        if let abbr = parseCampaignAbbreviation(title) {
+            return (abbr.campaign, abbr.episode)
+        }
         let pattern = #"(?i)campaign\s+(\d+).*?episode\s+(\d+)"#
         guard let match = WikiTextParsing.firstMatch(pattern, in: title),
               match.numberOfRanges >= 3,

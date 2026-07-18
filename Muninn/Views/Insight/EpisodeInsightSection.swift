@@ -1,10 +1,9 @@
 import SwiftUI
 
-/// Episode-detail block: loading, synopsis disclosure, and Insight entry.
+/// Episode-detail block: spoiler-gated synopsis + inline character cards.
 struct EpisodeInsightSection: View {
     let episode: Episode
     @State private var service = EpisodeInsightService.shared
-    @State private var showXRay = false
 
     private var isSupported: Bool {
         service.isSupported(for: episode)
@@ -18,15 +17,6 @@ struct EpisodeInsightSection: View {
         }
         .task(id: episode.guid) {
             service.load(for: episode)
-        }
-        .onDisappear {
-            // Keep cache; only cancel in-flight work for this screen.
-            service.cancel()
-        }
-        .sheet(isPresented: $showXRay) {
-            if let insight = service.insight {
-                InsightXRayView(insight: insight)
-            }
         }
     }
 
@@ -48,25 +38,24 @@ struct EpisodeInsightSection: View {
                 }
 
                 if insight.hasCharacters {
-                    Button {
-                        showXRay = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "sparkles.rectangle.stack")
-                            Text("Insight")
-                            Text("· \(insight.characters.count) characters")
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.tertiary)
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Characters")
+                            .font(.headline)
+
+                        ForEach(insight.characters) { character in
+                            InsightCharacterRow(character: character)
                         }
-                        .font(.subheadline.weight(.semibold))
-                        .padding(12)
-                        .background(Color.secondary.opacity(0.1))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
-                    .buttonStyle(.plain)
+                }
+
+                if insight.hasSynopsis || insight.hasCharacters {
+                    Text("Spoiler-safe as of this episode · \(insight.attribution)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } else if !service.isLoading {
+                    Text("The wiki page didn’t include a synopsis or characters for this episode.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             } else if let message = service.errorMessage, !service.isLoading {
                 Text(message)

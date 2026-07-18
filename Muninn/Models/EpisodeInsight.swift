@@ -3,8 +3,8 @@ import Foundation
 /// Cached wiki-backed insight for an episode (synopsis + character cards).
 struct EpisodeInsight: Codable, Equatable {
     /// Bump when matching/parsing changes so on-disk JSON is discarded.
-    /// 3 = Ep. N feed titles + exact-title lookup (Moonstone Ep. 1 vs "The Green Teens").
-    static let currentCacheVersion = 3
+    /// 5 = sanitize height quotes so FM blurbs don't truncate on 6'6".
+    static let currentCacheVersion = 5
 
     /// Absent/older than `currentCacheVersion` → cache miss + delete.
     var cacheVersion: Int?

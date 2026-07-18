@@ -96,9 +96,11 @@ final class EpisodeInsightService {
                     errorMessage = "No wiki page found for this episode."
                 }
             } catch is CancellationError {
-                // ignore
+                // Superseded by another load or intentional cancel — keep prior insight.
+            } catch let urlError as URLError where urlError.code == .cancelled {
+                // URLSession maps Task cancel to URLError.cancelled, not CancellationError.
             } catch {
-                guard activeGUID == guid else { return }
+                guard !Task.isCancelled, activeGUID == guid else { return }
                 errorMessage = error.localizedDescription
             }
         }

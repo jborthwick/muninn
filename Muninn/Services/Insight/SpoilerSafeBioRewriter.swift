@@ -16,8 +16,12 @@ enum SpoilerSafeBioRewriter {
     ) async -> String? {
         guard isAvailable else { return nil }
 
+        // Strip inch-mark quotes so guided generation doesn't truncate mid-string
+        // on heights like 6'6".
+        let safeIntro = sanitizeForModel(intro)
+        let safeHint = inEpisodeHint.map(sanitizeForModel)
         let roleLine = role.map { "Role: \($0)." } ?? ""
-        let hintLine = inEpisodeHint.map { "In this episode (may mention them): \($0)" } ?? ""
+        let hintLine = safeHint.map { "In this episode (may mention them): \($0)" } ?? ""
 
         let session = LanguageModelSession(instructions: """
         You write spoiler-safe character cards for a podcast companion app.
@@ -25,14 +29,15 @@ enum SpoilerSafeBioRewriter {
         Do not invent plot, deaths, romance, identity reveals, or future events.
         Prefer identity, role, and vibe in 1–2 short sentences.
         If the intro is thin, say only what is clearly known.
-        Episode context: "\(episodeTitle)"
+        Spell out heights (e.g. 6-foot-6) — never use inch-mark quotes.
+        Episode context: "\(sanitizeForModel(episodeTitle))"
         """)
 
         let prompt = """
         Character: \(name)
         \(roleLine)
         Wiki intro (source material — do not add beyond this):
-        \(intro)
+        \(safeIntro)
         \(hintLine)
 
         Write a spoiler-safe character card.
@@ -44,7 +49,10 @@ enum SpoilerSafeBioRewriter {
                 generating: SpoilerSafeBioPlan.self
             )
             let text = response.content.blurb.trimmingCharacters(in: .whitespacesAndNewlines)
-            return text.isEmpty ? nil : text
+            guard isPlausibleBlurb(text) else {
+                return fallbackBlurb(name: name, role: role, intro: intro)
+            }
+            return text
         } catch {
             return fallbackBlurb(name: name, role: role, intro: intro)
         }
@@ -60,12 +68,39 @@ enum SpoilerSafeBioRewriter {
         return sentence.isEmpty ? "\(name)." : sentence
     }
 
+    /// Avoid `"` marks that break guided-generation string fields.
+    nonisolated static func sanitizeForModel(_ text: String) -> String {
+        var result = text
+        // 6'6" / 6′6″ → 6-foot-6
+        result = result.replacingOccurrences(
+            of: #"(\d+)\s*['′]\s*(\d+)\s*[\"″]"#,
+            with: "$1-foot-$2",
+            options: .regularExpression
+        )
+        result = result
+            .replacingOccurrences(of: "\"", with: "")
+            .replacingOccurrences(of: "\u{201C}", with: "")
+            .replacingOccurrences(of: "\u{201D}", with: "")
+            .replacingOccurrences(of: "\u{2033}", with: "")
+        return result
+    }
+
+    nonisolated static func isPlausibleBlurb(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 48 else { return false }
+        // Truncation often ends right after a height fragment.
+        if trimmed.range(of: #"\d+['′]\d*\s*[\"″]?\s*$"#, options: .regularExpression) != nil {
+            return false
+        }
+        return true
+    }
+
     private static func firstSentences(_ text: String, max: Int) -> String {
         var sentences: [String] = []
         var current = ""
         for ch in text {
             current.append(ch)
-            if ".!?".contains(ch) {
+            if ch == "." || ch == "!" || ch == "?" {
                 let s = current.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !s.isEmpty { sentences.append(s) }
                 current = ""
@@ -86,6 +121,6 @@ enum SpoilerSafeBioRewriter {
 
 @Generable
 private struct SpoilerSafeBioPlan {
-    @Guide(description: "1–2 short spoiler-safe sentences about the character.")
+    @Guide(description: "1–2 short spoiler-safe sentences about the character. No quotation marks.")
     var blurb: String
 }

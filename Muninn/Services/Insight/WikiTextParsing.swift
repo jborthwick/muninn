@@ -4,11 +4,39 @@ import Foundation
 enum WikiTextParsing {
     static func extractSection(from wikitext: String, named section: String) -> String? {
         let escaped = NSRegularExpression.escapedPattern(for: section)
-        let pattern = #"(?is)==+\s*\#(escaped)\s*==+\s*(.*?)(?=\n==+|\z)"#
+        // Heading must be on its own line. Do not let whitespace skip past the next
+        // heading — empty sections used to capture "== Trivia ==" as the body.
+        let pattern = #"(?ims)^==+\s*\#(escaped)\s*==+\s*$(.*?)(?=^==+|\z)"#
             .replacingOccurrences(of: "#(escaped)", with: escaped)
         guard let match = firstMatch(pattern, in: wikitext),
               match.numberOfRanges >= 2 else { return nil }
-        return substring(match, 1, in: wikitext).trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = substring(match, 1, in: wikitext)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty, !body.hasPrefix("==") else { return nil }
+        return body
+    }
+
+    /// Narrative paragraphs from the episode lede when Plot Synopsis is empty on-wiki.
+    static func episodeLedeSynopsis(from wikitext: String) -> String? {
+        let rawLede = lede(from: wikitext)
+        var paragraphs: [String] = []
+        for block in rawLede.components(separatedBy: "\n\n") {
+            let trimmed = block.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            if trimmed.hasPrefix("{{") || trimmed.hasPrefix("[[File") { continue }
+            let plain = wikitextToPlain(trimmed)
+            guard plain.count >= 40 else { continue }
+            // Skip the stock "X is the Nth episode of Campaign…" blurb.
+            if plain.range(
+                of: #"\bis the\b.+\bepisode\b"#,
+                options: [.regularExpression, .caseInsensitive]
+            ) != nil {
+                continue
+            }
+            paragraphs.append(plain)
+        }
+        guard !paragraphs.isEmpty else { return nil }
+        return paragraphs.joined(separator: "\n\n").nilIfBlank
     }
 
     static func lede(from wikitext: String) -> String {
@@ -28,7 +56,8 @@ enum WikiTextParsing {
 
         let skipPrefixes = [":", "File:", "Category:", "Image:"]
         let skipExact: Set<String> = [
-            "Duck Team", "Mothership", "Bahumia", "Eldermourne", "Trinyvale"
+            "Duck Team", "Mothership", "Bahumia", "Eldermourne", "Trinyvale",
+            "Irondeep", "Irondeep Mountains", "Moonstone Swamp", "Crick"
         ]
 
         func consider(_ raw: String) {
@@ -41,6 +70,12 @@ enum WikiTextParsing {
             if skipExact.contains(name) { return }
             if name.lowercased().contains("episode") { return }
             if name.lowercased().hasPrefix("campaign ") { return }
+            if name.lowercased().hasSuffix(" mountains")
+                || name.lowercased().hasSuffix(" kingdom")
+                || name.lowercased().hasSuffix(" forest")
+                || name.lowercased().hasSuffix(" swamp") {
+                return
+            }
             let key = name.lowercased()
             guard seen.insert(key).inserted else { return }
             names.append(name)

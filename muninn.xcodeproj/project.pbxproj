@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		029321CFFD94FC59EC7F689A /* ChapterService+Control.swift in Sources */ = {isa = PBXBuildFile; fileRef = F33544D71DE0EAFB19DB83D0 /* ChapterService+Control.swift */; };
 		03B792B09B32FC956F1767BE /* FolderPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4925A1F355EC9C04D343111 /* FolderPickerView.swift */; };
+		08E79F0EE3681600978C71A6 /* NowPlayingInsightView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AE30D82FD2B9E471DF19908 /* NowPlayingInsightView.swift */; };
 		0E83BCCB01E3403FC14E6311 /* FolderDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8F409D264E22CBAEE1C41E7 /* FolderDetailView.swift */; };
 		1272298A7939CB1D1C1802AA /* PauseRecapDebugInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C57E1118302A0FCADCDAB42 /* PauseRecapDebugInfo.swift */; };
 		1291722DE603967753E309FE /* NowPlayingEpisodeHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D0377ADB2A3CD5BF0576598 /* NowPlayingEpisodeHeader.swift */; };
@@ -176,6 +177,7 @@
 		97F0C33635F03B71191592AD /* PodcastDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PodcastDetailView.swift; sourceTree = "<group>"; };
 		982E1DEF4F3CF5F17ED2026D /* BackgroundRefreshManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundRefreshManager.swift; sourceTree = "<group>"; };
 		991EF1F7A3FE6911D1B8733A /* PlaylistManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistManager.swift; sourceTree = "<group>"; };
+		9AE30D82FD2B9E471DF19908 /* NowPlayingInsightView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingInsightView.swift; sourceTree = "<group>"; };
 		9BCE8E1C3ACF2A90820611A9 /* Muninn.entitlements.disabled */ = {isa = PBXFileReference; path = Muninn.entitlements.disabled; sourceTree = "<group>"; };
 		A1967F834082D93270225CBF /* ImageCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCache.swift; sourceTree = "<group>"; };
 		A7CCAF875DC9E95B9D810F81 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -423,6 +425,7 @@
 				08D6D293BD142FCB9EF596A0 /* ChapterView.swift */,
 				F905C1228E087C76EAA270E3 /* MiniPlayerView.swift */,
 				4D0377ADB2A3CD5BF0576598 /* NowPlayingEpisodeHeader.swift */,
+				9AE30D82FD2B9E471DF19908 /* NowPlayingInsightView.swift */,
 				E0546B715B9167A888B99C30 /* NowPlayingView.swift */,
 				59AF7D3F6DE57598F572DA42 /* PauseRecapBanner.swift */,
 				E75BDDB8D8C988C923EB5CBB /* PauseRecapDebugView.swift */,
@@ -640,6 +643,7 @@
 				8475A11241D6A509426C436A /* MuninnApp.swift in Sources */,
 				48127A864A5B564550D73BE9 /* NetworkMonitor.swift in Sources */,
 				1291722DE603967753E309FE /* NowPlayingEpisodeHeader.swift in Sources */,
+				08E79F0EE3681600978C71A6 /* NowPlayingInsightView.swift in Sources */,
 				1F26FCBEFEEFB5FA23A5CE86 /* NowPlayingView.swift in Sources */,
 				1E3C35F93474EC193FB18EBC /* OPMLImportView.swift in Sources */,
 				3E7525AB4E0153365302410A /* OPMLParser.swift in Sources */,
