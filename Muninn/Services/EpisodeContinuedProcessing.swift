@@ -51,6 +51,9 @@ final class EpisodeContinuedProcessing {
         )
     }
 
+    /// True while a user-initiated BGContinuedProcessingTask pipeline is running.
+    var hasActivePipelines: Bool { !pipelines.isEmpty }
+
     func cancelPipeline(for episodeGUID: String) {
         let key = Self.pipelineKey(for: episodeGUID)
         guard let pipeline = pipelines[key] else { return }

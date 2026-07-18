@@ -15,6 +15,10 @@ final class EpisodeProcessingBackgroundManager {
     private var lifecycleObservers: [NSObjectProtocol] = []
     private var modelContext: ModelContext?
 
+    /// When true, auto queues must not start new jobs (app resigned active).
+    /// Cleared on become-active and while a BGProcessingTask is running.
+    private(set) var isAutoProcessingSuspended = false
+
     private init() {}
 
     // MARK: - Registration
@@ -43,7 +47,7 @@ final class EpisodeProcessingBackgroundManager {
                 queue: .main
             ) { [weak self] _ in
                 Task { @MainActor in
-                    self?.beginBackgroundExecutionIfNeeded()
+                    self?.handleWillResignActive()
                 }
             }
         )
@@ -102,21 +106,48 @@ final class EpisodeProcessingBackgroundManager {
 
     // MARK: - beginBackgroundTask
 
+    private func handleWillResignActive() {
+        suspendAutoProcessingIfNeeded()
+        beginBackgroundExecutionIfNeeded()
+        scheduleProcessingIfNeeded()
+    }
+
+    /// Pause auto transcription/chapters when leaving the foreground.
+    /// User-initiated BGContinuedProcessingTask pipelines are left alone.
+    private func suspendAutoProcessingIfNeeded() {
+        if EpisodeContinuedProcessing.shared.hasActivePipelines {
+            logger.info("Leaving processing running — continued processing pipeline active")
+            return
+        }
+
+        guard hasActiveRunningWork() || hasActiveOrPendingWork() || PendingWorkStore.hasPendingWork else {
+            return
+        }
+
+        isAutoProcessingSuspended = true
+        logger.info("Suspending auto episode processing for background")
+        ChapterService.shared.cancelActiveGeneration()
+        LocalTranscriptionService.shared.cancelActiveForBackgroundExpiry()
+    }
+
     private func beginBackgroundExecutionIfNeeded() {
         guard backgroundTaskID == .invalid else { return }
-        guard hasActiveOrPendingWork() else { return }
+        guard hasActiveRunningWork() else { return }
 
+        // Expiration handler is already invoked synchronously on the main thread.
+        // Must end the task before returning or iOS watchdog-kills the app (0x8badf00d).
         backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "EpisodeProcessing") { [weak self] in
-            Task { @MainActor in
-                self?.logger.warning(
-                    "beginBackgroundTask expired — cancelling chapter generation and scheduling BGProcessingTask"
-                )
-                // Foundation Models degrade badly once execution is about to suspend.
-                // Cancel so we keep pending work and retry instead of saving empty stubs.
+            guard let self else { return }
+            self.logger.warning(
+                "beginBackgroundTask expired — ending assertion and scheduling BGProcessingTask"
+            )
+            if !EpisodeContinuedProcessing.shared.hasActivePipelines {
+                self.isAutoProcessingSuspended = true
                 ChapterService.shared.cancelActiveGeneration()
-                self?.scheduleProcessingIfNeeded()
-                self?.endBackgroundExecution()
+                LocalTranscriptionService.shared.cancelActiveForBackgroundExpiry()
             }
+            self.scheduleProcessingIfNeeded()
+            self.endBackgroundExecution()
         }
         logger.info("beginBackgroundTask started for episode processing")
     }
@@ -128,6 +159,7 @@ final class EpisodeProcessingBackgroundManager {
     }
 
     private func handleDidBecomeActive() {
+        isAutoProcessingSuspended = false
         endBackgroundExecution()
         if let modelContext {
             resumeInterruptedWork(context: modelContext)
@@ -140,6 +172,7 @@ final class EpisodeProcessingBackgroundManager {
 
     private func handleProcessingTask(_ task: BGProcessingTask) async {
         logger.info("BGProcessingTask started")
+        isAutoProcessingSuspended = false
         scheduleProcessingIfNeeded()
 
         let work = Task {
@@ -150,7 +183,9 @@ final class EpisodeProcessingBackgroundManager {
             self.logger.warning("BGProcessingTask expired")
             work.cancel()
             Task { @MainActor in
+                self.isAutoProcessingSuspended = true
                 ChapterService.shared.cancelActiveGeneration()
+                LocalTranscriptionService.shared.cancelActiveForBackgroundExpiry()
             }
         }
 
@@ -192,6 +227,13 @@ final class EpisodeProcessingBackgroundManager {
             || chapters.isProcessing
             || !transcription.queuedGUIDs.isEmpty
             || !chapters.queuedGUIDs.isEmpty
+    }
+
+    private func hasActiveRunningWork() -> Bool {
+        AutoTranscriptionQueue.shared.isProcessing
+            || AutoChapterQueue.shared.isProcessing
+            || LocalTranscriptionService.shared.isTranscribing
+            || ChapterService.shared.isGenerating
     }
 
     private static func makeModelContainer() -> ModelContainer? {

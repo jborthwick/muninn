@@ -105,9 +105,10 @@ final class LocalTranscriptionService {
             AutoChapterQueue.shared.enqueueIfEnabled(episode: episode, context: context)
             return true
         } catch is CancellationError {
+            // Keep PendingWorkStore so background interrupt can retry on become-active /
+            // BGProcessingTask. User cancel clears pending via removeFromQueue first.
             logger.info("Transcription cancelled for: \(episode.title)")
             episode.transcriptionProgress = nil
-            PendingWorkStore.removeTranscription(guid: episode.guid)
             try? context.save()
             return false
         } catch {

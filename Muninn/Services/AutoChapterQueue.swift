@@ -75,6 +75,10 @@ final class AutoChapterQueue {
 
     private func processNextIfNeeded() {
         guard !isProcessing, !queue.isEmpty, let context = modelContext else { return }
+        guard !EpisodeProcessingBackgroundManager.shared.isAutoProcessingSuspended else {
+            logger.info("Skipping next chapter generation — auto processing suspended")
+            return
+        }
 
         if ChapterService.shared.isGenerating {
             Task {

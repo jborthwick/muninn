@@ -104,6 +104,10 @@ final class AutoTranscriptionQueue {
 
     private func processNextIfNeeded() {
         guard !isProcessing, !queue.isEmpty, let context = modelContext else { return }
+        guard !EpisodeProcessingBackgroundManager.shared.isAutoProcessingSuspended else {
+            logger.info("Skipping next transcription — auto processing suspended")
+            return
+        }
 
         isProcessing = true
         let episode = queue.removeFirst()
@@ -119,8 +123,15 @@ final class AutoTranscriptionQueue {
                 self.syncQueuedGUIDs()
                 logger.info("Re-queued episode (transcription service busy): \(episode.title)")
             } else if !success {
-                logger.warning("Auto-transcription failed, not retrying: \(episode.title)")
-                PendingWorkStore.removeTranscription(guid: episode.guid)
+                // Cancellation / background interrupt keeps PendingWorkStore for resume.
+                // Permanent failures clear it inside LocalTranscriptionService.
+                if PendingWorkStore.transcriptionGUIDs.contains(episode.guid) {
+                    logger.warning(
+                        "Auto-transcription interrupted — keeping pending for retry: \(episode.title)"
+                    )
+                } else {
+                    logger.warning("Auto-transcription failed, not retrying: \(episode.title)")
+                }
             } else {
                 PendingWorkStore.removeTranscription(guid: episode.guid)
             }

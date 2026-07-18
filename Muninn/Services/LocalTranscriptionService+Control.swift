@@ -75,4 +75,13 @@ extension LocalTranscriptionService {
         await cancellationHandler?()
         cancellationHandler = nil
     }
+
+    /// Fire-and-forget cancel for background expiry / resign-active.
+    /// Does not clear `PendingWorkStore` — resumePersistedWork retries later.
+    func cancelActiveForBackgroundExpiry() {
+        guard isTranscribing else { return }
+        let handler = cancellationHandler
+        cancellationHandler = nil
+        Task { await handler?() }
+    }
 }
