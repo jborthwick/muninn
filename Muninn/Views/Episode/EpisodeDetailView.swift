@@ -240,7 +240,7 @@ struct EpisodeDetailView: View {
         .interactiveDismissDisabled(false)
         .alert("Download on Cellular?", isPresented: $showCellularConfirmation) {
             Button("Download") {
-                DownloadManager.shared.download(episode)
+                DownloadManager.shared.download(episode, userInitiated: modelContext)
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -429,7 +429,7 @@ struct EpisodeDetailView: View {
     private func playEpisode() {
         // Auto-download when playing if not downloaded
         if episode.localFilePath == nil {
-            DownloadManager.shared.download(episode)
+            DownloadManager.shared.download(episode, userInitiated: modelContext)
         }
         AudioPlayerManager.shared.play(episode)
         dismiss()

@@ -90,7 +90,7 @@ struct PlaylistDetailView: View {
         .alert("Download on Cellular?", isPresented: $showCellularConfirmation) {
             Button("Download") {
                 if let episode = episodePendingDownload {
-                    DownloadManager.shared.download(episode)
+                    DownloadManager.shared.download(episode, userInitiated: modelContext)
                 }
                 episodePendingDownload = nil
             }
@@ -103,7 +103,7 @@ struct PlaylistDetailView: View {
         .alert("Download on Cellular?", isPresented: $showBatchCellularConfirmation) {
             Button("Download") {
                 for episode in episodesPendingBatchDownload {
-                    DownloadManager.shared.download(episode)
+                    DownloadManager.shared.download(episode, userInitiated: modelContext)
                 }
                 episodesPendingBatchDownload = []
             }

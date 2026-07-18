@@ -31,10 +31,8 @@ final class QueueManager {
         let queueItem = QueueItem(episode: episode, sortOrder: nextOrder)
         context.insert(queueItem)
 
-        // Auto-download when adding to queue
-        if episode.localFilePath == nil {
-            DownloadManager.shared.download(episode)
-        }
+        // User-initiated: download and/or prepare transcript+chapters in the background.
+        prepareEpisodeForListening(episode, context: context)
 
         do {
             try context.save()
@@ -61,16 +59,27 @@ final class QueueManager {
         let queueItem = QueueItem(episode: episode, sortOrder: 0)
         context.insert(queueItem)
 
-        // Auto-download when adding to queue
-        if episode.localFilePath == nil {
-            DownloadManager.shared.download(episode)
-        }
+        // User-initiated: download and/or prepare transcript+chapters in the background.
+        prepareEpisodeForListening(episode, context: context)
 
         do {
             try context.save()
             logger.info("Added episode to play next: \(episode.title)")
         } catch {
             logger.error("Failed to save play next: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Background Prepare
+
+    /// Starts download (if needed) and BGContinuedProcessing for transcript/chapters.
+    private func prepareEpisodeForListening(_ episode: Episode, context: ModelContext) {
+        if episode.localFilePath == nil {
+            DownloadManager.shared.download(episode, userInitiated: context)
+        } else {
+            Task { @MainActor in
+                EpisodeContinuedProcessing.shared.beginPrepareIfEligible(episode: episode, context: context)
+            }
         }
     }
 

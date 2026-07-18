@@ -144,7 +144,7 @@ struct EpisodeRowView: View {
         .opacity(episode.isPlayed ? 0.7 : 1.0)
         .alert("Download on Cellular?", isPresented: $showCellularConfirmation) {
             Button("Download") {
-                DownloadManager.shared.download(episode)
+                DownloadManager.shared.download(episode, userInitiated: modelContext)
             }
             Button("Cancel", role: .cancel) {}
         } message: {

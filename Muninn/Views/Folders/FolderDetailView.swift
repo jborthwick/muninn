@@ -165,7 +165,7 @@ struct FolderDetailView: View {
         .alert("Download on Cellular?", isPresented: $showCellularConfirmation) {
             Button("Download") {
                 if let episode = episodePendingDownload {
-                    DownloadManager.shared.download(episode)
+                    DownloadManager.shared.download(episode, userInitiated: modelContext)
                 }
                 episodePendingDownload = nil
             }
@@ -349,7 +349,7 @@ struct FolderDetailView: View {
                                     let result = DownloadManager.shared.checkDownloadAllowed(item.episode, isAutoDownload: true, context: modelContext)
                                     switch result {
                                     case .started:
-                                        DownloadManager.shared.download(item.episode)
+                                        DownloadManager.shared.download(item.episode, userInitiated: modelContext)
                                     case .needsConfirmation:
                                         episodePendingDownload = item.episode
                                         showCellularConfirmation = true
@@ -543,7 +543,7 @@ struct FolderDetailView: View {
         }
 
         if episode.localFilePath == nil {
-            DownloadManager.shared.download(episode)
+            DownloadManager.shared.download(episode, userInitiated: modelContext)
         }
 
         AudioPlayerManager.shared.play(episode)

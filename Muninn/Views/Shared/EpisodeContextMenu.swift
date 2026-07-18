@@ -60,7 +60,7 @@ struct EpisodeContextMenu: View {
                 let result = DownloadManager.shared.checkDownloadAllowed(episode, isAutoDownload: true, context: modelContext)
                 switch result {
                 case .started:
-                    DownloadManager.shared.download(episode)
+                    DownloadManager.shared.download(episode, userInitiated: modelContext)
                 case .needsConfirmation:
                     onDownloadNeedsConfirmation?()
                 case .blocked, .alreadyDownloaded, .alreadyDownloading:

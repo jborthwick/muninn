@@ -158,7 +158,7 @@ struct PodcastDetailView: View {
         .alert("Download on Cellular?", isPresented: $showCellularConfirmation) {
             Button("Download") {
                 if let episode = episodePendingDownload {
-                    DownloadManager.shared.download(episode)
+                    DownloadManager.shared.download(episode, userInitiated: modelContext)
                 }
                 episodePendingDownload = nil
             }
@@ -171,7 +171,7 @@ struct PodcastDetailView: View {
         .alert("Download on Cellular?", isPresented: $showBatchCellularConfirmation) {
             Button("Download") {
                 for episode in episodesPendingBatchDownload {
-                    DownloadManager.shared.download(episode)
+                    DownloadManager.shared.download(episode, userInitiated: modelContext)
                 }
                 episodesPendingBatchDownload = []
             }
@@ -615,7 +615,7 @@ struct PodcastDetailView: View {
 
         // Auto-download when playing
         if episode.localFilePath == nil {
-            DownloadManager.shared.download(episode)
+            DownloadManager.shared.download(episode, userInitiated: modelContext)
         }
 
         AudioPlayerManager.shared.play(episode)
@@ -626,7 +626,7 @@ struct PodcastDetailView: View {
 
         // Auto-download when starring
         if episode.isStarred && episode.localFilePath == nil {
-            DownloadManager.shared.download(episode)
+            DownloadManager.shared.download(episode, userInitiated: modelContext)
         }
 
         if showStarredOnly {

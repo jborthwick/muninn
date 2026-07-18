@@ -79,8 +79,16 @@ final class DownloadManager: NSObject {
         return .started
     }
 
-    /// Downloads an episode (bypasses network preference check - use checkDownloadAllowed first)
-    func download(_ episode: Episode) {
+    /// Downloads an episode (bypasses network preference check - use checkDownloadAllowed first).
+    /// Pass `userInitiated:` with a ModelContext for queue adds / manual downloads so
+    /// transcription and chapters can continue via BGContinuedProcessingTask while locked.
+    /// Omit it for silent auto-downloads (feed refresh, podcast auto-download).
+    func download(_ episode: Episode, userInitiated context: ModelContext? = nil) {
+        if let context {
+            Task { @MainActor in
+                EpisodeContinuedProcessing.shared.beginPrepareIfEligible(episode: episode, context: context)
+            }
+        }
         startDownload(episode)
     }
 
@@ -92,12 +100,7 @@ final class DownloadManager: NSObject {
 
         switch result {
         case .started:
-            if !isAutoDownload {
-                Task { @MainActor in
-                    EpisodeContinuedProcessing.shared.beginPrepareIfEligible(episode: episode, context: context)
-                }
-            }
-            startDownload(episode)
+            download(episode, userInitiated: isAutoDownload ? nil : context)
         case .alreadyDownloaded, .alreadyDownloading, .blocked, .needsConfirmation:
             break
         }

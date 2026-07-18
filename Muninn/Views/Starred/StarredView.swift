@@ -209,7 +209,7 @@ struct StarredView: View {
             .alert("Download on Cellular?", isPresented: $showCellularConfirmation) {
                 Button("Download") {
                     if let episode = episodePendingDownload {
-                        DownloadManager.shared.download(episode)
+                        DownloadManager.shared.download(episode, userInitiated: modelContext)
                     }
                     episodePendingDownload = nil
                 }
@@ -354,7 +354,7 @@ private struct StarredEpisodeRow: View {
                     .buttonStyle(.borderless)
                 } else {
                     Button {
-                        DownloadManager.shared.download(episode)
+                        DownloadManager.shared.download(episode, userInitiated: modelContext)
                     } label: {
                         Image(systemName: "arrow.down.circle")
                             .font(.title2)
