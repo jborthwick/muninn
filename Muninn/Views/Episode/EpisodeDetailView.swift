@@ -200,6 +200,10 @@ struct EpisodeDetailView: View {
                         }
                     }
 
+                    // Fandom wiki synopsis + Insight (mapped shows only)
+                    EpisodeInsightSection(episode: episode)
+                        .padding(.horizontal)
+
                     Spacer(minLength: 100)
                 }
             }

@@ -64,6 +64,17 @@ final class Episode {
         return summariesPath.appendingPathComponent(filename)
     }
 
+    /// Local fandom insight JSON (synopsis + character cards), stores just filename.
+    var localInsightPath: String?
+
+    /// Full file URL for cached insight JSON, if any.
+    var localInsightURL: URL? {
+        guard let filename = localInsightPath else { return nil }
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let insightPath = documentsPath.appendingPathComponent("Insight", isDirectory: true)
+        return insightPath.appendingPathComponent(filename)
+    }
+
     // Relationships
     var podcast: Podcast?
 
