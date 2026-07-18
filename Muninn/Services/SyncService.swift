@@ -289,19 +289,15 @@ final class SyncService {
         // Fetch existing data
         let podcastDescriptor = FetchDescriptor<Podcast>()
         let existingPodcasts = try context.fetch(podcastDescriptor)
-        let podcastsByURL = Dictionary(uniqueKeysWithValues: existingPodcasts.map { ($0.feedURL, $0) })
+        let podcastsByURL = Dictionary(existingPodcasts.map { ($0.feedURL, $0) }, uniquingKeysWith: { first, _ in first })
 
         let folderDescriptor = FetchDescriptor<Folder>()
         let existingFolders = try context.fetch(folderDescriptor)
-        var foldersById = Dictionary(uniqueKeysWithValues: existingFolders.compactMap { folder -> (String, Folder)? in
-            return (folder.id.uuidString, folder)
-        })
+        var foldersById = Dictionary(existingFolders.map { ($0.id.uuidString, $0) }, uniquingKeysWith: { first, _ in first })
 
         let playlistDescriptor = FetchDescriptor<Playlist>()
         let existingPlaylists = try context.fetch(playlistDescriptor)
-        var playlistsById = Dictionary(uniqueKeysWithValues: existingPlaylists.compactMap { playlist -> (String, Playlist)? in
-            return (playlist.id.uuidString, playlist)
-        })
+        var playlistsById = Dictionary(existingPlaylists.map { ($0.id.uuidString, $0) }, uniquingKeysWith: { first, _ in first })
 
         // Import podcasts (add new ones)
         for syncPodcast in data.podcasts {
@@ -355,7 +351,8 @@ final class SyncService {
         // Import episode states
         let episodeDescriptor = FetchDescriptor<Episode>()
         let allEpisodes = try context.fetch(episodeDescriptor)
-        let episodesByGUID = Dictionary(uniqueKeysWithValues: allEpisodes.map { ($0.guid, $0) })
+        // Duplicate GUIDs can exist after partial sync/import; keep the first and avoid trapping.
+        let episodesByGUID = Dictionary(allEpisodes.map { ($0.guid, $0) }, uniquingKeysWith: { first, _ in first })
 
         // Apply playlist deletions from tombstones before creating/updating
         for playlist in existingPlaylists {
@@ -505,7 +502,7 @@ final class SyncService {
         merged.deletedPlaylistIds = deletedPlaylistIds
 
         // Merge episode states (most recent state wins)
-        var statesByGUID = Dictionary(uniqueKeysWithValues: newer.episodeStates.map { ($0.guid, $0) })
+        var statesByGUID = Dictionary(newer.episodeStates.map { ($0.guid, $0) }, uniquingKeysWith: { first, _ in first })
         for state in older.episodeStates {
             if statesByGUID[state.guid] == nil {
                 statesByGUID[state.guid] = state
@@ -525,7 +522,7 @@ final class SyncService {
         cloudDeletedIds: [String]
     ) -> (items: [T], deletedIds: [String]) {
         let deletedIds = Set(localDeletedIds).union(cloudDeletedIds)
-        var byId = Dictionary(uniqueKeysWithValues: newer.map { ($0.id, $0) })
+        var byId = Dictionary(newer.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         for item in older where byId[item.id] == nil {
             byId[item.id] = item
         }

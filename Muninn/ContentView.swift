@@ -14,6 +14,7 @@ struct ContentView: View {
     private var playerManager = AudioPlayerManager.shared
     private var refreshManager = RefreshManager.shared
     private var networkMonitor = NetworkMonitor.shared
+    @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \QueueItem.sortOrder) private var queueItems: [QueueItem]
     @State private var showNowPlaying = false
     @State private var selectedTab = 0
@@ -106,6 +107,20 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showNowPlaying) {
             NowPlayingView()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .active:
+                // Session is live — if we die now, next launch records an unclean exit.
+                CrashReporter.shared.markLaunchInProgress()
+            case .background:
+                // Suspended/background kills are normal; don't treat them as crashes.
+                CrashReporter.shared.markCleanExit()
+            case .inactive:
+                break
+            @unknown default:
+                break
+            }
         }
     }
 }

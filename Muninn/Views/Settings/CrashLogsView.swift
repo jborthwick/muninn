@@ -14,12 +14,12 @@ struct CrashLogsView: View {
                     ContentUnavailableView(
                         "No Crash Reports",
                         systemImage: "checkmark.circle",
-                        description: Text("No crashes have been recorded")
+                        description: Text("No crashes have been recorded yet. Reports appear after the next launch following a crash.")
                     )
                 } else {
                     List {
                         Section {
-                            Text("Crash reports are saved locally and can help diagnose issues.")
+                            Text("Reports come from MetricKit, fatal signals, Obj-C exceptions, and unclean exits. Crashes while attached to Xcode may not appear here — use Xcode’s crash debugger instead.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -32,7 +32,7 @@ struct CrashLogsView: View {
                                     showReportSheet = true
                                 } label: {
                                     VStack(alignment: .leading, spacing: 4) {
-                                        Text(report.lastPathComponent)
+                                        Text(reportDisplayName(report))
                                             .font(.subheadline)
                                             .foregroundStyle(.primary)
                                         
@@ -130,6 +130,14 @@ struct CrashLogsView: View {
     
     private func getFileDate(_ url: URL) -> Date? {
         try? url.resourceValues(forKeys: [.creationDateKey]).creationDate
+    }
+
+    private func reportDisplayName(_ url: URL) -> String {
+        let name = url.deletingPathExtension().lastPathComponent
+        if name.hasPrefix("crash-") {
+            return String(name.dropFirst("crash-".count))
+        }
+        return name
     }
 }
 

@@ -4,6 +4,8 @@ import SwiftData
 @main
 struct MuninnApp: App {
     init() {
+        // Install crash handlers before any other launch work.
+        _ = CrashReporter.shared
         BackgroundRefreshManager.shared.registerBackgroundTask()
         EpisodeProcessingBackgroundManager.shared.registerBackgroundTasks()
     }
@@ -59,16 +61,14 @@ struct MuninnApp: App {
         WindowGroup {
             ContentView()
                 .onAppear {
-                    // Initialize crash reporter (must be first)
-                    _ = CrashReporter.shared
-                    
-                    // Initialize services with model context
+                    // Services with model context (crash reporter already installed in App.init)
                     let context = sharedModelContainer.mainContext
                     DownloadObserver.shared.setModelContext(context)
                     QueueManager.shared.setModelContext(context)
                     PlaylistManager.shared.setModelContext(context)
                     StatsService.shared.setModelContext(context)
                     AutoTranscriptionQueue.shared.setModelContext(context)
+                    AutoChapterQueue.shared.setModelContext(context)
                     AudioPlayerManager.shared.setModelContext(context)
 
                     // Migrate old absolute paths to relative filenames
@@ -92,13 +92,16 @@ struct MuninnApp: App {
                 .task {
                     let context = sharedModelContainer.mainContext
 
-                    // Brief delay to ensure UI is ready to show refresh banner
+                    // Let the first frames render before heavy launch work.
                     try? await Task.sleep(for: .milliseconds(500))
 
                     // Sync on app launch if iCloud is available
                     if SyncService.shared.isCloudAvailable {
                         await SyncService.shared.syncNow(context: context)
                     }
+
+                    // Yield so early taps aren't starved by sync→refresh back-to-back.
+                    await Task.yield()
 
                     // Background refresh if stale (> 1 hour since last refresh)
                     // Use RefreshManager so the status banner shows

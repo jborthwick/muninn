@@ -315,7 +315,7 @@ final class ExportImportService {
         // 1. Import podcasts first
         let existingPodcastDescriptor = FetchDescriptor<Podcast>()
         let existingPodcasts = try context.fetch(existingPodcastDescriptor)
-        var podcastsByURL = Dictionary(uniqueKeysWithValues: existingPodcasts.map { ($0.feedURL, $0) })
+        var podcastsByURL = Dictionary(existingPodcasts.map { ($0.feedURL, $0) }, uniquingKeysWith: { first, _ in first })
         
         var importedCount = 0
         var failedCount = 0
@@ -369,12 +369,12 @@ final class ExportImportService {
         logger.info("Importing \(exportData.folders.count) folders")
         let existingFolderDescriptor = FetchDescriptor<Folder>()
         let existingFolders = try context.fetch(existingFolderDescriptor)
-        var foldersById = Dictionary(uniqueKeysWithValues: existingFolders.map { ($0.id.uuidString, $0) })
+        var foldersById = Dictionary(existingFolders.map { ($0.id.uuidString, $0) }, uniquingKeysWith: { first, _ in first })
         
         // Re-fetch podcasts to get fresh references after save
         let podcastDescriptor = FetchDescriptor<Podcast>()
         let allPodcasts = try context.fetch(podcastDescriptor)
-        podcastsByURL = Dictionary(uniqueKeysWithValues: allPodcasts.map { ($0.feedURL, $0) })
+        podcastsByURL = Dictionary(allPodcasts.map { ($0.feedURL, $0) }, uniquingKeysWith: { first, _ in first })
         
         for exportFolder in exportData.folders {
             if let existingFolder = foldersById[exportFolder.id] {
@@ -401,14 +401,14 @@ final class ExportImportService {
 
         let episodeDescriptor = FetchDescriptor<Episode>()
         let allEpisodes = try context.fetch(episodeDescriptor)
-        let episodesByGUID = Dictionary(uniqueKeysWithValues: allEpisodes.map { ($0.guid, $0) })
+        let episodesByGUID = Dictionary(allEpisodes.map { ($0.guid, $0) }, uniquingKeysWith: { first, _ in first })
 
         // 3. Import playlists
         let exportPlaylists = exportData.playlists ?? []
         logger.info("Importing \(exportPlaylists.count) playlists")
         let existingPlaylistDescriptor = FetchDescriptor<Playlist>()
         let existingPlaylists = try context.fetch(existingPlaylistDescriptor)
-        var playlistsById = Dictionary(uniqueKeysWithValues: existingPlaylists.map { ($0.id.uuidString, $0) })
+        var playlistsById = Dictionary(existingPlaylists.map { ($0.id.uuidString, $0) }, uniquingKeysWith: { first, _ in first })
 
         for exportPlaylist in exportPlaylists {
             let playlist: Playlist

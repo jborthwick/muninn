@@ -55,7 +55,10 @@ final class RefreshManager {
         lastRefreshDate = Date()
     }
 
-    /// Refresh podcasts in parallel with limited concurrency
+    /// Refresh podcasts with limited network concurrency.
+    ///
+    /// Child tasks are MainActor-isolated so ModelContext mutations stay serialized.
+    /// Network awaits still overlap: while one feed is downloading, another task can start.
     private func refreshInParallel(podcasts: [Podcast], context: ModelContext) async {
         var notModified = 0
         var fetched = 0
@@ -82,8 +85,12 @@ final class RefreshManager {
                     refreshProgress = Double(refreshedCount) / Double(totalCount)
                 }
 
-                group.addTask {
-                    try? await FeedService.shared.refreshPodcast(podcast, context: context)
+                let modelID = podcast.persistentModelID
+                group.addTask { @MainActor in
+                    guard let podcast = context.model(for: modelID) as? Podcast else {
+                        return nil
+                    }
+                    return try? await FeedService.shared.refreshPodcast(podcast, context: context)
                 }
                 inFlight += 1
             }
