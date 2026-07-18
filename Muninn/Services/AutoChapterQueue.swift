@@ -37,14 +37,32 @@ final class AutoChapterQueue {
             logger.info("Skipping auto chapters — already generated for: \(episode.title)")
             return
         }
+        enqueue(episode: episode, context: context)
+    }
+
+    /// Enqueues chapter generation regardless of the auto-generate setting (user-initiated).
+    /// Episodes that already have chapters may be enqueued for regeneration.
+    func enqueue(episode: Episode, context: ModelContext) {
         guard !queue.contains(where: { $0.guid == episode.guid }) else { return }
+        guard !ChapterService.shared.isGenerating(for: episode.guid) else { return }
 
         queue.append(episode)
         syncQueuedGUIDs()
         modelContext = context
         PendingWorkStore.addChapter(guid: episode.guid)
-        logger.info("Enqueued episode for auto chapter generation: \(episode.title)")
+        logger.info("Enqueued episode for chapter generation: \(episode.title)")
         processNextIfNeeded()
+        EpisodeProcessingBackgroundManager.shared.notifyWorkStateChanged()
+    }
+
+    func removeFromQueue(guid: String) {
+        let before = queue.count
+        queue.removeAll { $0.guid == guid }
+        if queue.count != before {
+            syncQueuedGUIDs()
+            logger.info("Removed episode from chapter queue: \(guid)")
+        }
+        PendingWorkStore.removeChapter(guid: guid)
         EpisodeProcessingBackgroundManager.shared.notifyWorkStateChanged()
     }
 

@@ -48,7 +48,6 @@ struct QueueView: View {
                             ForEach(queueItems) { item in
                                 if let episode = item.episode {
                                     QueueEpisodeRow(episode: episode)
-                                        .equatable()
                                         .contentShape(Rectangle())
                                         .onTapGesture {
                                             selectedEpisode = episode
@@ -154,16 +153,8 @@ private struct NowPlayingTransportButton: View {
 
 // MARK: - Queue Episode Row
 
-private struct QueueEpisodeRow: View, Equatable {
+private struct QueueEpisodeRow: View {
     let episode: Episode
-
-    static func == (lhs: QueueEpisodeRow, rhs: QueueEpisodeRow) -> Bool {
-        lhs.episode.guid == rhs.episode.guid
-            && lhs.episode.title == rhs.episode.title
-            && lhs.episode.localFilePath == rhs.episode.localFilePath
-            && lhs.episode.downloadProgress == rhs.episode.downloadProgress
-            && lhs.episode.podcast?.feedURL == rhs.episode.podcast?.feedURL
-    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -185,6 +176,8 @@ private struct QueueEpisodeRow: View, Equatable {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+                EpisodeProcessingStatusView(episode: episode)
             }
 
             Spacer()

@@ -169,6 +169,12 @@ struct EpisodeDetailView: View {
                             .padding(.horizontal)
                     }
 
+                    chaptersSection
+                        .padding(.horizontal)
+
+                    Divider()
+                        .padding(.horizontal)
+
                     // Description
                     if let description = episode.episodeDescription, !description.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
@@ -397,9 +403,92 @@ struct EpisodeDetailView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    // MARK: - Chapters Section
+
+    @ViewBuilder
+    private var chaptersSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Chapters")
+                .font(.headline)
+
+            if isActivelyGeneratingChapters {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text(chapterStatusLabel)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Button("Cancel", role: .destructive) {
+                        cancelChapterGeneration()
+                    }
+                    .font(.caption)
+                }
+
+            } else if let error = chapterService.errorMessage(for: episode.guid) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .font(.subheadline)
+                        .foregroundStyle(.orange)
+
+                    if ChapterService.canGenerate(for: episode) {
+                        Button("Retry") {
+                            Task { await startChapterGeneration() }
+                        }
+                        .font(.caption)
+                    }
+                }
+
+            } else if episode.localChaptersPath != nil {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Chapters ready", systemImage: "list.bullet.rectangle")
+                        .font(.subheadline)
+                        .foregroundStyle(.orange)
+
+                    if ChapterService.canGenerate(for: episode) {
+                        Button("Regenerate") {
+                            Task { await startChapterGeneration() }
+                        }
+                        .font(.caption)
+                    }
+                }
+
+            } else if let (position, total) = AutoChapterQueue.shared.queuePosition(for: episode.guid) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("\(position) of \(total) queued for chapters", systemImage: "list.number")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Button("Remove from Queue") {
+                        AutoChapterQueue.shared.removeFromQueue(guid: episode.guid)
+                    }
+                    .font(.caption)
+                }
+
+            } else if ChapterService.canGenerate(for: episode) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("No chapters yet", systemImage: "list.bullet.rectangle")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Button("Generate Chapters") {
+                        Task { await startChapterGeneration() }
+                    }
+                    .font(.caption)
+                }
+
+            } else {
+                Text("Transcribe or add show notes to generate chapters")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     // MARK: - Computed Properties
 
     private var transcriptionService: LocalTranscriptionService { .shared }
+    private var chapterService: ChapterService { .shared }
 
     private var isActivelyTranscribing: Bool {
         transcriptionService.isActivelyTranscribing(episodeGUID: episode.guid)
@@ -407,6 +496,19 @@ struct EpisodeDetailView: View {
 
     private var isStalledTranscription: Bool {
         transcriptionService.isStalled(episode: episode)
+    }
+
+    private var isActivelyGeneratingChapters: Bool {
+        // Touch observable fields so the section refreshes during generation.
+        _ = chapterService.isGenerating
+        _ = chapterService.generationStatus
+        _ = AutoChapterQueue.shared.queuedGUIDs
+        return chapterService.isGenerating(for: episode.guid)
+    }
+
+    private var chapterStatusLabel: String {
+        let status = chapterService.generationStatus
+        return status.isEmpty ? "Generating chapters…" : status
     }
 
     private var canPlay: Bool {
@@ -455,6 +557,14 @@ struct EpisodeDetailView: View {
 
     private func retryTranscription() async {
         await transcriptionService.userInitiatedTranscribe(episode: episode, context: modelContext)
+    }
+
+    private func startChapterGeneration() async {
+        await chapterService.userInitiatedGenerate(episode: episode, context: modelContext)
+    }
+
+    private func cancelChapterGeneration() {
+        chapterService.cancelGeneration(for: episode, context: modelContext)
     }
 
     // MARK: - Description Parsing

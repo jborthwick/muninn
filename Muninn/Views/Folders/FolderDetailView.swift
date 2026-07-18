@@ -718,6 +718,8 @@ private struct FolderEpisodeRow: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+                EpisodeProcessingStatusView(episode: episode)
             }
 
             Spacer()

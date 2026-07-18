@@ -45,6 +45,11 @@ struct TranscriptView: View {
         guard localTranscriptionService.isTranscribing else { return false }
         return localTranscriptionService.transcribingEpisodeGUID == playerManager.currentEpisode?.guid
     }
+    private var transcriptionQueuePosition: (position: Int, total: Int)? {
+        guard let guid = playerManager.currentEpisode?.guid else { return nil }
+        _ = AutoTranscriptionQueue.shared.queuedGUIDs
+        return AutoTranscriptionQueue.shared.queuePosition(for: guid)
+    }
     private var isStalledTranscription: Bool {
         guard let episode = playerManager.currentEpisode else { return false }
         return localTranscriptionService.isStalled(episode: episode)
@@ -59,6 +64,8 @@ struct TranscriptView: View {
         guard LocalTranscriptionService.isSupported else { return false }
         // Already has a transcript — no need to offer transcription
         guard episode.transcriptURL == nil, episode.localTranscriptPath == nil else { return false }
+        // Active or queued — show progress UI instead of Transcribe
+        guard !isTranscribing, transcriptionQueuePosition == nil else { return false }
         return true
     }
 
@@ -255,6 +262,8 @@ struct TranscriptView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if isTranscribing {
                 transcribingView
+            } else if let queuePosition = transcriptionQueuePosition {
+                transcriptionQueuedView(position: queuePosition.position, total: queuePosition.total)
             } else if isStalledTranscription {
                 stalledTranscriptionView
             } else if let error {
@@ -370,6 +379,31 @@ struct TranscriptView: View {
                 .multilineTextAlignment(.center)
 
             Button("Cancel", role: .destructive, action: onCancelTranscription)
+                .font(.subheadline)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+    }
+
+    private func transcriptionQueuedView(position: Int, total: Int) -> some View {
+        VStack(spacing: 20) {
+            ProgressView()
+                .scaleEffect(1.2)
+
+            Text("Queued for transcription")
+                .font(.headline)
+
+            Text("\(position) of \(total) in queue")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            Text("You can keep listening. Transcription starts when earlier episodes finish.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+
+            Button("Remove from Queue", role: .destructive, action: onCancelTranscription)
                 .font(.subheadline)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		029321CFFD94FC59EC7F689A /* ChapterService+Control.swift in Sources */ = {isa = PBXBuildFile; fileRef = F33544D71DE0EAFB19DB83D0 /* ChapterService+Control.swift */; };
 		03B792B09B32FC956F1767BE /* FolderPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4925A1F355EC9C04D343111 /* FolderPickerView.swift */; };
 		0E83BCCB01E3403FC14E6311 /* FolderDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8F409D264E22CBAEE1C41E7 /* FolderDetailView.swift */; };
 		1272298A7939CB1D1C1802AA /* PauseRecapDebugInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C57E1118302A0FCADCDAB42 /* PauseRecapDebugInfo.swift */; };
@@ -194,6 +195,7 @@
 		ED0DFB9D546228354FA1F753 /* QueueManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueueManager.swift; sourceTree = "<group>"; };
 		EDF46C9BA6ADF0F3753EFF5A /* PlaylistRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistRowView.swift; sourceTree = "<group>"; };
 		F176C12E9BAB9D41CB2B15AA /* PendingWorkStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingWorkStore.swift; sourceTree = "<group>"; };
+		F33544D71DE0EAFB19DB83D0 /* ChapterService+Control.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ChapterService+Control.swift"; sourceTree = "<group>"; };
 		F59A66C1815D847C2AB5E5A1 /* StarredView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarredView.swift; sourceTree = "<group>"; };
 		F74B988CC55771A734397C22 /* AudioPlayerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerManager.swift; sourceTree = "<group>"; };
 		F905C1228E087C76EAA270E3 /* MiniPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniPlayerView.swift; sourceTree = "<group>"; };
@@ -316,6 +318,7 @@
 				07DDBF2C91D6F79BF6855025 /* AutoTranscriptionQueue.swift */,
 				982E1DEF4F3CF5F17ED2026D /* BackgroundRefreshManager.swift */,
 				D0E9330D5CB81C5A6772CC6E /* ChapterService.swift */,
+				F33544D71DE0EAFB19DB83D0 /* ChapterService+Control.swift */,
 				EBCFE414B66F9BBC1A48341A /* ChapterShowNotesParser.swift */,
 				7208C4DBDA25F0CC8A628878 /* ChapterTitleGenerator.swift */,
 				E7707B075D600DCAEF4D1E14 /* CrashReporter.swift */,
@@ -544,6 +547,7 @@
 				D70383FDD96FDF1A9E829D56 /* Chapter.swift in Sources */,
 				B95F93D7316EB2F29E8D5429 /* ChapterGenerationDebugInfo.swift in Sources */,
 				20B68D47E5998E1B79D9CBDA /* ChapterGenerationDebugView.swift in Sources */,
+				029321CFFD94FC59EC7F689A /* ChapterService+Control.swift in Sources */,
 				945769CBAE614C72913730A3 /* ChapterService.swift in Sources */,
 				2B04020D77B6F2F36D16769C /* ChapterShowNotesParser.swift in Sources */,
 				D529F0177A0A9E0C0D128ADA /* ChapterTitleGenerator.swift in Sources */,

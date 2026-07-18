@@ -5,6 +5,10 @@ import SwiftUI
 struct ChapterView: View {
     /// Called when the user taps "Generate Chapters".
     let onGenerate: () -> Void
+    /// Called when the user cancels in-flight generation.
+    var onCancel: (() -> Void)? = nil
+
+    @Environment(\.modelContext) private var modelContext
 
     private var chapterService: ChapterService { ChapterService.shared }
     private var transcriptService: TranscriptService { TranscriptService.shared }
@@ -22,7 +26,23 @@ struct ChapterView: View {
     }
     private var isGenerating: Bool {
         guard let guid = playerManager.currentEpisode?.guid else { return false }
+        _ = chapterService.isGenerating
+        _ = chapterService.generationStatus
         return chapterService.isGenerating(for: guid)
+    }
+    private var chapterQueuePosition: (position: Int, total: Int)? {
+        guard let guid = playerManager.currentEpisode?.guid else { return nil }
+        _ = AutoChapterQueue.shared.queuedGUIDs
+        return AutoChapterQueue.shared.queuePosition(for: guid)
+    }
+    private var isTranscriptionBusy: Bool {
+        guard let guid = playerManager.currentEpisode?.guid else { return false }
+        _ = LocalTranscriptionService.shared.isTranscribing
+        _ = AutoTranscriptionQueue.shared.queuedGUIDs
+        if LocalTranscriptionService.shared.isActivelyTranscribing(episodeGUID: guid) {
+            return true
+        }
+        return AutoTranscriptionQueue.shared.queuePosition(for: guid) != nil
     }
     private var error: String? {
         guard let guid = playerManager.currentEpisode?.guid else { return nil }
@@ -40,6 +60,8 @@ struct ChapterView: View {
 
     private var canGenerate: Bool {
         guard let episode = playerManager.currentEpisode else { return false }
+        // Active/queued chapter or transcription work — show progress UI instead of Generate
+        guard !isGenerating, chapterQueuePosition == nil, !isTranscriptionBusy else { return false }
         if episode.episodeDescription != nil { return true }
         return !transcriptService.segments.isEmpty
             || episode.localTranscriptPath != nil
@@ -61,6 +83,8 @@ struct ChapterView: View {
         Group {
             if isGenerating {
                 generatingView
+            } else if let queuePosition = chapterQueuePosition {
+                chaptersQueuedView(position: queuePosition.position, total: queuePosition.total)
             } else if let error {
                 ContentUnavailableView(
                     "Chapters Unavailable",
@@ -68,7 +92,9 @@ struct ChapterView: View {
                     description: Text(error)
                 )
             } else if chapters.isEmpty {
-                if canGenerate {
+                if isTranscriptionBusy {
+                    waitingForTranscriptionView
+                } else if canGenerate {
                     generatePromptView
                 } else {
                     noChaptersView
@@ -78,7 +104,7 @@ struct ChapterView: View {
             }
         }
         .overlay(alignment: .topTrailing) {
-            if chapterDebug != nil, !isGenerating {
+            if chapterDebug != nil, !isGenerating, chapterQueuePosition == nil {
                 Button { showChapterDebug = true } label: {
                     Image(systemName: "ladybug")
                         .font(.caption.weight(.semibold))
@@ -121,13 +147,15 @@ struct ChapterView: View {
                 Divider()
                     .padding(.horizontal)
 
-                Button(action: onGenerate) {
-                    Label("Regenerate Chapters", systemImage: "arrow.clockwise")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                if canGenerate {
+                    Button(action: onGenerate) {
+                        Label("Regenerate Chapters", systemImage: "arrow.clockwise")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.vertical, 14)
                 }
-                .buttonStyle(.plain)
-                .padding(.vertical, 14)
             }
             .onChange(of: activeChapterID) { _, newID in
                 guard let newID else { return }
@@ -201,6 +229,81 @@ struct ChapterView: View {
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
+
+            if playerManager.currentEpisode != nil {
+                Button("Cancel", role: .destructive) {
+                    onCancel?()
+                }
+                .font(.subheadline)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+    }
+
+    private func chaptersQueuedView(position: Int, total: Int) -> some View {
+        VStack(spacing: 20) {
+            ProgressView()
+                .scaleEffect(1.2)
+
+            Text("Queued for chapters")
+                .font(.headline)
+
+            Text("\(position) of \(total) in queue")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            Text("You can keep listening. Chapter generation starts when earlier episodes finish.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+
+            Button("Remove from Queue", role: .destructive) {
+                onCancel?()
+            }
+            .font(.subheadline)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+    }
+
+    private var waitingForTranscriptionView: some View {
+        VStack(spacing: 20) {
+            ProgressView()
+                .scaleEffect(1.2)
+
+            let transcribing = playerManager.currentEpisode.map {
+                LocalTranscriptionService.shared.isActivelyTranscribing(episodeGUID: $0.guid)
+            } ?? false
+
+            Text(transcribing ? "Transcribing first…" : "Queued for transcription")
+                .font(.headline)
+
+            if !transcribing, let guid = playerManager.currentEpisode?.guid,
+               let position = AutoTranscriptionQueue.shared.queuePosition(for: guid) {
+                Text("\(position.position) of \(position.total) in transcription queue")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Text("Chapters will generate after the transcript is ready. You can keep listening.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+
+            if let episode = playerManager.currentEpisode {
+                Button(transcribing ? "Cancel Transcription" : "Remove from Queue", role: .destructive) {
+                    Task {
+                        await LocalTranscriptionService.shared.cancelTranscription(
+                            for: episode,
+                            context: modelContext
+                        )
+                    }
+                }
+                .font(.subheadline)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()

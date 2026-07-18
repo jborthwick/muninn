@@ -165,6 +165,38 @@ struct EpisodeContextMenu: View {
             Divider()
         }
 
+        // Chapter actions
+        if ChapterService.shared.isGenerating(for: episode.guid) {
+            Button(role: .destructive) {
+                ChapterService.shared.cancelGeneration(for: episode, context: modelContext)
+            } label: {
+                Label("Cancel Chapter Generation", systemImage: "xmark.circle")
+            }
+            Divider()
+        } else if AutoChapterQueue.shared.queuePosition(for: episode.guid) != nil {
+            Button {
+                AutoChapterQueue.shared.removeFromQueue(guid: episode.guid)
+            } label: {
+                Label("Remove from Chapter Queue", systemImage: "list.number")
+            }
+            Divider()
+        } else if ChapterService.canGenerate(for: episode) {
+            Button {
+                Task {
+                    await ChapterService.shared.userInitiatedGenerate(
+                        episode: episode,
+                        context: modelContext
+                    )
+                }
+            } label: {
+                Label(
+                    episode.localChaptersPath != nil ? "Regenerate Chapters" : "Generate Chapters",
+                    systemImage: "list.bullet.rectangle"
+                )
+            }
+            Divider()
+        }
+
         // Mark played/unplayed
         Button {
             if episode.isPlayed {

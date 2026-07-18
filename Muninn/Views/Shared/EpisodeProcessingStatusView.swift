@@ -14,11 +14,16 @@ struct EpisodeProcessingStatusView: View {
     private var chapterService = ChapterService.shared
 
     private var status: Status? {
-        // Touch observable queue state so list rows refresh when queues change.
+        // Touch observable queue/service state so list rows refresh when work changes.
         _ = transcriptionQueue.queuedGUIDs
         _ = chapterQueue.queuedGUIDs
         _ = transcriptionQueue.isProcessing
         _ = chapterQueue.isProcessing
+        _ = transcriptionService.isTranscribing
+        _ = transcriptionService.progress
+        _ = chapterService.isGenerating
+        _ = chapterService.generationStatus
+        _ = chapterService.generatingEpisodeGUID
 
         if transcriptionService.isActivelyTranscribing(episodeGUID: episode.guid) {
             let progress = episode.transcriptionProgress ?? transcriptionService.progress
@@ -28,7 +33,7 @@ struct EpisodeProcessingStatusView: View {
            let progress = episode.transcriptionProgress {
             return .stalled(progress)
         }
-        if chapterService.generatingEpisodeGUID == episode.guid {
+        if chapterService.isGenerating(for: episode.guid) {
             return .generatingChapters
         }
         if let position = transcriptionQueue.queuePosition(for: episode.guid) {

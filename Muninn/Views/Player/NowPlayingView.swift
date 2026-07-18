@@ -194,7 +194,10 @@ struct NowPlayingView: View {
             )
 
             if showChapters {
-                ChapterView(onGenerate: startChapterGeneration)
+                ChapterView(
+                    onGenerate: startChapterGeneration,
+                    onCancel: cancelChapterGeneration
+                )
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             } else if showTranscript {
                 TranscriptView(
@@ -521,8 +524,13 @@ struct NowPlayingView: View {
     private func startChapterGeneration() {
         guard let episode = playerManager.currentEpisode else { return }
         Task {
-            await chapterService.generate(episode: episode, context: modelContext)
+            await chapterService.userInitiatedGenerate(episode: episode, context: modelContext)
         }
+    }
+
+    private func cancelChapterGeneration() {
+        guard let episode = playerManager.currentEpisode else { return }
+        chapterService.cancelGeneration(for: episode, context: modelContext)
     }
 
     private var whatsHappeningButton: some View {

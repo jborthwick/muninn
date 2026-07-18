@@ -44,6 +44,8 @@ struct PlaylistEpisodeRow: View, Equatable {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+                EpisodeProcessingStatusView(episode: episode)
             }
 
             Spacer()
