@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UIKit
 
 struct NowPlayingView: View {
     var playerManager = AudioPlayerManager.shared
@@ -126,9 +127,10 @@ struct NowPlayingView: View {
                 Task { await transcriptService.load(for: episode) }
             }
 
-            // Same stale-data guard for chapters
-            if showChapters, let episode = playerManager.currentEpisode {
-                if chaptersEpisodeGUID != episode.guid {
+            // Chapters feed both the chapter list and progress-bar ticks, so always
+            // load for the current episode — not only when the list panel is open.
+            if let episode = playerManager.currentEpisode {
+                if showChapters, chaptersEpisodeGUID != episode.guid {
                     chapterService.clear()
                     chaptersEpisodeGUID = episode.guid
                 }
@@ -145,6 +147,9 @@ struct NowPlayingView: View {
             chapterService.clear()
             summaryService.clear()
             isRecapPopoverVisible = false
+            if let episode = playerManager.currentEpisode {
+                chapterService.load(for: episode)
+            }
         }
         .onChange(of: playerManager.isPlaying) { _, isPlaying in
             if isPlaying {
@@ -169,9 +174,8 @@ struct NowPlayingView: View {
         }
         .onChange(of: chapterService.isGenerating) { wasGenerating, isGenerating in
             guard wasGenerating, !isGenerating,
-                  let episode = playerManager.currentEpisode,
-                  showChapters,
-                  chapterService.loadedEpisodeGUID == episode.guid else { return }
+                  let episode = playerManager.currentEpisode else { return }
+            // Reload so progress ticks update even if the chapter list is closed.
             chapterService.load(for: episode)
         }
         .sheet(isPresented: $showRecapDebug) {
@@ -600,6 +604,9 @@ private struct ProgressSectionView: View {
         max(playerManager.duration, playerManager.currentEpisode?.duration ?? 0, 1)
     }
 
+    /// Matches chapter tick height so markers read as track chunks, not overlays.
+    private static let trackHeight: CGFloat = 10
+
     var body: some View {
         VStack(spacing: 4) {
             Slider(
@@ -627,6 +634,13 @@ private struct ProgressSectionView: View {
                     }
                 }
             )
+            .background {
+                SliderTrackThickener(
+                    height: Self.trackHeight,
+                    minTrackColor: UIColor(playerManager.nowPlayingDominantColor),
+                    maxTrackColor: UIColor.white.withAlphaComponent(0.3)
+                )
+            }
             .overlay(alignment: .center) {
                 chapterTickMarks
             }
@@ -669,13 +683,81 @@ private struct ProgressSectionView: View {
                     let x = trackInset + CGFloat(chapter.startTime / duration) * trackWidth
                     let isCurrent = currentTime >= chapter.startTime && currentTime < chapter.endTime
                     Rectangle()
-                        .fill(Color.white.opacity(isCurrent ? 0.9 : 0.45))
-                        .frame(width: 2, height: 10)
+                        .fill(Color.black.opacity(isCurrent ? 0.75 : 0.5))
+                        .frame(width: 2, height: Self.trackHeight)
                         .position(x: x, y: geo.size.height / 2)
                 }
             }
             .allowsHitTesting(false)
         }
+    }
+}
+
+/// Raises a SwiftUI `Slider`'s UIKit track to a fixed height via resizable track images.
+private struct SliderTrackThickener: UIViewRepresentable {
+    var height: CGFloat
+    var minTrackColor: UIColor
+    var maxTrackColor: UIColor
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.isUserInteractionEnabled = false
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        let signature = "\(height)-\(minTrackColor)-\(maxTrackColor)"
+        guard context.coordinator.appliedSignature != signature else { return }
+        context.coordinator.appliedSignature = signature
+
+        DispatchQueue.main.async {
+            guard let slider = Self.findSlider(from: uiView) else {
+                // Slider may not be in the hierarchy yet on first pass.
+                context.coordinator.appliedSignature = nil
+                return
+            }
+            slider.setMinimumTrackImage(Self.trackImage(color: minTrackColor, height: height), for: .normal)
+            slider.setMaximumTrackImage(Self.trackImage(color: maxTrackColor, height: height), for: .normal)
+        }
+    }
+
+    final class Coordinator {
+        var appliedSignature: String?
+    }
+
+    private static func findSlider(from view: UIView) -> UISlider? {
+        var current: UIView? = view.superview
+        while let host = current {
+            if let slider = host as? UISlider { return slider }
+            if let slider = host.subviews.compactMap({ findSlider(in: $0) }).first {
+                return slider
+            }
+            current = host.superview
+        }
+        return nil
+    }
+
+    private static func findSlider(in view: UIView) -> UISlider? {
+        if let slider = view as? UISlider { return slider }
+        for subview in view.subviews {
+            if let slider = findSlider(in: subview) { return slider }
+        }
+        return nil
+    }
+
+    private static func trackImage(color: UIColor, height: CGFloat) -> UIImage {
+        let size = CGSize(width: height, height: height)
+        let image = UIGraphicsImageRenderer(size: size).image { _ in
+            color.setFill()
+            UIBezierPath(roundedRect: CGRect(origin: .zero, size: size), cornerRadius: height / 2).fill()
+        }
+        return image.resizableImage(
+            withCapInsets: UIEdgeInsets(top: 0, left: height / 2, bottom: 0, right: height / 2)
+        )
     }
 }
 
