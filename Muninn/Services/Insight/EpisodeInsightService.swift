@@ -17,6 +17,10 @@ final class EpisodeInsightService {
     private var loadTask: Task<Void, Never>?
 
     nonisolated static let maxCharacters = 12
+    /// Fill from episode details / transcript when wiki cast is thinner than this.
+    nonisolated static let sparseCastFillThreshold = 2
+    /// Prefer early episode speech (cast intros) over the whole transcript.
+    nonisolated static let transcriptScanWindowSeconds: TimeInterval = 20 * 60
 
     /// True while characters are still streaming in after the synopsis shell arrived.
     var isLoadingCharacters: Bool {
@@ -59,18 +63,18 @@ final class EpisodeInsightService {
         activeGUID = episode.guid
 
         if !forceRefresh, let cached = EpisodeInsightStore.load(guid: episode.guid) {
-            insight = cached
-            if episode.localInsightPath == nil {
-                episode.localInsightPath = EpisodeInsightStore.filename(for: episode.guid)
+            if !Self.shouldEnrichThinCastFromTranscript(cached, episode: episode) {
+                insight = cached
+                if episode.localInsightPath == nil {
+                    episode.localInsightPath = EpisodeInsightStore.filename(for: episode.guid)
+                }
+                return
             }
-            return
         }
 
-        // Stale/missing cache (or force refresh): drop path until rewrite succeeds.
-        if forceRefresh || episode.localInsightPath != nil {
-            episode.localInsightPath = nil
-            EpisodeInsightStore.remove(guid: episode.guid)
-        }
+        // Stale/missing cache, force refresh, or thin cast waiting on a new transcript.
+        episode.localInsightPath = nil
+        EpisodeInsightStore.remove(guid: episode.guid)
 
         loadTask?.cancel()
         isLoading = true
@@ -104,6 +108,14 @@ final class EpisodeInsightService {
         }
     }
 
+    /// Call after a transcript is saved so thin cached casts can pick up new names.
+    func refreshThinCastIfNeeded(for episode: Episode) {
+        guard isSupported(for: episode) else { return }
+        guard let cached = EpisodeInsightStore.load(guid: episode.guid) else { return }
+        guard Self.shouldEnrichThinCastFromTranscript(cached, episode: episode) else { return }
+        load(for: episode, forceRefresh: true)
+    }
+
     private func loadProgressively(
         mapping: ShowWikiMapping,
         episodeTitle: String,
@@ -132,15 +144,41 @@ final class EpisodeInsightService {
             fetchedAt: Date(),
             wikiPageTitle: page.title,
             synopsis: page.synopsis,
-            characters: []
+            characters: [],
+            didScanTranscript: false
         )
         insight = built
         errorMessage = nil
 
-        let cappedNames = Array(Self.dedupeNames(
-            page.characterNames,
-            mapping: mapping
-        ).prefix(Self.maxCharacters))
+        let wikiNames = Self.dedupeNames(page.characterNames, mapping: mapping)
+        var mergedNames = wikiNames
+        var didScanTranscript = false
+
+        if mergedNames.count < Self.sparseCastFillThreshold {
+            let detailNames = Self.detailCharacterNames(
+                episodeDescription: episode.episodeDescription,
+                mapping: mapping
+            )
+            if !detailNames.isEmpty {
+                mergedNames = Self.dedupeNames(mergedNames + detailNames, mapping: mapping)
+            }
+        }
+
+        if mergedNames.count < Self.sparseCastFillThreshold,
+           Self.hasUsableTranscript(episode) {
+            didScanTranscript = true
+            let transcriptNames = await Self.transcriptCharacterNames(
+                episode: episode,
+                mapping: mapping
+            )
+            if !transcriptNames.isEmpty {
+                mergedNames = Self.dedupeNames(mergedNames + transcriptNames, mapping: mapping)
+            }
+        }
+
+        built.didScanTranscript = didScanTranscript
+
+        let cappedNames = Array(mergedNames.prefix(Self.maxCharacters))
         let synopsisHint = page.synopsis.map { String($0.prefix(280)) }
 
         for name in cappedNames {
@@ -243,5 +281,57 @@ final class EpisodeInsightService {
             result.append(canon)
         }
         return result
+    }
+
+    /// Thin cached cast that hasn't been transcript-scanned yet, and a transcript is now available.
+    nonisolated private static func shouldEnrichThinCastFromTranscript(
+        _ cached: EpisodeInsight,
+        episode: Episode
+    ) -> Bool {
+        guard cached.characters.count < sparseCastFillThreshold else { return false }
+        guard !cached.scannedTranscript else { return false }
+        return hasUsableTranscript(episode)
+    }
+
+    nonisolated private static func hasUsableTranscript(_ episode: Episode) -> Bool {
+        let hasLocal = episode.localTranscriptPath != nil
+            && episode.localTranscriptURL.map { FileManager.default.fileExists(atPath: $0.path) } == true
+        let hasRemote = episode.transcriptURL?.nilIfBlank != nil
+        return hasLocal || hasRemote
+    }
+
+    /// Scan episode show notes / description for known PCs before falling back to transcript.
+    nonisolated private static func detailCharacterNames(
+        episodeDescription: String?,
+        mapping: ShowWikiMapping
+    ) -> [String] {
+        guard let raw = episodeDescription?.nilIfBlank else { return [] }
+        // Regex strip is enough for name matching; avoid htmlStripped on the hot path.
+        let plain = raw.htmlTagsStripped
+        guard !plain.isEmpty else { return [] }
+        return CharacterMentionScanner.mentions(
+            of: mapping.knownPlayerCharacters,
+            in: plain
+        )
+    }
+
+    /// Scan early transcript text for known PCs when the wiki page names almost nobody.
+    private static func transcriptCharacterNames(
+        episode: Episode,
+        mapping: ShowWikiMapping
+    ) async -> [String] {
+        guard hasUsableTranscript(episode) else { return [] }
+
+        let segments = await TranscriptService.shared.loadSegments(for: episode)
+        guard !segments.isEmpty else { return [] }
+
+        let haystack = TranscriptTimeline(segments: segments)
+            .text(from: 0, to: transcriptScanWindowSeconds)
+        guard !haystack.isEmpty else { return [] }
+
+        return CharacterMentionScanner.mentions(
+            of: mapping.knownPlayerCharacters,
+            in: haystack
+        )
     }
 }

@@ -56,6 +56,7 @@
 		798AC7DCD81ADF924D73F283 /* StatsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47298820D872D6525D85E8C8 /* StatsService.swift */; };
 		79958518FCB39C68686D11D1 /* TranscriptTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBCE02FB3271B8D25847AE0D /* TranscriptTimeline.swift */; };
 		7A19DC01562B3158EB246869 /* TranscriptService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1586FB3AD0CBF245C4D6FE17 /* TranscriptService.swift */; };
+		7A473817A2EC0C25294F93C4 /* CharacterMentionScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5569DE3BEAC3C95F796B115B /* CharacterMentionScanner.swift */; };
 		7B688D1C3B2E2CC79B8A72E7 /* Muninn.entitlements.disabled in Resources */ = {isa = PBXBuildFile; fileRef = 9BCE8E1C3ACF2A90820611A9 /* Muninn.entitlements.disabled */; };
 		7D16365B39E6D2EC183EDA08 /* LocalTranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1C5CBEB76A4142C186FFB1 /* LocalTranscriptionService.swift */; };
 		7F672FA15F7C04696FE41669 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BC03F20C93DFE0CD33ADCD5 /* AppSettings.swift */; };
@@ -160,6 +161,7 @@
 		4EE22B346DFCBBF88C10E861 /* PlaylistDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistDetailView.swift; sourceTree = "<group>"; };
 		5389B1317EE189025F3984DF /* LibraryGridContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryGridContent.swift; sourceTree = "<group>"; };
 		54F122B6B32C99226A64F26A /* DownloadsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsView.swift; sourceTree = "<group>"; };
+		5569DE3BEAC3C95F796B115B /* CharacterMentionScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CharacterMentionScanner.swift; sourceTree = "<group>"; };
 		59AF7D3F6DE57598F572DA42 /* PauseRecapBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PauseRecapBanner.swift; sourceTree = "<group>"; };
 		62131E72580248C5B8854E7D /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		623991318220118EC2FAD57B /* QueueItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueueItem.swift; sourceTree = "<group>"; };
@@ -450,6 +452,7 @@
 			children = (
 				15326A44AA98F4CB7B34FFBC /* ArtworkCreditParsing.swift */,
 				9266F5C5155611699AF16D6C /* CharacterFactParsing.swift */,
+				5569DE3BEAC3C95F796B115B /* CharacterMentionScanner.swift */,
 				18B85869E17089BA6607C2A0 /* EpisodeInsightService.swift */,
 				8D5E5E4749CEDED84AF47484 /* EpisodeInsightStore.swift */,
 				012EEF8C13EBC3B86EB9E483 /* FandomWikiClient.swift */,
@@ -615,6 +618,7 @@
 				D529F0177A0A9E0C0D128ADA /* ChapterTitleGenerator.swift in Sources */,
 				E8A047F899E4EF5814731330 /* ChapterView.swift in Sources */,
 				C8C6F50224B5521FD763B08A /* CharacterFactParsing.swift in Sources */,
+				7A473817A2EC0C25294F93C4 /* CharacterMentionScanner.swift in Sources */,
 				E02706DEDC1069D46B6CD677 /* CommunitySynopsisView.swift in Sources */,
 				2C5ECEE218BF3197A97D2EDC /* ContentView.swift in Sources */,
 				244EC63FA31F20CFDBB8B4B3 /* CrashLogsView.swift in Sources */,

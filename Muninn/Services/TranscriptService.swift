@@ -37,7 +37,6 @@ final class TranscriptService {
             return
         }
 
-        // Return cached result immediately
         if let cached = cache[urlString] {
             segments = cached
             error = nil
@@ -49,16 +48,41 @@ final class TranscriptService {
         segments = []
 
         do {
-            let (data, response) = try await URLSession.shared.data(from: url)
-            let mimeType = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type") ?? ""
-            let parsed = parse(data: data, url: url, mimeType: mimeType)
-            cache[urlString] = parsed
+            let parsed = try await fetchRemoteSegments(from: url, cacheKey: urlString)
             segments = parsed
         } catch {
             self.error = "Could not load transcript: \(error.localizedDescription)"
         }
 
         isLoading = false
+    }
+
+    /// Loads segments without mutating UI-facing `segments` (safe for background insight work).
+    func loadSegments(for episode: Episode) async -> [TranscriptSegment] {
+        if let localURL = episode.localTranscriptURL,
+           FileManager.default.fileExists(atPath: localURL.path),
+           let data = try? Data(contentsOf: localURL) {
+            let parsed = parsePodcastIndexJSON(data)
+            if !parsed.isEmpty { return parsed }
+        }
+
+        guard let urlString = episode.transcriptURL, let url = URL(string: urlString) else {
+            return []
+        }
+
+        if let cached = cache[urlString] {
+            return cached
+        }
+
+        return (try? await fetchRemoteSegments(from: url, cacheKey: urlString)) ?? []
+    }
+
+    private func fetchRemoteSegments(from url: URL, cacheKey: String) async throws -> [TranscriptSegment] {
+        let (data, response) = try await URLSession.shared.data(from: url)
+        let mimeType = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type") ?? ""
+        let parsed = parse(data: data, url: url, mimeType: mimeType)
+        cache[cacheKey] = parsed
+        return parsed
     }
 
     func clear() {

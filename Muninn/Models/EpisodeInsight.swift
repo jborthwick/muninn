@@ -3,8 +3,8 @@ import Foundation
 /// Cached wiki-backed insight for an episode (synopsis + character cards).
 struct EpisodeInsight: Codable, Equatable {
     /// Bump when matching/parsing changes so on-disk JSON is discarded.
-    /// 9 = artist credits + clearer wiki sourcing.
-    static let currentCacheVersion = 9
+    /// 13 = thin-cast transcript re-enrichment flag.
+    static let currentCacheVersion = 13
 
     /// Absent/older than `currentCacheVersion` → cache miss + delete.
     var cacheVersion: Int?
@@ -15,6 +15,9 @@ struct EpisodeInsight: Codable, Equatable {
     var wikiPageTitle: String?
     var synopsis: String?
     var characters: [InsightCharacter]
+    /// True after a transcript was available and scanned for known PCs (even if none matched).
+    /// Lets thin casts refresh once when a transcript appears later.
+    var didScanTranscript: Bool?
 
     var isCurrentCache: Bool {
         cacheVersion == Self.currentCacheVersion
@@ -26,6 +29,8 @@ struct EpisodeInsight: Codable, Equatable {
     }
 
     var hasCharacters: Bool { !characters.isEmpty }
+
+    var scannedTranscript: Bool { didScanTranscript == true }
 }
 
 struct InsightCharacter: Codable, Equatable, Identifiable {

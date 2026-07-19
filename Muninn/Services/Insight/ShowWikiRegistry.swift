@@ -115,6 +115,61 @@ enum ShowWikiRegistry {
                 .init(wikiTitle: "Balnor", aliases: [])
             ],
             sourceID: "naddpod-wiki"
+        ),
+        // Smaller show first: rotating cast, Amalar/Axis arcs on Fandom.
+        // RSS titles look like "Arc 1 Ep.1: … PART 1" / "Axis Arc 2 Ep 6: …";
+        // wiki pages are usually "Arc N Episode M: …" — search fallback helps;
+        // Arc-aware exact matchers may still be needed for reliability.
+        ShowWikiMapping(
+            id: "rotating-heroes",
+            itunesIDs: ["1709543811"],
+            titleKeywords: [
+                "rotating heroes",
+                "rotating heroes podcast"
+            ],
+            wikiHost: "rotatingheroespodcast.fandom.com",
+            attribution: "Rotating Heroes Wiki",
+            // Most episode pages put the plot under Description; older ones
+            // may also have an empty Synopsis heading.
+            synopsisSectionTitle: "Description",
+            playerCharacters: [
+                .init(wikiTitle: "Adonis Napoleon Daedalus Sprocket", aliases: ["Adonis"]),
+                .init(wikiTitle: "Astrid Starborn", aliases: ["Astrid"]),
+                .init(wikiTitle: "Auliver Flash", aliases: ["Auliver"]),
+                .init(wikiTitle: "Brenda Elizabeth", aliases: ["Brenda"]),
+                .init(wikiTitle: "Chumsley Freakums", aliases: ["Chumsley"]),
+                .init(wikiTitle: "Dooter", aliases: []),
+                .init(wikiTitle: "Ember Elysiana", aliases: ["Ember"]),
+                .init(wikiTitle: "Fhinne Foode", aliases: ["Fhinne"]),
+                .init(wikiTitle: "Fraeya Black", aliases: ["Fraeya", "Freaya"]),
+                .init(wikiTitle: "Grey", aliases: []),
+                .init(wikiTitle: "Grib", aliases: []),
+                .init(wikiTitle: "Harland", aliases: []),
+                .init(wikiTitle: "Jin", aliases: []),
+                .init(wikiTitle: "John Daffodil", aliases: []),
+                .init(wikiTitle: "Kerp", aliases: []),
+                .init(wikiTitle: "Morgana Chambers", aliases: ["Morgana"]),
+                .init(wikiTitle: "Nancy Rae Gan", aliases: ["Nancy"]),
+                .init(wikiTitle: "Rufus Cutler", aliases: ["Rufus"]),
+                .init(wikiTitle: "Sago Glegg", aliases: ["Sago"]),
+                .init(wikiTitle: "Shadrick Turlett", aliases: ["Shadrick", "Shaddy"]),
+                .init(wikiTitle: "Sir Vissel Divanostra", aliases: ["Vissel", "Sir Vissel"]),
+                .init(wikiTitle: "Soapfeathers", aliases: []),
+                .init(wikiTitle: "Squeej", aliases: []),
+                .init(wikiTitle: "Strundleteet", aliases: []),
+                .init(wikiTitle: "Teeths", aliases: []),
+                .init(wikiTitle: "Tionne Riche", aliases: ["Tionne"]),
+                .init(wikiTitle: "Tuesday Freakums", aliases: ["Tuesday"]),
+                .init(wikiTitle: "Tuffy", aliases: []),
+                .init(wikiTitle: "Tundra", aliases: []),
+                .init(wikiTitle: "Turbine Spizzlesink", aliases: ["Turbine"]),
+                .init(wikiTitle: "Tyson Fallensong", aliases: ["Tyson"]),
+                .init(wikiTitle: "Uh Oh", aliases: []),
+                .init(wikiTitle: "Vana Victar", aliases: ["Vana"]),
+                .init(wikiTitle: "Yernal P. Turlett", aliases: ["Yernal"]),
+                .init(wikiTitle: "Zazalli Daggrin", aliases: ["Zazalli"])
+            ],
+            sourceID: "rotating-heroes-wiki"
         )
         // Follow-on providers (same ShowWikiMapping shape):
         // - Critical Role: itunesIDs for CR feeds, wikiHost criticalrole.fandom.com

@@ -57,7 +57,9 @@ enum WikiTextParsing {
         let skipPrefixes = [":", "File:", "Category:", "Image:"]
         let skipExact: Set<String> = [
             "Duck Team", "Mothership", "Bahumia", "Eldermourne", "Trinyvale",
-            "Irondeep", "Irondeep Mountains", "Moonstone Swamp", "Crick"
+            "Irondeep", "Irondeep Mountains", "Moonstone Swamp", "Crick",
+            // Setting / campaign hubs (Rotating Heroes and similar).
+            "Amalar", "Axis"
         ]
 
         func consider(_ raw: String) {
@@ -70,6 +72,13 @@ enum WikiTextParsing {
             if skipExact.contains(name) { return }
             if name.lowercased().contains("episode") { return }
             if name.lowercased().hasPrefix("campaign ") { return }
+            // "Amalar: Arc 1", "Axis Arc 2", bare "Arc 3"
+            if name.range(
+                of: #"(?i)(^|[\s:])arc\s+\d+"#,
+                options: .regularExpression
+            ) != nil {
+                return
+            }
             if name.lowercased().hasSuffix(" mountains")
                 || name.lowercased().hasSuffix(" kingdom")
                 || name.lowercased().hasSuffix(" forest")
@@ -91,11 +100,10 @@ enum WikiTextParsing {
             }
         }
 
-        let lowerCombined = ShowWikiMapping.fold(combined)
-        for pc in knownPCs where pc.count > 2 {
-            if lowerCombined.contains(ShowWikiMapping.fold(pc)) {
-                consider(pc)
-            }
+        // Whole-word only — substring hits false-positive short aliases
+        // (e.g. "Ember" inside "November" from an Episode airDate).
+        for name in CharacterMentionScanner.mentions(of: knownPCs, in: combined) {
+            consider(name)
         }
 
         let knownFolded = Set(knownPCs.map { ShowWikiMapping.fold($0) })

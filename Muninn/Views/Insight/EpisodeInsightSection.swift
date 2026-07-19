@@ -15,7 +15,7 @@ struct EpisodeInsightSection: View {
                 content
             }
         }
-        .task(id: episode.guid) {
+        .task(id: "\(episode.guid)|\(episode.localTranscriptPath ?? "")") {
             service.load(for: episode)
         }
     }

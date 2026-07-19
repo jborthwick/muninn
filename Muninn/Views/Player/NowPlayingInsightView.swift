@@ -39,7 +39,7 @@ struct NowPlayingInsightView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task(id: episode.guid) {
+        .task(id: "\(episode.guid)|\(episode.localTranscriptPath ?? "")") {
             service.load(for: episode)
         }
     }
