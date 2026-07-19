@@ -129,6 +129,7 @@ final class FeedService {
 
     /// Refreshes all podcasts in the library
     /// - Returns: Total number of new episodes added across all podcasts
+    @MainActor
     func refreshAllPodcasts(context: ModelContext) async -> Int {
         let descriptor = FetchDescriptor<Podcast>()
         guard let podcasts = try? context.fetch(descriptor) else { return 0 }
@@ -144,6 +145,7 @@ final class FeedService {
 
     /// Refreshes a specific list of podcasts
     /// - Returns: Total number of new episodes added
+    @MainActor
     func refreshPodcasts(_ podcasts: [Podcast], context: ModelContext) async -> Int {
         var totalNew = 0
         for podcast in podcasts {
@@ -154,12 +156,18 @@ final class FeedService {
         return totalNew
     }
 
-    /// Refreshes an existing podcast, adding new episodes
+    /// Refreshes an existing podcast, adding new episodes.
+    /// Must stay on the main actor: ModelContext and PersistentModel relationships
+    /// are main-queue bound; resuming off-main after `fetchPodcast` caused SIGABRT
+    /// in `Podcast.episodes.getter`.
+    @MainActor
     func refreshPodcast(_ podcast: Podcast, context: ModelContext) async throws -> Int {
         let logger = AppLogger.feed
+        let feedURL = podcast.feedURL
 
-        // Always do a full fetch (HTTP caching disabled - was causing missed episodes)
-        let (_, newEpisodes) = try await fetchPodcast(from: podcast.feedURL)
+        // Always do a full fetch (HTTP caching disabled - was causing missed episodes).
+        // Network runs off-main; we resume here on MainActor for all SwiftData work.
+        let (_, newEpisodes) = try await fetchPodcast(from: feedURL)
 
         logger.info("[\(podcast.title)] Fetched \(newEpisodes.count) episodes")
 

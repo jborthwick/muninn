@@ -18,10 +18,13 @@ actor FandomWikiClient {
         let characterNames: [String]
     }
 
-    struct CharacterIntro: Sendable {
+    struct CharacterProfile: Sendable {
         let name: String
         let intro: String
         let pageURL: URL
+        let artworkURL: URL?
+        let artworkCredit: ArtworkCreditParsing.ArtworkCredit?
+        let facts: [InsightCharacterFact]
     }
 
     func resolveEpisode(
@@ -58,19 +61,67 @@ actor FandomWikiClient {
         )
     }
 
-    func fetchCharacterIntro(
+    func fetchCharacterProfile(
         mapping: ShowWikiMapping,
         name: String
-    ) async throws -> CharacterIntro? {
-        let parsed = try await parsePage(mapping: mapping, title: name)
-        guard parsed.exists else { return nil }
-        let intro = WikiTextParsing.characterIntroText(from: parsed.wikitext)
+    ) async throws -> CharacterProfile? {
+        let title = mapping.canonicalCharacterName(for: name) ?? name
+        guard let page = try await queryCharacterPage(mapping: mapping, title: title) else {
+            return nil
+        }
+        let intro = WikiTextParsing.characterIntroText(from: page.wikitext)
         guard let intro, !intro.isEmpty else { return nil }
-        return CharacterIntro(
-            name: parsed.title,
+
+        let artworkURL = await resolveCharacterArtwork(mapping: mapping, page: page)
+        var credit = ArtworkCreditParsing.artworkCredit(from: page.wikitext)
+        if let existing = credit, existing.url == nil, let wikiTitle = existing.wikiTitle {
+            credit = .init(
+                name: existing.name,
+                url: mapping.pageURL(title: wikiTitle).absoluteString,
+                wikiTitle: wikiTitle
+            )
+        }
+
+        return CharacterProfile(
+            name: page.title,
             intro: intro,
-            pageURL: mapping.pageURL(title: parsed.title)
+            pageURL: mapping.pageURL(title: page.title),
+            artworkURL: artworkURL,
+            artworkCredit: credit,
+            facts: CharacterFactParsing.characterFacts(from: page.wikitext)
         )
+    }
+
+    /// Prefer stable File: imageinfo URLs over pageimages CDN thumbs (more reliable load).
+    private func resolveCharacterArtwork(
+        mapping: ShowWikiMapping,
+        page: CharacterPage
+    ) async -> URL? {
+        var fileNames: [String] = []
+        if let pageImage = page.pageImageFileName {
+            fileNames.append(pageImage)
+        }
+        if let infobox = CharacterFactParsing.infoboxImageFileName(from: page.wikitext) {
+            fileNames.append(infobox)
+        }
+        // De-dupe while preserving order (pageimage first).
+        var seen = Set<String>()
+        fileNames = fileNames.filter { seen.insert($0.lowercased()).inserted }
+
+        for fileName in fileNames {
+            if let url = try? await resolveFileURL(mapping: mapping, fileName: fileName) {
+                return url
+            }
+        }
+
+        if let thumb = page.thumbnailURL {
+            return thumb
+        }
+
+        if let fileName = fileNames.first {
+            return mapping.specialFilePathURL(fileName: fileName)
+        }
+        return nil
     }
 
     // MARK: - Private
@@ -83,6 +134,13 @@ actor FandomWikiClient {
         let title: String
         let wikitext: String
         let exists: Bool
+    }
+
+    private struct CharacterPage {
+        let title: String
+        let wikitext: String
+        let thumbnailURL: URL?
+        let pageImageFileName: String?
     }
 
     /// Pick the wiki page whose title best matches the RSS episode title.
@@ -191,6 +249,78 @@ actor FandomWikiClient {
             wikitext: parse.wikitext?.value ?? "",
             exists: true
         )
+    }
+
+    /// One query: wikitext revision + page image thumbnail.
+    private func queryCharacterPage(
+        mapping: ShowWikiMapping,
+        title: String
+    ) async throws -> CharacterPage? {
+        var components = URLComponents(url: mapping.apiBaseURL, resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            .init(name: "action", value: "query"),
+            .init(name: "titles", value: title),
+            .init(name: "prop", value: "revisions|pageimages"),
+            .init(name: "rvprop", value: "content"),
+            .init(name: "rvslots", value: "main"),
+            .init(name: "piprop", value: "thumbnail|name|original"),
+            .init(name: "pithumbsize", value: "400"),
+            .init(name: "redirects", value: "1"),
+            .init(name: "format", value: "json")
+        ]
+        guard let url = components.url else { return nil }
+        let (data, _) = try await session.data(from: url)
+        let response = try decoder.decode(CharacterQueryResponse.self, from: data)
+        guard let pages = response.query?.pages else { return nil }
+        for page in pages.values {
+            if page.missing != nil { continue }
+            let wikitext = page.revisions?.first?.slotContent ?? ""
+            guard !wikitext.isEmpty else { continue }
+            let thumb = page.thumbnail?.source.flatMap { URL(string: $0) }
+                ?? page.original?.source.flatMap { URL(string: $0) }
+            return CharacterPage(
+                title: page.title,
+                wikitext: wikitext,
+                thumbnailURL: thumb,
+                pageImageFileName: page.pageimage
+            )
+        }
+        return nil
+    }
+
+    private func resolveFileURL(mapping: ShowWikiMapping, fileName: String) async throws -> URL? {
+        var cleaned = fileName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleaned.lowercased().hasPrefix("file:") {
+            cleaned = String(cleaned.dropFirst(5))
+        }
+        cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return nil }
+
+        let title = "File:\(cleaned)"
+        var components = URLComponents(url: mapping.apiBaseURL, resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            .init(name: "action", value: "query"),
+            .init(name: "titles", value: title),
+            .init(name: "prop", value: "imageinfo"),
+            .init(name: "iiprop", value: "url"),
+            .init(name: "iiurlwidth", value: "400"),
+            .init(name: "redirects", value: "1"),
+            .init(name: "format", value: "json")
+        ]
+        guard let url = components.url else { return nil }
+        let (data, _) = try await session.data(from: url)
+        let response = try decoder.decode(ImageInfoResponse.self, from: data)
+        guard let pages = response.query?.pages else { return nil }
+        for page in pages.values {
+            if page.missing != nil { continue }
+            if let thumb = page.imageinfo?.first?.thumburl.flatMap({ URL(string: $0) }) {
+                return thumb
+            }
+            if let full = page.imageinfo?.first?.url.flatMap({ URL(string: $0) }) {
+                return full
+            }
+        }
+        return nil
     }
 
     // MARK: - Matching
@@ -496,4 +626,64 @@ private struct ParseResponse: Decodable {
 private struct ParseErrorEnvelope: Decodable {
     struct APIError: Decodable { let code: String? }
     let error: APIError?
+}
+
+private struct CharacterQueryResponse: Decodable {
+    struct Query: Decodable {
+        struct Page: Decodable {
+            let pageid: Int?
+            let title: String
+            let missing: String?
+            let pageimage: String?
+            let thumbnail: Thumbnail?
+            let original: Thumbnail?
+            let revisions: [Revision]?
+
+            struct Thumbnail: Decodable {
+                let source: String?
+            }
+
+            struct Revision: Decodable {
+                let slots: Slots?
+                /// Legacy MediaWiki (content directly on revision).
+                let content: String?
+
+                enum CodingKeys: String, CodingKey {
+                    case slots
+                    case content = "*"
+                }
+
+                var slotContent: String {
+                    slots?.main?.content ?? content ?? ""
+                }
+
+                struct Slots: Decodable {
+                    let main: Slot?
+
+                    struct Slot: Decodable {
+                        let content: String?
+                        enum CodingKeys: String, CodingKey { case content = "*" }
+                    }
+                }
+            }
+        }
+        let pages: [String: Page]?
+    }
+    let query: Query?
+}
+
+private struct ImageInfoResponse: Decodable {
+    struct Query: Decodable {
+        struct Page: Decodable {
+            let missing: String?
+            let imageinfo: [Info]?
+
+            struct Info: Decodable {
+                let url: String?
+                let thumburl: String?
+            }
+        }
+        let pages: [String: Page]?
+    }
+    let query: Query?
 }

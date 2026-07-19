@@ -2,6 +2,7 @@ import Foundation
 import Observation
 
 /// Loads and caches wiki-backed episode insight (synopsis + character X-ray).
+/// Publishes progressively: synopsis first, then each character as it finishes.
 @MainActor
 @Observable
 final class EpisodeInsightService {
@@ -16,6 +17,11 @@ final class EpisodeInsightService {
     private var loadTask: Task<Void, Never>?
 
     nonisolated static let maxCharacters = 12
+
+    /// True while characters are still streaming in after the synopsis shell arrived.
+    var isLoadingCharacters: Bool {
+        isLoading && insight != nil
+    }
 
     func cancel() {
         loadTask?.cancel()
@@ -81,20 +87,12 @@ final class EpisodeInsightService {
                 }
             }
             do {
-                let built = try await Self.buildInsight(
+                try await loadProgressively(
                     mapping: map,
-                    episodeTitle: title
+                    episodeTitle: title,
+                    guid: guid,
+                    episode: episode
                 )
-                guard !Task.isCancelled, activeGUID == guid else { return }
-                if let built {
-                    EpisodeInsightStore.save(built, guid: guid)
-                    episode.localInsightPath = EpisodeInsightStore.filename(for: guid)
-                    insight = built
-                    errorMessage = nil
-                } else {
-                    insight = nil
-                    errorMessage = "No wiki page found for this episode."
-                }
             } catch is CancellationError {
                 // Superseded by another load or intentional cancel — keep prior insight.
             } catch let urlError as URLError where urlError.code == .cancelled {
@@ -106,68 +104,27 @@ final class EpisodeInsightService {
         }
     }
 
-    nonisolated private static func buildInsight(
+    private func loadProgressively(
         mapping: ShowWikiMapping,
-        episodeTitle: String
-    ) async throws -> EpisodeInsight? {
+        episodeTitle: String,
+        guid: String,
+        episode: Episode
+    ) async throws {
         let client = FandomWikiClient.shared
         guard let page = try await client.resolveEpisode(
             mapping: mapping,
             episodeTitle: episodeTitle
         ) else {
-            return nil
+            guard activeGUID == guid else { return }
+            insight = nil
+            errorMessage = "No wiki page found for this episode."
+            return
         }
 
-        let cappedNames = Array(Self.dedupeNames(
-            Array(page.characterNames.prefix(maxCharacters * 2)),
-            knownPCs: mapping.knownPlayerCharacters
-        ).prefix(maxCharacters))
-        let synopsisHint = page.synopsis.map { String($0.prefix(280)) }
-        var characters: [InsightCharacter] = []
+        guard !Task.isCancelled, activeGUID == guid else { return }
 
-        for name in cappedNames {
-            if Task.isCancelled { break }
-            let role = role(for: name, mapping: mapping)
-            var blurb = ""
-            var wikiURL = mapping.pageURL(title: name).absoluteString
-
-            if let intro = try? await client.fetchCharacterIntro(mapping: mapping, name: name) {
-                wikiURL = intro.pageURL.absoluteString
-                if let rewritten = await SpoilerSafeBioRewriter.rewrite(
-                    name: intro.name,
-                    role: role,
-                    intro: intro.intro,
-                    episodeTitle: episodeTitle,
-                    inEpisodeHint: synopsisHint
-                ) {
-                    blurb = rewritten
-                } else {
-                    blurb = SpoilerSafeBioRewriter.fallbackBlurb(
-                        name: intro.name,
-                        role: role,
-                        intro: intro.intro
-                    )
-                }
-            } else {
-                blurb = SpoilerSafeBioRewriter.fallbackBlurb(
-                    name: name,
-                    role: role,
-                    intro: "\(name) appears in this episode."
-                )
-            }
-
-            characters.append(
-                InsightCharacter(
-                    name: name,
-                    role: role,
-                    spoilerSafeBlurb: blurb,
-                    wikiURL: wikiURL,
-                    artworkURL: nil
-                )
-            )
-        }
-
-        return EpisodeInsight(
+        // Publish synopsis shell immediately so UI can show something useful.
+        var built = EpisodeInsight(
             cacheVersion: EpisodeInsight.currentCacheVersion,
             source: mapping.sourceID,
             sourceURL: page.pageURL.absoluteString,
@@ -175,44 +132,113 @@ final class EpisodeInsightService {
             fetchedAt: Date(),
             wikiPageTitle: page.title,
             synopsis: page.synopsis,
-            characters: characters
+            characters: []
+        )
+        insight = built
+        errorMessage = nil
+
+        let cappedNames = Array(Self.dedupeNames(
+            page.characterNames,
+            mapping: mapping
+        ).prefix(Self.maxCharacters))
+        let synopsisHint = page.synopsis.map { String($0.prefix(280)) }
+
+        for name in cappedNames {
+            if Task.isCancelled || activeGUID != guid { return }
+
+            let character = await Self.buildCharacter(
+                name: name,
+                mapping: mapping,
+                episodeTitle: episodeTitle,
+                synopsisHint: synopsisHint,
+                client: client
+            )
+
+            guard !Task.isCancelled, activeGUID == guid else { return }
+            built.characters.append(character)
+            insight = built
+
+            if let artURL = character.artworkURL.flatMap(URL.init(string:)) {
+                Task { await ImageCache.shared.preload(url: artURL) }
+            }
+        }
+
+        guard !Task.isCancelled, activeGUID == guid else { return }
+        EpisodeInsightStore.save(built, guid: guid)
+        episode.localInsightPath = EpisodeInsightStore.filename(for: guid)
+        insight = built
+    }
+
+    nonisolated private static func buildCharacter(
+        name: String,
+        mapping: ShowWikiMapping,
+        episodeTitle: String,
+        synopsisHint: String?,
+        client: FandomWikiClient
+    ) async -> InsightCharacter {
+        let role = role(for: name, mapping: mapping)
+
+        guard let profile = try? await client.fetchCharacterProfile(mapping: mapping, name: name) else {
+            return InsightCharacter(
+                name: name,
+                role: role,
+                spoilerSafeBlurb: SpoilerSafeBioRewriter.fallbackBlurb(
+                    name: name,
+                    role: role,
+                    intro: "\(name) appears in this episode."
+                ),
+                wikiURL: mapping.pageURL(title: name).absoluteString,
+                artworkURL: nil,
+                artworkCredit: nil,
+                artworkCreditURL: nil,
+                facts: nil
+            )
+        }
+
+        let blurb: String
+        if let rewritten = await SpoilerSafeBioRewriter.rewrite(
+            name: profile.name,
+            role: role,
+            intro: profile.intro,
+            episodeTitle: episodeTitle,
+            inEpisodeHint: synopsisHint
+        ) {
+            blurb = rewritten
+        } else {
+            blurb = SpoilerSafeBioRewriter.fallbackBlurb(
+                name: profile.name,
+                role: role,
+                intro: profile.intro
+            )
+        }
+
+        return InsightCharacter(
+            name: profile.name,
+            role: role,
+            spoilerSafeBlurb: blurb,
+            wikiURL: profile.pageURL.absoluteString,
+            artworkURL: profile.artworkURL?.absoluteString,
+            artworkCredit: profile.artworkCredit?.name,
+            artworkCreditURL: profile.artworkCredit?.url,
+            facts: profile.facts.isEmpty ? nil : profile.facts
         )
     }
 
     nonisolated private static func role(for name: String, mapping: ShowWikiMapping) -> String {
-        let lower = name.lowercased()
-        for pc in mapping.knownPlayerCharacters {
-            let pcLower = pc.lowercased()
-            if lower == pcLower || lower.hasPrefix(pcLower) || pcLower.hasPrefix(lower) {
-                return "PC"
-            }
-        }
-        return "NPC"
+        mapping.isKnownPlayerCharacter(name) ? "PC" : "NPC"
     }
 
-    /// Collapse aliases onto the longest known PC name when possible.
-    nonisolated private static func dedupeNames(_ names: [String], knownPCs: [String]) -> [String] {
-        let canonicalPCs = knownPCs.sorted { $0.count > $1.count }
+    /// Collapse aliases onto canonical wiki titles (Callie → Calliope Petrichor).
+    nonisolated private static func dedupeNames(
+        _ names: [String],
+        mapping: ShowWikiMapping
+    ) -> [String] {
         var result: [String] = []
         var seen = Set<String>()
 
-        func canonical(_ name: String) -> String {
-            let lower = name.lowercased()
-            for pc in canonicalPCs {
-                let pcLower = pc.lowercased()
-                if lower == pcLower || lower.hasPrefix(pcLower) || pcLower.hasPrefix(lower) {
-                    // Prefer full PC name over short alias
-                    return canonicalPCs.first(where: {
-                        $0.lowercased() == pcLower || $0.lowercased().hasPrefix(pcLower)
-                    }) ?? pc
-                }
-            }
-            return name
-        }
-
         for name in names {
-            let canon = canonical(name)
-            let key = canon.lowercased()
+            let canon = mapping.canonicalCharacterName(for: name) ?? name
+            let key = ShowWikiMapping.fold(canon)
             guard seen.insert(key).inserted else { continue }
             result.append(canon)
         }

@@ -91,19 +91,29 @@ enum WikiTextParsing {
             }
         }
 
-        let lowerCombined = combined.lowercased()
+        let lowerCombined = ShowWikiMapping.fold(combined)
         for pc in knownPCs where pc.count > 2 {
-            if lowerCombined.contains(pc.lowercased()) {
+            if lowerCombined.contains(ShowWikiMapping.fold(pc)) {
                 consider(pc)
             }
         }
 
-        let knownLower = Set(knownPCs.map { $0.lowercased() })
+        let knownFolded = Set(knownPCs.map { ShowWikiMapping.fold($0) })
         return names.sorted { a, b in
-            let aPC = knownLower.contains(a.lowercased())
-                || knownPCs.contains(where: { a.lowercased().hasPrefix($0.lowercased()) })
-            let bPC = knownLower.contains(b.lowercased())
-                || knownPCs.contains(where: { b.lowercased().hasPrefix($0.lowercased()) })
+            let aPC = knownFolded.contains(ShowWikiMapping.fold(a))
+                || knownPCs.contains(where: {
+                    let foldedA = ShowWikiMapping.fold(a)
+                    let foldedPC = ShowWikiMapping.fold($0)
+                    let shorter = min(foldedA.count, foldedPC.count)
+                    return shorter >= 4 && (foldedA.hasPrefix(foldedPC) || foldedPC.hasPrefix(foldedA))
+                })
+            let bPC = knownFolded.contains(ShowWikiMapping.fold(b))
+                || knownPCs.contains(where: {
+                    let foldedB = ShowWikiMapping.fold(b)
+                    let foldedPC = ShowWikiMapping.fold($0)
+                    let shorter = min(foldedB.count, foldedPC.count)
+                    return shorter >= 4 && (foldedB.hasPrefix(foldedPC) || foldedPC.hasPrefix(foldedB))
+                })
             if aPC != bPC { return aPC && !bPC }
             return a < b
         }

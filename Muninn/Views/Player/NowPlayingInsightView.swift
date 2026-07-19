@@ -51,7 +51,7 @@ struct NowPlayingInsightView: View {
                     CommunitySynopsisView(insight: insight)
                 }
 
-                if insight.hasCharacters {
+                if insight.hasCharacters || service.isLoadingCharacters {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Characters")
                             .font(.headline)
@@ -59,24 +59,38 @@ struct NowPlayingInsightView: View {
                         ForEach(insight.characters) { character in
                             InsightCharacterRow(character: character)
                         }
+
+                        if service.isLoadingCharacters {
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                Text(
+                                    insight.hasCharacters
+                                        ? "Loading more characters…"
+                                        : "Loading characters…"
+                                )
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            }
+                        }
                     }
                 }
 
-                if !insight.hasSynopsis && !insight.hasCharacters {
+                if !insight.hasSynopsis && !insight.hasCharacters && !service.isLoading {
                     Text("The wiki page didn’t include a synopsis or characters for this episode.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
 
-                Text("Spoiler-safe as of this episode · \(insight.attribution)")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 4)
+                if insight.hasSynopsis || insight.hasCharacters {
+                    InsightSourceFooter(insight: insight)
+                        .padding(.top, 4)
+                }
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
             .padding(.bottom, 24)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .animation(.easeInOut(duration: 0.2), value: insight.characters.count)
         }
     }
 }

@@ -37,7 +37,7 @@ struct EpisodeInsightSection: View {
                     CommunitySynopsisView(insight: insight)
                 }
 
-                if insight.hasCharacters {
+                if insight.hasCharacters || service.isLoadingCharacters {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Characters")
                             .font(.headline)
@@ -45,13 +45,25 @@ struct EpisodeInsightSection: View {
                         ForEach(insight.characters) { character in
                             InsightCharacterRow(character: character)
                         }
+
+                        if service.isLoadingCharacters {
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                Text(
+                                    insight.hasCharacters
+                                        ? "Loading more characters…"
+                                        : "Loading characters…"
+                                )
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            }
+                            .padding(.top, 2)
+                        }
                     }
                 }
 
                 if insight.hasSynopsis || insight.hasCharacters {
-                    Text("Spoiler-safe as of this episode · \(insight.attribution)")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                    InsightSourceFooter(insight: insight)
                 } else if !service.isLoading {
                     Text("The wiki page didn’t include a synopsis or characters for this episode.")
                         .font(.caption)
@@ -64,5 +76,6 @@ struct EpisodeInsightSection: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(.easeInOut(duration: 0.2), value: service.insight?.characters.count)
     }
 }

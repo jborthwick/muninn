@@ -3,8 +3,8 @@ import Foundation
 /// Cached wiki-backed insight for an episode (synopsis + character cards).
 struct EpisodeInsight: Codable, Equatable {
     /// Bump when matching/parsing changes so on-disk JSON is discarded.
-    /// 5 = sanitize height quotes so FM blurbs don't truncate on 6'6".
-    static let currentCacheVersion = 5
+    /// 9 = artist credits + clearer wiki sourcing.
+    static let currentCacheVersion = 9
 
     /// Absent/older than `currentCacheVersion` → cache miss + delete.
     var cacheVersion: Int?
@@ -36,4 +36,26 @@ struct InsightCharacter: Codable, Equatable, Identifiable {
     var spoilerSafeBlurb: String
     var wikiURL: String?
     var artworkURL: String?
+    /// Artist name from wiki caption when available.
+    var artworkCredit: String?
+    /// External (or wiki) URL for the artist credit.
+    var artworkCreditURL: String?
+    /// Compact X-ray facts (Class, Species, Player, Pronouns).
+    var facts: [InsightCharacterFact]?
+
+    var hasFacts: Bool {
+        guard let facts else { return false }
+        return !facts.isEmpty
+    }
+
+    var hasArtworkCredit: Bool {
+        guard let artworkCredit else { return false }
+        return !artworkCredit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
+struct InsightCharacterFact: Codable, Equatable, Identifiable {
+    var id: String { label }
+    var label: String
+    var value: String
 }

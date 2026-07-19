@@ -1,5 +1,6 @@
 import SwiftUI
 import Foundation
+import ImageIO
 
 /// Simple image cache with memory and disk storage
 actor ImageCache {
@@ -10,6 +11,16 @@ actor ImageCache {
     private let fileManager = FileManager.default
     private var cacheDirectory: URL?
     private var inFlightRequests: [String: Task<UIImage?, Never>] = [:]
+    private let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 20
+        config.timeoutIntervalForResource = 30
+        config.httpAdditionalHeaders = [
+            "User-Agent": "Muninn/1.0 (iOS podcast player; insight artwork)",
+            "Accept": "image/webp,image/avif,image/png,image/jpeg,image/*;q=0.8,*/*;q=0.5"
+        ]
+        return URLSession(configuration: config)
+    }()
 
     private init() {
         // Increase memory cache limits
@@ -36,13 +47,13 @@ actor ImageCache {
     nonisolated private func cacheKey(for url: URL) -> String {
         let urlString = url.absoluteString
         guard let data = urlString.data(using: .utf8) else {
-            return UUID().uuidString + ".jpg"
+            return UUID().uuidString + ".img"
         }
         var hash: UInt64 = 5381
         for byte in data {
             hash = ((hash << 5) &+ hash) &+ UInt64(byte)
         }
-        return String(format: "%016llx", hash) + ".jpg"
+        return String(format: "%016llx", hash) + ".img"
     }
 
 
@@ -56,7 +67,8 @@ actor ImageCache {
 
         // Check disk cache
         if let diskImage = loadFromDisk(key: key) {
-            Self.memoryCache.setObject(diskImage, forKey: key as NSString, cost: diskImage.jpegData(compressionQuality: 1.0)?.count ?? 0)
+            let cost = diskImage.pngData()?.count ?? 0
+            Self.memoryCache.setObject(diskImage, forKey: key as NSString, cost: cost)
             return diskImage
         }
 
@@ -66,16 +78,21 @@ actor ImageCache {
         }
 
         // Download
+        let session = self.session
         let task = Task<UIImage?, Never> {
-            guard let (data, _) = try? await URLSession.shared.data(from: url),
-                  let image = UIImage(data: data) else {
+            guard let (data, response) = try? await session.data(from: url) else {
+                return nil
+            }
+            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                return nil
+            }
+            guard let image = Self.decodeImage(data: data) else {
                 return nil
             }
 
-            // Store in caches
             let cost = data.count
             Self.memoryCache.setObject(image, forKey: key as NSString, cost: cost)
-            self.saveToDisk(image: image, key: key)
+            await self.saveToDisk(image: image, key: key)
 
             return image
         }
@@ -111,14 +128,28 @@ actor ImageCache {
         guard let cacheDir = cacheDirectory else { return nil }
         let fileURL = cacheDir.appendingPathComponent(key)
         guard let data = try? Data(contentsOf: fileURL) else { return nil }
-        return UIImage(data: data)
+        return Self.decodeImage(data: data)
     }
 
     private func saveToDisk(image: UIImage, key: String) {
-        guard let cacheDir = cacheDirectory,
-              let data = image.jpegData(compressionQuality: 0.8) else { return }
+        guard let cacheDir = cacheDirectory else { return }
+        // Prefer PNG so WebP-decoded images with alpha/odd color spaces still persist.
+        let data = image.pngData() ?? image.jpegData(compressionQuality: 0.85)
+        guard let data else { return }
         let fileURL = cacheDir.appendingPathComponent(key)
         try? data.write(to: fileURL)
+    }
+
+    /// Decode JPEG/PNG/WebP via UIKit, then ImageIO fallback.
+    nonisolated private static func decodeImage(data: Data) -> UIImage? {
+        if let image = UIImage(data: data) {
+            return image
+        }
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+            return nil
+        }
+        return UIImage(cgImage: cgImage)
     }
 
     func clearCache() {
@@ -169,6 +200,7 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
     private func loadImage() async {
         guard let url = url else {
             image = nil
+            loadingURL = nil
             return
         }
 

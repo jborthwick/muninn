@@ -16,7 +16,7 @@ struct InsightXRayView: View {
                     )
                 } else {
                     ScrollView {
-                        LazyVStack(spacing: 12) {
+                        LazyVStack(spacing: 10) {
                             ForEach(insight.characters) { character in
                                 InsightCharacterRow(character: character)
                             }
@@ -40,38 +40,78 @@ struct InsightXRayView: View {
     }
 }
 
+/// Compact list card: portrait + name + short blurb. Tap for full detail.
 struct InsightCharacterRow: View {
     let character: InsightCharacter
+    @State private var showDetail = false
+
+    private let artSize: CGFloat = 56
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(character.name)
-                    .font(.headline)
-                if let role = character.role {
-                    Text(role)
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.secondary.opacity(0.15))
-                        .clipShape(Capsule())
+        Button {
+            showDetail = true
+        } label: {
+            HStack(alignment: .center, spacing: 12) {
+                artwork
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(character.name)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        if let role = character.role {
+                            Text(role)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.secondary.opacity(0.15))
+                                .clipShape(Capsule())
+                        }
+                        Spacer(minLength: 0)
+                    }
+
+                    Text(character.spoilerSafeBlurb)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
                 }
-                Spacer(minLength: 0)
-            }
 
-            Text(character.spoilerSafeBlurb)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if let urlString = character.wikiURL, let url = URL(string: urlString) {
-                Link("Wiki", destination: url)
+                Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .glassEffect(.regular, in: .rect(cornerRadius: 14))
+        .sheet(isPresented: $showDetail) {
+            InsightCharacterDetailView(character: character)
+        }
+        .accessibilityHint("Shows full character details")
+    }
+
+    private var artwork: some View {
+        let artURL = character.artworkURL.flatMap(URL.init(string:))
+        return CachedAsyncImage(url: artURL) { image in
+            image
+                .resizable()
+                .scaledToFill()
+        } placeholder: {
+            ZStack {
+                Color.secondary.opacity(0.12)
+                Image(systemName: artURL == nil ? "person.fill" : "photo")
+                    .font(.body)
+                    .foregroundStyle(.tertiary)
             }
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+        .frame(width: artSize, height: artSize)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .accessibilityHidden(true)
     }
 }
 
@@ -79,18 +119,9 @@ struct InsightAttributionFooter: View {
     let insight: EpisodeInsight
 
     var body: some View {
-        VStack(spacing: 2) {
-            Text("Spoiler-safe as of this episode · \(insight.attribution)")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            if !SpoilerSafeBioRewriter.isAvailable {
-                Text("Apple Intelligence unavailable — showing short wiki intros")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
-        .background(.bar)
+        InsightSourceFooter(insight: insight, showAIUnavailableNote: true)
+            .padding(.vertical, 8)
+            .padding(.horizontal, 16)
+            .background(.bar)
     }
 }
