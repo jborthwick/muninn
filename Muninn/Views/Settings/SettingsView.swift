@@ -196,7 +196,14 @@ struct SettingsView: View {
                 Section("Transcription") {
                     Toggle(isOn: Binding(
                         get: { appSettings.autoTranscribeEnabled },
-                        set: { appSettings.autoTranscribeEnabled = $0; try? modelContext.save() }
+                        set: {
+                            appSettings.autoTranscribeEnabled = $0
+                            try? modelContext.save()
+                            AutoTranscriptionQueue.shared.applyAutoTranscribeSetting(
+                                enabled: $0,
+                                context: modelContext
+                            )
+                        }
                     )) {
                         HStack {
                             Image(systemName: "waveform.and.mic")
@@ -213,7 +220,14 @@ struct SettingsView: View {
 
                     Toggle(isOn: Binding(
                         get: { appSettings.autoGenerateChaptersEnabled },
-                        set: { appSettings.autoGenerateChaptersEnabled = $0; try? modelContext.save() }
+                        set: {
+                            appSettings.autoGenerateChaptersEnabled = $0
+                            try? modelContext.save()
+                            AutoChapterQueue.shared.applyAutoGenerateSetting(
+                                enabled: $0,
+                                context: modelContext
+                            )
+                        }
                     )) {
                         HStack {
                             Image(systemName: "list.bullet.rectangle")

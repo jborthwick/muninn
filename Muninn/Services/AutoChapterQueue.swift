@@ -10,10 +10,15 @@ final class AutoChapterQueue {
 
     private let logger = Logger(subsystem: "com.muninn", category: "AutoChapterQueue")
 
+    private struct QueuedItem {
+        let episode: Episode
+        let userInitiated: Bool
+    }
+
     private(set) var isProcessing = false
     /// Observable mirror of queued episode GUIDs (for SwiftUI updates).
     private(set) var queuedGUIDs: [String] = []
-    private var queue: [Episode] = []
+    private var queue: [QueuedItem] = []
     private var modelContext: ModelContext?
 
     private init() {}
@@ -37,27 +42,27 @@ final class AutoChapterQueue {
             logger.info("Skipping auto chapters — already generated for: \(episode.title)")
             return
         }
-        enqueue(episode: episode, context: context)
+        enqueue(episode: episode, context: context, userInitiated: false)
     }
 
     /// Enqueues chapter generation regardless of the auto-generate setting (user-initiated).
     /// Episodes that already have chapters may be enqueued for regeneration.
     func enqueue(episode: Episode, context: ModelContext) {
-        guard !queue.contains(where: { $0.guid == episode.guid }) else { return }
-        guard !ChapterService.shared.isGenerating(for: episode.guid) else { return }
+        enqueue(episode: episode, context: context, userInitiated: true)
+    }
 
-        queue.append(episode)
-        syncQueuedGUIDs()
+    /// Drops auto-queued / persisted chapter work when the setting is turned off.
+    /// User-initiated jobs stay queued. Does not cancel in-flight generation.
+    func applyAutoGenerateSetting(enabled: Bool, context: ModelContext) {
         modelContext = context
-        PendingWorkStore.addChapter(guid: episode.guid)
-        logger.info("Enqueued episode for chapter generation: \(episode.title)")
-        processNextIfNeeded()
+        guard !enabled else { return }
+        drainAutoWork(reason: "auto-generate chapters disabled")
         EpisodeProcessingBackgroundManager.shared.notifyWorkStateChanged()
     }
 
     func removeFromQueue(guid: String) {
         let before = queue.count
-        queue.removeAll { $0.guid == guid }
+        queue.removeAll { $0.episode.guid == guid }
         if queue.count != before {
             syncQueuedGUIDs()
             logger.info("Removed episode from chapter queue: \(guid)")
@@ -70,6 +75,14 @@ final class AutoChapterQueue {
     func resumePersistedWork(context: ModelContext) {
         modelContext = context
 
+        let settings = AppSettings.getOrCreate(context: context)
+        if !settings.autoGenerateChaptersEnabled {
+            drainAutoWork(reason: "auto-generate chapters disabled — skip resume")
+            processNextIfNeeded()
+            EpisodeProcessingBackgroundManager.shared.notifyWorkStateChanged()
+            return
+        }
+
         for guid in PendingWorkStore.chapterGUIDs {
             guard let episode = Self.fetchEpisode(guid: guid, context: context) else {
                 PendingWorkStore.removeChapter(guid: guid)
@@ -79,20 +92,62 @@ final class AutoChapterQueue {
                 PendingWorkStore.removeChapter(guid: guid)
                 continue
             }
-            guard !queue.contains(where: { $0.guid == guid }) else { continue }
-            queue.append(episode)
+            guard !queue.contains(where: { $0.episode.guid == guid }) else { continue }
+            queue.append(QueuedItem(episode: episode, userInitiated: false))
             syncQueuedGUIDs()
         }
         processNextIfNeeded()
         EpisodeProcessingBackgroundManager.shared.notifyWorkStateChanged()
     }
 
+    private func enqueue(episode: Episode, context: ModelContext, userInitiated: Bool) {
+        guard !queue.contains(where: { $0.episode.guid == episode.guid }) else { return }
+        guard !ChapterService.shared.isGenerating(for: episode.guid) else { return }
+
+        queue.append(QueuedItem(episode: episode, userInitiated: userInitiated))
+        syncQueuedGUIDs()
+        modelContext = context
+        PendingWorkStore.addChapter(guid: episode.guid)
+        logger.info(
+            "Enqueued episode for chapter generation (\(userInitiated ? "user" : "auto")): \(episode.title)"
+        )
+        processNextIfNeeded()
+        EpisodeProcessingBackgroundManager.shared.notifyWorkStateChanged()
+    }
+
+    private func drainAutoWork(reason: String) {
+        let removed = queue.filter { !$0.userInitiated }
+        guard !removed.isEmpty || !PendingWorkStore.chapterGUIDs.isEmpty else { return }
+
+        queue.removeAll { !$0.userInitiated }
+        syncQueuedGUIDs()
+
+        let keepPending = Set(queue.map(\.episode.guid))
+        for guid in PendingWorkStore.chapterGUIDs where !keepPending.contains(guid) {
+            // Keep pending for an in-flight job so retryable interrupts can still
+            // resume if the setting is turned back on before the next resume pass.
+            if ChapterService.shared.isGenerating(for: guid) { continue }
+            PendingWorkStore.removeChapter(guid: guid)
+        }
+
+        if !removed.isEmpty {
+            logger.info("Drained \(removed.count) auto chapter queue item(s) — \(reason)")
+        }
+    }
+
     private func syncQueuedGUIDs() {
-        queuedGUIDs = queue.map(\.guid)
+        queuedGUIDs = queue.map(\.episode.guid)
     }
 
     private func processNextIfNeeded() {
-        guard !isProcessing, !queue.isEmpty, let context = modelContext else { return }
+        guard let context = modelContext else { return }
+
+        let settings = AppSettings.getOrCreate(context: context)
+        if !settings.autoGenerateChaptersEnabled {
+            drainAutoWork(reason: "auto-generate chapters disabled")
+        }
+
+        guard !isProcessing, !queue.isEmpty else { return }
         guard !EpisodeProcessingBackgroundManager.shared.isAutoProcessingSuspended else {
             logger.info("Skipping next chapter generation — auto processing suspended")
             return
@@ -107,24 +162,27 @@ final class AutoChapterQueue {
         }
 
         isProcessing = true
-        let episode = queue.removeFirst()
+        let item = queue.removeFirst()
         syncQueuedGUIDs()
+        let episode = item.episode
 
         Task {
-            logger.info("Starting auto chapter generation for: \(episode.title)")
+            logger.info(
+                "Starting \(item.userInitiated ? "user" : "auto") chapter generation for: \(episode.title)"
+            )
             let outcome = await ChapterService.shared.generate(episode: episode, context: context)
             switch outcome {
             case .succeeded:
-                logger.info("Auto chapter generation succeeded: \(episode.title)")
+                logger.info("Chapter generation succeeded: \(episode.title)")
             case .failedPermanent:
-                logger.warning("Auto chapter generation failed permanently: \(episode.title)")
+                logger.warning("Chapter generation failed permanently: \(episode.title)")
             case .failedRetryable:
                 // Keep PendingWorkStore entry, but do not re-queue here. Immediate
                 // re-enqueue can cancel/restart-loop if generation is interrupted
                 // again (e.g. background task expiry). become-active and
                 // BGProcessingTask call resumePersistedWork instead.
                 logger.warning(
-                    "Auto chapter generation interrupted — keeping pending for retry: \(episode.title)"
+                    "Chapter generation interrupted — keeping pending for retry: \(episode.title)"
                 )
             }
             isProcessing = false
