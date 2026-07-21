@@ -503,6 +503,7 @@ struct NowPlayingView: View {
             } placeholder: {
                 Color.black
             }
+            .artworkDisplaySize(ArtworkDisplaySize.nowPlayingBackground)
             .ignoresSafeArea()
             .blur(radius: 80)
             .overlay(Color.black.opacity(0.72))

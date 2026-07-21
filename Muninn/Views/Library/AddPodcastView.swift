@@ -297,6 +297,7 @@ private struct SearchResultRow: View {
                             .foregroundStyle(.secondary)
                     }
             }
+            .artworkDisplaySize(ArtworkDisplaySize.searchResult)
             .frame(width: 50, height: 50)
             .clipShape(RoundedRectangle(cornerRadius: 8))
 

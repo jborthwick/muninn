@@ -204,6 +204,7 @@ private struct QueueArtworkView: View, Equatable {
             RoundedRectangle(cornerRadius: 6)
                 .fill(Color.secondary.opacity(0.2))
         }
+        .artworkDisplaySize(ArtworkDisplaySize.queue)
         .frame(width: 50, height: 50)
         .clipShape(RoundedRectangle(cornerRadius: 6))
     }

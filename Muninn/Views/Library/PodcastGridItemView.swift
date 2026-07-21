@@ -12,6 +12,7 @@ struct PodcastGridItemView: View {
             } placeholder: {
                 artworkPlaceholder
             }
+            .artworkDisplaySize(ArtworkDisplaySize.grid)
             .aspectRatio(1, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 10))
 

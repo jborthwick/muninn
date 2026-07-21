@@ -9,6 +9,9 @@ packages:
   FeedKit:
     url: https://github.com/nmdias/FeedKit
     from: "9.1.2"
+  Kingfisher:
+    url: https://github.com/onevcat/Kingfisher
+    from: "8.3.0"
 
 settings:
   base:
@@ -24,6 +27,7 @@ targets:
       - Muninn
     dependencies:
       - package: FeedKit
+      - package: Kingfisher
     settings:
       base:
         INFOPLIST_FILE: Muninn/Info.plist

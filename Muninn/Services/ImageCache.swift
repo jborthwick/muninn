@@ -1,167 +1,170 @@
 import SwiftUI
 import Foundation
-import ImageIO
+import UIKit
+import Kingfisher
 
-/// Simple image cache with memory and disk storage
-actor ImageCache {
+/// Artwork cache backed by Kingfisher (memory + persistent disk in Application Support).
+final class ImageCache {
     static let shared = ImageCache()
 
-    // NSCache is thread-safe, so we can access it synchronously from any thread
-    private static let memoryCache = NSCache<NSString, UIImage>()
-    private let fileManager = FileManager.default
-    private var cacheDirectory: URL?
-    private var inFlightRequests: [String: Task<UIImage?, Never>] = [:]
-    private let session: URLSession = {
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 20
-        config.timeoutIntervalForResource = 30
-        config.httpAdditionalHeaders = [
-            "User-Agent": "Muninn/1.0 (iOS podcast player; insight artwork)",
-            "Accept": "image/webp,image/avif,image/png,image/jpeg,image/*;q=0.8,*/*;q=0.5"
-        ]
-        return URLSession(configuration: config)
+    private static let diskSizeLimit: UInt = 400 * 1024 * 1024
+    private static let memoryCostLimit = 100 * 1024 * 1024
+    private static let memoryCountLimit = 200
+
+    private static let kingfisherCache: Kingfisher.ImageCache = {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let directory = appSupport.appendingPathComponent("ArtworkCache", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        let cache = try! Kingfisher.ImageCache(
+            name: "muninn-artwork",
+            cacheDirectoryURL: directory
+        )
+        cache.diskStorage.config.sizeLimit = diskSizeLimit
+        cache.diskStorage.config.expiration = .days(365)
+        cache.memoryStorage.config.totalCostLimit = memoryCostLimit
+        cache.memoryStorage.config.countLimit = memoryCountLimit
+        return cache
     }()
 
-    private init() {
-        // Increase memory cache limits
-        Self.memoryCache.countLimit = 200
-        Self.memoryCache.totalCostLimit = 100 * 1024 * 1024 // 100 MB
-        
-        // Setup cache directory synchronously in init (safe since it's just file system operations)
-        if let cachePath = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first {
-            let imageCache = cachePath.appendingPathComponent("ImageCache", isDirectory: true)
-            if !FileManager.default.fileExists(atPath: imageCache.path) {
-                try? FileManager.default.createDirectory(at: imageCache, withIntermediateDirectories: true)
-            }
-            cacheDirectory = imageCache
-        }
+    private init() {}
+
+    /// Call once at launch before any artwork loads.
+    func configure() {
+        KingfisherManager.shared.defaultOptions = Self.defaultOptions()
     }
 
-    /// Synchronous memory cache lookup - can be called from any thread
+    /// Synchronous memory or disk lookup for instant display on relaunch.
     nonisolated func cachedImage(for url: URL) -> UIImage? {
-        let key = cacheKey(for: url) as NSString
-        return Self.memoryCache.object(forKey: key)
+        let key = url.cacheKey
+        let cache = Self.kingfisherCache
+
+        if let image = cache.retrieveImageInMemoryCache(forKey: key) {
+            return image
+        }
+
+        guard cache.diskStorage.isCached(forKey: key),
+              let data = try? cache.diskStorage.value(forKey: key),
+              let image = UIImage(data: data) else {
+            return nil
+        }
+
+        cache.store(image, forKey: key, options: .init([.cacheMemoryOnly]))
+        return image
     }
 
-    /// Generate cache key - nonisolated for sync access
-    nonisolated private func cacheKey(for url: URL) -> String {
-        let urlString = url.absoluteString
-        guard let data = urlString.data(using: .utf8) else {
-            return UUID().uuidString + ".img"
-        }
-        var hash: UInt64 = 5381
-        for byte in data {
-            hash = ((hash << 5) &+ hash) &+ UInt64(byte)
-        }
-        return String(format: "%016llx", hash) + ".img"
-    }
-
-
-    func image(for url: URL) async -> UIImage? {
-        let key = cacheKey(for: url)
-
-        // Check memory cache first (already thread-safe)
-        if let cached = Self.memoryCache.object(forKey: key as NSString) {
+    func image(for url: URL, downsampleTo size: CGSize? = nil) async -> UIImage? {
+        if let cached = cachedImage(for: url) {
             return cached
         }
 
-        // Check disk cache
-        if let diskImage = loadFromDisk(key: key) {
-            let cost = diskImage.pngData()?.count ?? 0
-            Self.memoryCache.setObject(diskImage, forKey: key as NSString, cost: cost)
-            return diskImage
-        }
-
-        // Check if already downloading
-        if let existingTask = inFlightRequests[key] {
-            return await existingTask.value
-        }
-
-        // Download
-        let session = self.session
-        let task = Task<UIImage?, Never> {
-            guard let (data, response) = try? await session.data(from: url) else {
-                return nil
+        return await withCheckedContinuation { continuation in
+            KingfisherManager.shared.retrieveImage(
+                with: url,
+                options: Self.retrieveOptions(downsampleTo: size)
+            ) { result in
+                continuation.resume(returning: try? result.get().image)
             }
-            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                return nil
-            }
-            guard let image = Self.decodeImage(data: data) else {
-                return nil
-            }
-
-            let cost = data.count
-            Self.memoryCache.setObject(image, forKey: key as NSString, cost: cost)
-            await self.saveToDisk(image: image, key: key)
-
-            return image
         }
-
-        inFlightRequests[key] = task
-        let result = await task.value
-        inFlightRequests.removeValue(forKey: key)
-
-        return result
     }
 
-    /// Preload an image into cache
-    func preload(url: URL) async {
-        _ = await image(for: url)
+    /// Preload one or more images into the artwork cache.
+    func preload(url: URL, downsampleTo size: CGSize? = nil) async {
+        await preload(urls: [url], downsampleTo: size)
     }
 
-    /// Check if image is already cached (memory or disk)
+    func preload(urls: [URL], downsampleTo size: CGSize? = nil) async {
+        guard !urls.isEmpty else { return }
+
+        let options = Self.retrieveOptions(downsampleTo: size)
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let prefetcher = ImagePrefetcher(
+                urls: urls,
+                options: options,
+                completionHandler: { _, _, _ in
+                    continuation.resume()
+                }
+            )
+            prefetcher.start()
+        }
+    }
+
+    /// Check if image is already cached (memory or disk).
     nonisolated func isCached(url: URL) -> Bool {
-        let key = cacheKey(for: url)
-
-        // Check memory (thread-safe)
-        if Self.memoryCache.object(forKey: key as NSString) != nil {
-            return true
-        }
-
-        // Check disk
-        guard let cachePath = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return false }
-        let fileURL = cachePath.appendingPathComponent("ImageCache").appendingPathComponent(key)
-        return FileManager.default.fileExists(atPath: fileURL.path)
+        let key = url.cacheKey
+        let cache = Self.kingfisherCache
+        return cache.retrieveImageInMemoryCache(forKey: key) != nil
+            || cache.diskStorage.isCached(forKey: key)
     }
 
-    private func loadFromDisk(key: String) -> UIImage? {
-        guard let cacheDir = cacheDirectory else { return nil }
-        let fileURL = cacheDir.appendingPathComponent(key)
-        guard let data = try? Data(contentsOf: fileURL) else { return nil }
-        return Self.decodeImage(data: data)
-    }
-
-    private func saveToDisk(image: UIImage, key: String) {
-        guard let cacheDir = cacheDirectory else { return }
-        // Prefer PNG so WebP-decoded images with alpha/odd color spaces still persist.
-        let data = image.pngData() ?? image.jpegData(compressionQuality: 0.85)
-        guard let data else { return }
-        let fileURL = cacheDir.appendingPathComponent(key)
-        try? data.write(to: fileURL)
-    }
-
-    /// Decode JPEG/PNG/WebP via UIKit, then ImageIO fallback.
-    nonisolated private static func decodeImage(data: Data) -> UIImage? {
-        if let image = UIImage(data: data) {
-            return image
-        }
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-              let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
-            return nil
-        }
-        return UIImage(cgImage: cgImage)
-    }
-
-    func clearCache() {
-        Self.memoryCache.removeAllObjects()
-        if let cacheDir = cacheDirectory {
-            try? fileManager.removeItem(at: cacheDir)
-            
-            // Recreate cache directory
-            if !fileManager.fileExists(atPath: cacheDir.path) {
-                try? fileManager.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+    func clearCache() async {
+        let cache = Self.kingfisherCache
+        cache.clearMemoryCache()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            cache.clearDiskCache {
+                continuation.resume()
             }
         }
+    }
+
+    // MARK: - Private
+
+    private static func defaultOptions() -> KingfisherOptionsInfo {
+        [
+            .targetCache(kingfisherCache),
+            .requestModifier(ArtworkRequestModifier())
+        ]
+    }
+
+    private static func retrieveOptions(downsampleTo size: CGSize?) -> KingfisherOptionsInfo {
+        var options = defaultOptions()
+        if let size, size.width > 0, size.height > 0 {
+            options.append(.processor(DownsamplingImageProcessor(size: size)))
+        }
+        return options
+    }
+}
+
+// MARK: - Display sizes
+
+/// Pixel dimensions for downsampling (points × screen scale).
+enum ArtworkDisplaySize {
+    static func pixels(side: CGFloat) -> CGSize {
+        let scale = UIScreen.main.scale
+        return CGSize(width: side * scale, height: side * scale)
+    }
+
+    static let list = pixels(side: 60)
+    static let episodeRow = pixels(side: 50)
+    static let grid = pixels(side: 120)
+    static let miniPlayer = pixels(side: 48)
+    static let miniPlayerInline = pixels(side: 36)
+    static let queue = pixels(side: 50)
+    static let podcastDetail = pixels(side: 150)
+    static let episodeDetail = pixels(side: 200)
+    static let nowPlaying = pixels(side: 280)
+    static let nowPlayingBackground = pixels(side: 200)
+    static let insightRow = pixels(side: 56)
+    static let insightHero = pixels(side: 260)
+    static let picker = pixels(side: 44)
+    static let searchResult = pixels(side: 50)
+}
+
+// MARK: - Request headers
+
+private struct ArtworkRequestModifier: ImageDownloadRequestModifier {
+    func modified(for request: URLRequest) -> URLRequest? {
+        var request = request
+        request.setValue(
+            "Muninn/1.0 (iOS podcast player; insight artwork)",
+            forHTTPHeaderField: "User-Agent"
+        )
+        request.setValue(
+            "image/webp,image/avif,image/png,image/jpeg,image/*;q=0.8,*/*;q=0.5",
+            forHTTPHeaderField: "Accept"
+        )
+        return request
     }
 }
 
@@ -169,22 +172,22 @@ actor ImageCache {
 
 struct CachedAsyncImage<Content: View, Placeholder: View>: View {
     let url: URL?
+    /// When set, decodes a downsampled bitmap sized for the view (faster loads, less memory).
+    var displaySize: CGSize?
     @ViewBuilder let content: (Image) -> Content
     @ViewBuilder let placeholder: () -> Placeholder
 
     @State private var image: UIImage?
     @State private var loadingURL: URL?
 
-    // Check memory cache synchronously for instant display
-    private var memoryCachedImage: UIImage? {
+    private var syncCachedImage: UIImage? {
         guard let url = url else { return nil }
         return ImageCache.shared.cachedImage(for: url)
     }
 
     var body: some View {
         Group {
-            // First check sync memory cache, then async-loaded image
-            if let cached = memoryCachedImage {
+            if let cached = syncCachedImage {
                 content(Image(uiImage: cached))
             } else if let image = image {
                 content(Image(uiImage: image))
@@ -197,6 +200,16 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
         }
     }
 
+    func artworkDisplaySize(_ size: CGSize) -> CachedAsyncImage {
+        var copy = self
+        copy.displaySize = size
+        return copy
+    }
+
+    func artworkDisplaySize(side: CGFloat) -> CachedAsyncImage {
+        artworkDisplaySize(ArtworkDisplaySize.pixels(side: side))
+    }
+
     private func loadImage() async {
         guard let url = url else {
             image = nil
@@ -204,23 +217,17 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
             return
         }
 
-        // Skip if already in memory cache (will be shown via memoryCachedImage)
         if ImageCache.shared.cachedImage(for: url) != nil {
             return
         }
 
-        // Don't reload if same URL and already have image
         if loadingURL == url && image != nil {
             return
         }
 
         loadingURL = url
 
-        if let cachedImage = await ImageCache.shared.image(for: url) {
-            // Only update if URL hasn't changed.
-            // Use an explicit transaction so the image load doesn't inherit (and
-            // interrupt) whatever SwiftUI transaction is active at the call site —
-            // most importantly the navigation slide animation.
+        if let cachedImage = await ImageCache.shared.image(for: url, downsampleTo: displaySize) {
             if loadingURL == url {
                 await MainActor.run {
                     withTransaction(.init(animation: .easeIn(duration: 0.15))) {
@@ -232,10 +239,28 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
     }
 }
 
+import SwiftData
+
+extension ImageCache {
+    /// Warms list-sized artwork for every subscribed podcast.
+    func prefetchLibraryArtwork(from context: ModelContext) async {
+        let descriptor = FetchDescriptor<Podcast>()
+        guard let podcasts = try? context.fetch(descriptor) else { return }
+        let urls = podcasts.compactMap(\.artworkURL).compactMap { URL(string: $0) }
+        await preload(urls: urls, downsampleTo: ArtworkDisplaySize.list)
+    }
+
+    func prefetchInsightArtwork(for insight: EpisodeInsight) async {
+        let urls = insight.characters.compactMap(\.artworkURL).compactMap { URL(string: $0) }
+        await preload(urls: urls, downsampleTo: ArtworkDisplaySize.insightRow)
+    }
+}
+
 // Convenience initializer matching AsyncImage API
 extension CachedAsyncImage where Placeholder == Color {
     init(url: URL?, @ViewBuilder content: @escaping (Image) -> Content) {
         self.url = url
+        self.displaySize = nil
         self.content = content
         self.placeholder = { Color.secondary.opacity(0.2) }
     }

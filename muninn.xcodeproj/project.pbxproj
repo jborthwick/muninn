@@ -93,6 +93,7 @@
 		B7DEBFEADCDCD9B9C3C66CFE /* RefreshStatusBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27297FAC153E482E48E1E0F4 /* RefreshStatusBanner.swift */; };
 		B95F93D7316EB2F29E8D5429 /* ChapterGenerationDebugInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1742B2ED7759BEC4B36DE098 /* ChapterGenerationDebugInfo.swift */; };
 		BB7AEE31B9A671BF674C9E3E /* PodcastRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96D17A61656CAF01A1B84E7A /* PodcastRowView.swift */; };
+		C3F135E2696E4957364AC149 /* Kingfisher in Frameworks */ = {isa = PBXBuildFile; productRef = 5CF5CB3819BE9FF8A18AEF17 /* Kingfisher */; };
 		C52A7F37DFC8547184845D45 /* DownloadsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54F122B6B32C99226A64F26A /* DownloadsView.swift */; };
 		C7F982F143D9DE81ABA45BA4 /* TranscriptSegment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 833ED2B04B4E6B74A7044561 /* TranscriptSegment.swift */; };
 		C8C6F50224B5521FD763B08A /* CharacterFactParsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9266F5C5155611699AF16D6C /* CharacterFactParsing.swift */; };
@@ -240,6 +241,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				66B895EF2892504C3FF68B1F /* FeedKit in Frameworks */,
+				C3F135E2696E4957364AC149 /* Kingfisher in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -542,6 +544,7 @@
 			name = Muninn;
 			packageProductDependencies = (
 				6B26BAD390B35C1273B3C954 /* FeedKit */,
+				5CF5CB3819BE9FF8A18AEF17 /* Kingfisher */,
 			);
 			productName = Muninn;
 			productReference = C6392F13DD797B81EE9B8EB2 /* Muninn.app */;
@@ -574,6 +577,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				F074D0A12C851408A5446B0B /* XCRemoteSwiftPackageReference "FeedKit" */,
+				5AF029A867029ECD37AAA295 /* XCRemoteSwiftPackageReference "Kingfisher" */,
 			);
 			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
@@ -899,6 +903,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		5AF029A867029ECD37AAA295 /* XCRemoteSwiftPackageReference "Kingfisher" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/onevcat/Kingfisher";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 8.3.0;
+			};
+		};
 		F074D0A12C851408A5446B0B /* XCRemoteSwiftPackageReference "FeedKit" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/nmdias/FeedKit";
@@ -910,6 +922,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		5CF5CB3819BE9FF8A18AEF17 /* Kingfisher */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5AF029A867029ECD37AAA295 /* XCRemoteSwiftPackageReference "Kingfisher" */;
+			productName = Kingfisher;
+		};
 		6B26BAD390B35C1273B3C954 /* FeedKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = F074D0A12C851408A5446B0B /* XCRemoteSwiftPackageReference "FeedKit" */;

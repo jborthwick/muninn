@@ -30,6 +30,7 @@ struct EpisodeRowView: View {
                             .foregroundStyle(.secondary)
                     }
             }
+            .artworkDisplaySize(ArtworkDisplaySize.episodeRow)
             .frame(width: 50, height: 50)
             .clipShape(RoundedRectangle(cornerRadius: 6))
 

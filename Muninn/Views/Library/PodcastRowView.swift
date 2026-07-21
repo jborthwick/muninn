@@ -12,6 +12,7 @@ struct PodcastRowView: View {
             } placeholder: {
                 artworkPlaceholder
             }
+            .artworkDisplaySize(ArtworkDisplaySize.list)
             .frame(width: 60, height: 60)
             .clipShape(RoundedRectangle(cornerRadius: 8))
 

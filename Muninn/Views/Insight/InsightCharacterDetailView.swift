@@ -85,6 +85,7 @@ struct InsightCharacterDetailView: View {
                     .foregroundStyle(.tertiary)
             }
         }
+        .artworkDisplaySize(ArtworkDisplaySize.insightHero)
         .frame(maxWidth: .infinity)
         .frame(height: heroHeight)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))

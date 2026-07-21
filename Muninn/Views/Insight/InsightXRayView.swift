@@ -109,6 +109,7 @@ struct InsightCharacterRow: View {
                     .foregroundStyle(.tertiary)
             }
         }
+        .artworkDisplaySize(ArtworkDisplaySize.insightRow)
         .frame(width: artSize, height: artSize)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .accessibilityHidden(true)

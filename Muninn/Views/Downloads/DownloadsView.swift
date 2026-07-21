@@ -251,6 +251,7 @@ private struct DownloadedEpisodeRow: View {
                 RoundedRectangle(cornerRadius: 6)
                     .fill(Color.secondary.opacity(0.2))
             }
+            .artworkDisplaySize(ArtworkDisplaySize.episodeRow)
             .frame(width: 50, height: 50)
             .clipShape(RoundedRectangle(cornerRadius: 6))
 
@@ -353,6 +354,7 @@ private struct DownloadingEpisodeRow: View {
                 RoundedRectangle(cornerRadius: 6)
                     .fill(Color.secondary.opacity(0.2))
             }
+            .artworkDisplaySize(ArtworkDisplaySize.episodeRow)
             .frame(width: 50, height: 50)
             .clipShape(RoundedRectangle(cornerRadius: 6))
 

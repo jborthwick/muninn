@@ -198,6 +198,7 @@ private struct ManageFolderPodcastsSheet: View {
                                         RoundedRectangle(cornerRadius: 6)
                                             .fill(Color.secondary.opacity(0.2))
                                     }
+                                    .artworkDisplaySize(ArtworkDisplaySize.picker)
                                     .frame(width: 44, height: 44)
                                     .clipShape(RoundedRectangle(cornerRadius: 6))
 

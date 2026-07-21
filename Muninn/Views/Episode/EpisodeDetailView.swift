@@ -37,6 +37,7 @@ struct EpisodeDetailView: View {
                                     .foregroundStyle(.secondary)
                             }
                     }
+                    .artworkDisplaySize(ArtworkDisplaySize.episodeDetail)
                     .frame(width: 200, height: 200)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                     .shadow(radius: 8)

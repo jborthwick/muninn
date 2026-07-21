@@ -69,6 +69,7 @@ struct MiniPlayerView: View {
                         .foregroundStyle(.secondary)
                 }
         }
+        .artworkDisplaySize(isInline ? ArtworkDisplaySize.miniPlayerInline : ArtworkDisplaySize.miniPlayer)
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: isInline ? 8 : 10, style: .continuous))
     }

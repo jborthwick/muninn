@@ -1082,6 +1082,7 @@ private struct PodcastHeaderView: View {
                             .foregroundStyle(.secondary)
                     }
             }
+            .artworkDisplaySize(ArtworkDisplaySize.podcastDetail)
             .frame(width: 150, height: 150)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .shadow(radius: 4)

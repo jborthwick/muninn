@@ -109,6 +109,7 @@ struct NowPlayingEpisodeHeader: View {
                         .foregroundStyle(.secondary)
                 }
         }
+        .artworkDisplaySize(ArtworkDisplaySize.nowPlaying)
     }
 
     // MARK: - Text

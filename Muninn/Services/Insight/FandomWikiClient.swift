@@ -97,6 +97,11 @@ actor FandomWikiClient {
         mapping: ShowWikiMapping,
         page: CharacterPage
     ) async -> URL? {
+        // queryCharacterPage already fetched a 400px thumb — use it before extra API hops.
+        if let thumb = page.thumbnailURL {
+            return thumb
+        }
+
         var fileNames: [String] = []
         if let pageImage = page.pageImageFileName {
             fileNames.append(pageImage)
@@ -112,10 +117,6 @@ actor FandomWikiClient {
             if let url = try? await resolveFileURL(mapping: mapping, fileName: fileName) {
                 return url
             }
-        }
-
-        if let thumb = page.thumbnailURL {
-            return thumb
         }
 
         if let fileName = fileNames.first {

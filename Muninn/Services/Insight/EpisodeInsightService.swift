@@ -17,6 +17,7 @@ final class EpisodeInsightService {
     private var loadTask: Task<Void, Never>?
 
     nonisolated static let maxCharacters = 12
+    nonisolated static let characterFetchConcurrency = 4
     /// Fill from episode details / transcript when wiki cast is thinner than this.
     nonisolated static let sparseCastFillThreshold = 2
     /// Prefer early episode speech (cast intros) over the whole transcript.
@@ -68,6 +69,7 @@ final class EpisodeInsightService {
                 if episode.localInsightPath == nil {
                     episode.localInsightPath = EpisodeInsightStore.filename(for: episode.guid)
                 }
+                Task { await ImageCache.shared.prefetchInsightArtwork(for: cached) }
                 return
             }
         }
@@ -181,23 +183,52 @@ final class EpisodeInsightService {
         let cappedNames = Array(mergedNames.prefix(Self.maxCharacters))
         let synopsisHint = page.synopsis.map { String($0.prefix(280)) }
 
-        for name in cappedNames {
+        for batchStart in stride(from: 0, to: cappedNames.count, by: Self.characterFetchConcurrency) {
             if Task.isCancelled || activeGUID != guid { return }
 
-            let character = await Self.buildCharacter(
-                name: name,
-                mapping: mapping,
-                episodeTitle: episodeTitle,
-                synopsisHint: synopsisHint,
-                client: client
-            )
+            let batchEnd = min(batchStart + Self.characterFetchConcurrency, cappedNames.count)
+            let batch = Array(cappedNames[batchStart..<batchEnd])
+
+            let batchCharacters = await withTaskGroup(
+                of: (Int, InsightCharacter).self,
+                returning: [(Int, InsightCharacter)].self
+            ) { group in
+                for (offset, name) in batch.enumerated() {
+                    let index = batchStart + offset
+                    group.addTask {
+                        let character = await Self.buildCharacter(
+                            name: name,
+                            mapping: mapping,
+                            episodeTitle: episodeTitle,
+                            synopsisHint: synopsisHint,
+                            client: client
+                        )
+                        return (index, character)
+                    }
+                }
+
+                var results: [(Int, InsightCharacter)] = []
+                for await result in group {
+                    results.append(result)
+                }
+                return results.sorted { $0.0 < $1.0 }
+            }
 
             guard !Task.isCancelled, activeGUID == guid else { return }
-            built.characters.append(character)
+
+            for (_, character) in batchCharacters {
+                built.characters.append(character)
+            }
             insight = built
 
-            if let artURL = character.artworkURL.flatMap(URL.init(string:)) {
-                Task { await ImageCache.shared.preload(url: artURL) }
+            let artworkURLs = batchCharacters.compactMap { $0.1.artworkURL }.compactMap { URL(string: $0) }
+            if !artworkURLs.isEmpty {
+                Task {
+                    await ImageCache.shared.preload(
+                        urls: artworkURLs,
+                        downsampleTo: ArtworkDisplaySize.insightRow
+                    )
+                }
             }
         }
 

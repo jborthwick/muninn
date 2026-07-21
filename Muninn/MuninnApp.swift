@@ -6,6 +6,7 @@ struct MuninnApp: App {
     init() {
         // Install crash handlers before any other launch work.
         _ = CrashReporter.shared
+        ImageCache.shared.configure()
         BackgroundRefreshManager.shared.registerBackgroundTask()
         EpisodeProcessingBackgroundManager.shared.registerBackgroundTasks()
     }
@@ -91,6 +92,11 @@ struct MuninnApp: App {
                 }
                 .task {
                     let context = sharedModelContainer.mainContext
+
+                    // Warm library artwork without blocking sync/refresh work.
+                    Task(priority: .utility) {
+                        await ImageCache.shared.prefetchLibraryArtwork(from: context)
+                    }
 
                     // Let the first frames render before heavy launch work.
                     try? await Task.sleep(for: .milliseconds(500))
