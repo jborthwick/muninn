@@ -79,16 +79,15 @@ struct EpisodeRowView: View {
                 EpisodeProcessingStatusView(episode: episode)
             }
 
-            Spacer()
+            Spacer(minLength: 0)
 
-            // Action buttons or selection checkmark
-            if isSelecting {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.title2)
-                    .foregroundStyle(isSelected ? Color.accentColor : .secondary)
-                    .frame(width: 36, height: 36)
-            } else {
-                HStack(spacing: 8) {
+            // Fixed-width slot so entering selection mode doesn't reflow title text.
+            Group {
+                if isSelecting {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.title2)
+                        .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                } else {
                     // Playing indicator or download button
                     if isCurrentlyPlaying {
                         Button {
@@ -97,48 +96,42 @@ struct EpisodeRowView: View {
                             Image(systemName: AudioPlayerManager.shared.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                                 .font(.title2)
                                 .foregroundStyle(Color.accentColor)
-                                .frame(width: 36, height: 36)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.borderless)
                     } else if let progress = episode.downloadProgress {
-                        // Downloading
                         Button {
                             DownloadManager.shared.cancelDownload(episode)
                         } label: {
                             CircularProgressView(progress: progress)
                                 .frame(width: 22, height: 22)
-                                .frame(width: 36, height: 36)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.borderless)
                     } else if episode.localFilePath != nil {
-                        // Downloaded
                         Button {
                             showDeleteDownloadConfirmation = true
                         } label: {
                             Image(systemName: "arrow.down.circle.fill")
                                 .font(.title2)
                                 .foregroundStyle(.green)
-                                .frame(width: 36, height: 36)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.borderless)
                     } else {
-                        // Not downloaded
                         Button {
                             attemptDownload()
                         } label: {
                             Image(systemName: "arrow.down.circle")
                                 .font(.title2)
                                 .foregroundStyle(.secondary)
-                                .frame(width: 36, height: 36)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.borderless)
                     }
                 }
             }
+            .frame(width: 36, height: 36)
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())

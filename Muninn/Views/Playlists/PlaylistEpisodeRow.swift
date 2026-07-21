@@ -49,21 +49,24 @@ struct PlaylistEpisodeRow: View, Equatable {
                 EpisodeProcessingStatusView(episode: episode)
             }
 
-            Spacer()
+            Spacer(minLength: 0)
 
-            if isSelecting {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.title2)
-                    .foregroundStyle(isSelected ? Color.accentColor : .secondary)
-                    .frame(width: 36, height: 36)
-            } else if let progress = episode.downloadProgress {
-                CircularProgressView(progress: progress)
-                    .frame(width: 16, height: 16)
-            } else if episode.localFilePath != nil {
-                Image(systemName: "arrow.down.circle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.green)
+            // Fixed-width slot so entering selection mode doesn't reflow title text.
+            Group {
+                if isSelecting {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.title2)
+                        .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                } else if let progress = episode.downloadProgress {
+                    CircularProgressView(progress: progress)
+                        .frame(width: 22, height: 22)
+                } else if episode.localFilePath != nil {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.green)
+                }
             }
+            .frame(width: 36, height: 36)
         }
     }
 }
