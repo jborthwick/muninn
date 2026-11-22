@@ -22,7 +22,9 @@ struct NowPlayingView: View {
     /// GUID of the episode that was playing when showInsight was last set to true.
     @AppStorage("nowPlaying.insightEpisodeGUID") private var insightEpisodeGUID = ""
     @State private var showMarkPlayedConfirmation = false
+    #if MUNINN_LABS
     private var insightService = EpisodeInsightService.shared
+    #endif
     @State private var isRecapPopoverVisible = false
     @State private var showRecapDebug = false
 
@@ -31,7 +33,8 @@ struct NowPlayingView: View {
     }
 
     private var showsWhatsHappening: Bool {
-        LocalTranscriptionService.isSupported
+        Edition.pauseRecap
+            && LocalTranscriptionService.isSupported
             && !showTranscript
             && !showChapters
             && !showInsight
@@ -76,7 +79,7 @@ struct NowPlayingView: View {
                             text: summaryService.pauseRecap ?? "",
                             isLoading: summaryService.isGeneratingRecap,
                             needsChapters: summaryService.pauseRecapNeedsChapters,
-                            onShowDebug: summaryService.lastRecapDebug == nil ? nil : {
+                            onShowDebug: summaryService.lastRecapDebug == nil || !Edition.debugTools ? nil : {
                                 showRecapDebug = true
                             }
                         )
@@ -142,6 +145,7 @@ struct NowPlayingView: View {
                 }
                 chapterService.load(for: episode)
 
+                #if MUNINN_LABS
                 if showInsight {
                     if insightEpisodeGUID != episode.guid {
                         insightService.reset()
@@ -149,6 +153,7 @@ struct NowPlayingView: View {
                     }
                     insightService.load(for: episode)
                 }
+                #endif
             }
         }
         .onChange(of: playerManager.currentEpisode?.guid) { _, _ in
@@ -161,7 +166,9 @@ struct NowPlayingView: View {
             chapterService.clear()
             showInsight = false
             insightEpisodeGUID = ""
+            #if MUNINN_LABS
             insightService.reset()
+            #endif
             summaryService.clear()
             isRecapPopoverVisible = false
             if let episode = playerManager.currentEpisode {
@@ -218,8 +225,10 @@ struct NowPlayingView: View {
             )
 
             if showInsight {
+                #if MUNINN_LABS
                 NowPlayingInsightView(episode: episode)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
+                #endif
             } else if showChapters {
                 ChapterView(
                     onGenerate: startChapterGeneration,
@@ -301,7 +310,9 @@ struct NowPlayingView: View {
         HStack(spacing: 40) {
             transcriptButton(for: episode)
             chapterButton(for: episode)
+            #if MUNINN_LABS
             insightButton(for: episode)
+            #endif
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 24)
@@ -470,6 +481,7 @@ struct NowPlayingView: View {
         .accessibilityLabel("Chapters")
     }
 
+    #if MUNINN_LABS
     private func insightButton(for episode: Episode) -> some View {
         Button {
             withAnimation(.easeInOut(duration: 0.35)) {
@@ -490,6 +502,7 @@ struct NowPlayingView: View {
         }
         .accessibilityLabel("Insight")
     }
+    #endif
 
     @ViewBuilder
     private var presentationBackground: some View {

@@ -26,6 +26,13 @@ extension ChapterService {
 
     /// Whether this episode can attempt chapter generation (show notes or transcript).
     static func canGenerate(for episode: Episode) -> Bool {
+        guard Edition.aiChapters else {
+            // Shipping build: chapters only come from timestamps in the show notes.
+            return ChapterShowNotesParser.chapters(
+                from: episode.episodeDescription,
+                duration: episode.duration ?? 0
+            ) != nil
+        }
         if let description = episode.episodeDescription, !description.isEmpty {
             return true
         }

@@ -1,6 +1,20 @@
 # Muninn – Agent Guide
 
-iOS podcast player app focused on transcripts and AI-assisted audio understanding. Built with SwiftUI + SwiftData. App display name is **Muninn**, Xcode target is **Muninn**, bundle ID is **com.personal.muninn**.
+iOS podcast player app focused on transcripts and AI-assisted audio understanding. Built with SwiftUI + SwiftData. Two editions build from the same sources (see **Editions** below): **Muninn** (shipping) and **Muninn Labs** (everything).
+
+## Editions
+
+| | `Muninn` target (shipping) | `MuninnLabs` target |
+|---|---|---|
+| Display name | Muninn | Muninn Labs |
+| Bundle ID | `com.personal.muninn.app` (placeholder) | `com.personal.muninn` (original install) |
+| Compilation condition | — | `MUNINN_LABS` |
+| Fandom wiki insight | sources excluded in `project.yml` | ✅ |
+| Auto-transcribe / auto-chapters, AI chapters, pause recap, debug tools | compiled in, switched off by `Edition.swift` | ✅ |
+
+- Code that touches `Services/Insight`, `Views/Insight`, `NowPlayingInsightView`, or `EpisodeInsight` **must** be wrapped in `#if MUNINN_LABS` — those files don't exist in the shipping target.
+- Everything else experimental is gated at runtime via `Edition` flags (`autoProcessing`, `aiChapters`, `pauseRecap`, `debugTools`). `AppSettings.autoTranscribeEnabled` / `autoGenerateChaptersEnabled` / `pauseRecapEnabled` already fold in their flag, so most callers need no extra check.
+- Build both schemes before committing: a change can compile in Labs and break shipping.
 
 ## Build & Run
 
@@ -12,8 +26,10 @@ xcodegen generate
 open muninn.xcodeproj
 
 # Build check from terminal (no Xcode required)
-xcodebuild -scheme Muninn -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
-  -configuration Debug build 2>&1 | grep -E "(error:|BUILD SUCCEEDED|BUILD FAILED)"
+for s in Muninn MuninnLabs; do
+  xcodebuild -scheme $s -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+    -configuration Debug build 2>&1 | grep -E "(error:|BUILD SUCCEEDED|BUILD FAILED)"
+done
 ```
 
 Build and run from Xcode. There is no separate test suite — verify features manually on device/simulator.
@@ -96,7 +112,7 @@ Muninn/
 
 ## Config
 
-- **Bundle ID:** `com.personal.muninn`
+- **Bundle ID:** `com.personal.muninn` (Labs), `com.personal.muninn.app` (shipping placeholder)
 - **Deployment target:** iOS 26.0
 - **Swift version:** 5.9
 - **Development team:** set in `project.yml` → `DEVELOPMENT_TEAM`

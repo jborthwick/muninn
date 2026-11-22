@@ -56,17 +56,17 @@ final class AppSettings {
     }
 
     var autoTranscribeEnabled: Bool {
-        get { autoTranscribeEnabledRaw == 1 }
+        get { Edition.autoProcessing && autoTranscribeEnabledRaw == 1 }
         set { autoTranscribeEnabledRaw = newValue ? 1 : 0 }
     }
 
     var autoGenerateChaptersEnabled: Bool {
-        get { autoGenerateChaptersEnabledRaw == 1 }
+        get { Edition.autoProcessing && Edition.aiChapters && autoGenerateChaptersEnabledRaw == 1 }
         set { autoGenerateChaptersEnabledRaw = newValue ? 1 : 0 }
     }
 
     var pauseRecapEnabled: Bool {
-        get { pauseRecapEnabledRaw == 1 }
+        get { Edition.pauseRecap && pauseRecapEnabledRaw == 1 }
         set { pauseRecapEnabledRaw = newValue ? 1 : 0 }
     }
 

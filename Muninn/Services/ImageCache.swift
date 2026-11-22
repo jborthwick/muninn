@@ -250,10 +250,12 @@ extension ImageCache {
         await preload(urls: urls, downsampleTo: ArtworkDisplaySize.list)
     }
 
+    #if MUNINN_LABS
     func prefetchInsightArtwork(for insight: EpisodeInsight) async {
         let urls = insight.characters.compactMap(\.artworkURL).compactMap { URL(string: $0) }
         await preload(urls: urls, downsampleTo: ArtworkDisplaySize.insightRow)
     }
+    #endif
 }
 
 // Convenience initializer matching AsyncImage API

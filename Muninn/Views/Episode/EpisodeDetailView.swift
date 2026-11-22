@@ -201,9 +201,11 @@ struct EpisodeDetailView: View {
                         }
                     }
 
+                    #if MUNINN_LABS
                     // Fandom wiki synopsis + Insight (mapped shows only)
                     EpisodeInsightSection(episode: episode)
                         .padding(.horizontal)
+                    #endif
 
                     Spacer(minLength: 100)
                 }

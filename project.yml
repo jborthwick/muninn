@@ -19,19 +19,23 @@ settings:
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: R58AJ79B3J
 
-targets:
-  Muninn:
+# Two editions share one codebase:
+#   Muninn      — the pared-back app for TestFlight / App Store. Leaves out the
+#                 Fandom wiki insight sources entirely; Edition.swift switches off
+#                 auto-processing, AI chapters, pause recap, and debug tools.
+#   MuninnLabs  — everything, built with the MUNINN_LABS compilation condition.
+#                 Keeps the original bundle ID so the existing install and its
+#                 data carry over.
+targetTemplates:
+  MuninnApp:
     type: application
     platform: iOS
-    sources:
-      - Muninn
     dependencies:
       - package: FeedKit
       - package: Kingfisher
     settings:
       base:
         INFOPLIST_FILE: Muninn/Info.plist
-        PRODUCT_BUNDLE_IDENTIFIER: com.personal.muninn
         CODE_SIGN_ENTITLEMENTS: Muninn/Muninn.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1"
@@ -58,12 +62,46 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-        CFBundleDisplayName: Muninn
+        CFBundleDisplayName: $(APP_DISPLAY_NAME)
+
+targets:
+  Muninn:
+    templates:
+      - MuninnApp
+    sources:
+      - path: Muninn
+        excludes:
+          - Services/Insight
+          - Views/Insight
+          - Views/Player/NowPlayingInsightView.swift
+          - Models/EpisodeInsight.swift
+    settings:
+      base:
+        # Placeholder — replace with your own reverse-DNS ID before submitting.
+        PRODUCT_BUNDLE_IDENTIFIER: com.personal.muninn.app
+        APP_DISPLAY_NAME: Muninn
+
+  MuninnLabs:
+    templates:
+      - MuninnApp
+    sources:
+      - Muninn
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.personal.muninn
+        APP_DISPLAY_NAME: Muninn Labs
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) MUNINN_LABS
 
 schemes:
   Muninn:
     build:
       targets:
         Muninn: all
+    run:
+      config: Debug
+  MuninnLabs:
+    build:
+      targets:
+        MuninnLabs: all
     run:
       config: Debug

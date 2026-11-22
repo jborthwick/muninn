@@ -192,63 +192,65 @@ struct SettingsView: View {
                     }
                 }
 
-                // Transcription section
-                Section("Transcription") {
-                    Toggle(isOn: Binding(
-                        get: { appSettings.autoTranscribeEnabled },
-                        set: {
-                            appSettings.autoTranscribeEnabled = $0
-                            try? modelContext.save()
-                            AutoTranscriptionQueue.shared.applyAutoTranscribeSetting(
-                                enabled: $0,
-                                context: modelContext
-                            )
+                // Transcription section (auto-processing is Labs-only)
+                if Edition.autoProcessing {
+                    Section("Transcription") {
+                        Toggle(isOn: Binding(
+                            get: { appSettings.autoTranscribeEnabled },
+                            set: {
+                                appSettings.autoTranscribeEnabled = $0
+                                try? modelContext.save()
+                                AutoTranscriptionQueue.shared.applyAutoTranscribeSetting(
+                                    enabled: $0,
+                                    context: modelContext
+                                )
+                            }
+                        )) {
+                            HStack {
+                                Image(systemName: "waveform.and.mic")
+                                    .foregroundStyle(.blue)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Auto-Transcribe")
+                                    Text("Transcribe episodes automatically after download")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
                         }
-                    )) {
-                        HStack {
-                            Image(systemName: "waveform.and.mic")
-                                .foregroundStyle(.blue)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Auto-Transcribe")
-                                Text("Transcribe episodes automatically after download")
+                        .disabled(!LocalTranscriptionService.isSupported)
+
+                        Toggle(isOn: Binding(
+                            get: { appSettings.autoGenerateChaptersEnabled },
+                            set: {
+                                appSettings.autoGenerateChaptersEnabled = $0
+                                try? modelContext.save()
+                                AutoChapterQueue.shared.applyAutoGenerateSetting(
+                                    enabled: $0,
+                                    context: modelContext
+                                )
+                            }
+                        )) {
+                            HStack {
+                                Image(systemName: "list.bullet.rectangle")
+                                    .foregroundStyle(.orange)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Auto-Generate Chapters")
+                                    Text("Create chapters and summaries after transcription finishes")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        .disabled(!LocalTranscriptionService.isSupported)
+
+                        if !LocalTranscriptionService.isSupported {
+                            HStack {
+                                Image(systemName: "info.circle")
+                                    .foregroundStyle(.secondary)
+                                Text("On-device transcription requires Apple Intelligence")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
-                        }
-                    }
-                    .disabled(!LocalTranscriptionService.isSupported)
-
-                    Toggle(isOn: Binding(
-                        get: { appSettings.autoGenerateChaptersEnabled },
-                        set: {
-                            appSettings.autoGenerateChaptersEnabled = $0
-                            try? modelContext.save()
-                            AutoChapterQueue.shared.applyAutoGenerateSetting(
-                                enabled: $0,
-                                context: modelContext
-                            )
-                        }
-                    )) {
-                        HStack {
-                            Image(systemName: "list.bullet.rectangle")
-                                .foregroundStyle(.orange)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Auto-Generate Chapters")
-                                Text("Create chapters and summaries after transcription finishes")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    .disabled(!LocalTranscriptionService.isSupported)
-
-                    if !LocalTranscriptionService.isSupported {
-                        HStack {
-                            Image(systemName: "info.circle")
-                                .foregroundStyle(.secondary)
-                            Text("On-device transcription requires Apple Intelligence")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -307,14 +309,16 @@ struct SettingsView: View {
                 }
 
                 // Debug & Diagnostics
-                Section("Debug") {
-                    NavigationLink {
-                        CrashLogsView()
-                    } label: {
-                        HStack {
-                            Image(systemName: "ladybug.fill")
-                                .foregroundStyle(.red)
-                            Text("Crash Logs")
+                Section(Edition.debugTools ? "Debug" : "Data") {
+                    if Edition.debugTools {
+                        NavigationLink {
+                            CrashLogsView()
+                        } label: {
+                            HStack {
+                                Image(systemName: "ladybug.fill")
+                                    .foregroundStyle(.red)
+                                Text("Crash Logs")
+                            }
                         }
                     }
 

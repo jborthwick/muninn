@@ -63,7 +63,9 @@ A personal iOS podcast player built with SwiftUI and SwiftData, focused on trans
    - Go to Signing & Capabilities
    - Select your team from the dropdown
 
-6. Build and run on your device or simulator
+6. Pick a scheme and run on your device or simulator:
+   - **Muninn**: the pared-back shipping app (player, downloads, queue, publisher transcripts, manual on-device transcription, show-notes chapters)
+   - **MuninnLabs**: everything, including Fandom wiki insight, auto-transcription/chapters, AI chapters, and pause recap. Installs alongside the shipping app as "Muninn Labs".
 
 ### iCloud Sync (Optional)
 

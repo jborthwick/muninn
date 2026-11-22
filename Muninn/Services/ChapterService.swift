@@ -277,6 +277,15 @@ final class ChapterService {
             return outcome
         }
 
+        guard Edition.aiChapters else {
+            error = "No chapter timestamps found in this episode's show notes."
+            errorEpisodeGUID = episode.guid
+            debug.source = "show_notes"
+            debug.generationError = error
+            outcome = .failedPermanent
+            return outcome
+        }
+
         guard !segments.isEmpty else {
             error = "A transcript is required to generate chapters. Transcribe the episode first."
             errorEpisodeGUID = episode.guid

@@ -103,7 +103,9 @@ final class LocalTranscriptionService {
             PendingWorkStore.removeTranscription(guid: episode.guid)
             logger.info("Transcript saved: \(filename) (\(segments.count) segments)")
             AutoChapterQueue.shared.enqueueIfEnabled(episode: episode, context: context)
+            #if MUNINN_LABS
             EpisodeInsightService.shared.refreshThinCastIfNeeded(for: episode)
+            #endif
             return true
         } catch is CancellationError {
             // Keep PendingWorkStore so background interrupt can retry on become-active /

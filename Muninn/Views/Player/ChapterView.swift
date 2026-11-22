@@ -62,6 +62,7 @@ struct ChapterView: View {
         guard let episode = playerManager.currentEpisode else { return false }
         // Active/queued chapter or transcription work — show progress UI instead of Generate
         guard !isGenerating, chapterQueuePosition == nil, !isTranscriptionBusy else { return false }
+        guard Edition.aiChapters else { return ChapterService.canGenerate(for: episode) }
         if episode.episodeDescription != nil { return true }
         return !transcriptService.segments.isEmpty
             || episode.localTranscriptPath != nil
@@ -104,7 +105,7 @@ struct ChapterView: View {
             }
         }
         .overlay(alignment: .topTrailing) {
-            if chapterDebug != nil, !isGenerating, chapterQueuePosition == nil {
+            if Edition.debugTools, chapterDebug != nil, !isGenerating, chapterQueuePosition == nil {
                 Button { showChapterDebug = true } label: {
                     Image(systemName: "ladybug")
                         .font(.caption.weight(.semibold))
