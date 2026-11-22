@@ -484,7 +484,9 @@ struct EpisodeDetailView: View {
                 }
 
             } else {
-                Text("Transcribe or add show notes to generate chapters")
+                Text(Edition.aiChapters
+                     ? "Transcribe or add show notes to generate chapters"
+                     : "No chapter timestamps in the show notes")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }

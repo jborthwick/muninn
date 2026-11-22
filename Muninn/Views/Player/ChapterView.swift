@@ -366,7 +366,9 @@ struct ChapterView: View {
     }
 
     private var noChaptersMessage: String {
-        "Transcribe this episode, or add timestamped chapters to the episode description, to enable chapter generation."
+        Edition.aiChapters
+            ? "Transcribe this episode, or add timestamped chapters to the episode description, to enable chapter generation."
+            : "This episode's show notes don't include chapter timestamps."
     }
 
     // MARK: - Helpers

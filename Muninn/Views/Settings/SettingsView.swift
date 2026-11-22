@@ -309,7 +309,8 @@ struct SettingsView: View {
                 }
 
                 // Debug & Diagnostics
-                Section(Edition.debugTools ? "Debug" : "Data") {
+                // Shipping has no debug tools, so Reset sits in its own headerless group.
+                Section {
                     if Edition.debugTools {
                         NavigationLink {
                             CrashLogsView()
@@ -331,6 +332,10 @@ struct SettingsView: View {
                             Text("Reset All Data")
                                 .foregroundStyle(.red)
                         }
+                    }
+                } header: {
+                    if Edition.debugTools {
+                        Text("Debug")
                     }
                 }
 
