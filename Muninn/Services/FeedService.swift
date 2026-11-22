@@ -186,6 +186,26 @@ final class FeedService {
             }
         }
 
+        // Backfill publisher transcript URLs on episodes saved before the feed
+        // (or our parser) provided them.
+        let fetchedTranscripts = Dictionary(
+            newEpisodes.compactMap { ep in ep.transcriptURL.map { (ep.guid, $0) } },
+            uniquingKeysWith: { first, _ in first }
+        )
+        if !fetchedTranscripts.isEmpty {
+            var backfilled = 0
+            for episode in podcast.episodes where episode.transcriptURL == nil {
+                if let url = fetchedTranscripts[episode.guid] {
+                    episode.transcriptURL = url
+                    backfilled += 1
+                }
+            }
+            if backfilled > 0 {
+                logger.info("[\(podcast.title)] Backfilled \(backfilled) transcript URL(s)")
+                try? context.save()
+            }
+        }
+
         if addedCount == 0 {
             logger.info("[\(podcast.title)] No new episodes")
         } else {
@@ -395,20 +415,27 @@ final class FeedService {
 /// preferring VTT > JSON > SRT > other formats.
 private final class PodcastTranscriptXMLParser: NSObject, XMLParserDelegate {
 
-    // Priority order for transcript MIME types (lower = better)
+    // Priority order for transcript MIME types (lower = better). Types we can't
+    // parse (e.g. text/html) are skipped: storing one would show an empty
+    // transcript and hide the on-device Transcribe option.
     private static let typePriority: [String: Int] = [
         "text/vtt": 0,
         "application/json": 1,
         "text/srt": 2,
-        "application/srt": 2
+        "application/srt": 2,
+        "application/x-subrip": 2
     ]
+    private static let unsupportedTypes: Set<String> = ["text/html", "text/plain"]
 
     private var result: [String: String] = [:]     // guid → url
-    private var resultPriority: [String: Int] = [:] // guid → current best priority
-    private var currentGUID: String?
     private var inItem = false
     private var capturingGUID = false
     private var guidBuffer = ""
+    // Per-item state, resolved at </item> because feeds put <guid> and
+    // <podcast:transcript> in either order.
+    private var itemGUID: String?
+    private var itemBestURL: String?
+    private var itemBestPriority = Int.max
 
     static func parse(_ data: Data) -> [String: String] {
         let instance = PodcastTranscriptXMLParser()
@@ -421,35 +448,35 @@ private final class PodcastTranscriptXMLParser: NSObject, XMLParserDelegate {
     func parser(_ parser: XMLParser, didStartElement elementName: String,
                 namespaceURI: String?, qualifiedName qName: String?,
                 attributes: [String: String] = [:]) {
-        let localName = elementName.lowercased()
-        let qNameLower = (qName ?? "").lowercased()
+        // Namespace processing is off, so elementName keeps its prefix
+        // ("podcast:transcript"); qName is nil.
+        let name = elementName.lowercased()
 
-        if localName == "item" || qNameLower == "item" {
+        if name == "item" {
             inItem = true
-            currentGUID = nil
+            itemGUID = nil
+            itemBestURL = nil
+            itemBestPriority = Int.max
+            return
+        }
+        guard inItem else { return }
+
+        if name == "guid" {
+            capturingGUID = true
+            guidBuffer = ""
             return
         }
 
-        if inItem {
-            if localName == "guid" {
-                capturingGUID = true
-                guidBuffer = ""
-                return
-            }
-
-            // Match <podcast:transcript url="..." type="..."/> regardless of prefix
-            let isTranscript = localName == "transcript" || qNameLower.hasSuffix(":transcript")
-            if isTranscript, let url = attributes["url"] ?? attributes["URL"] {
-                if let guid = currentGUID, !url.isEmpty {
-                    let type = (attributes["type"] ?? "").lowercased()
-                    let priority = Self.typePriority[type] ?? 99
-                    let currentPriority = resultPriority[guid] ?? Int.max
-                    if priority < currentPriority {
-                        result[guid] = url
-                        resultPriority[guid] = priority
-                    }
-                }
-            }
+        let isTranscript = name == "transcript" || name.hasSuffix(":transcript")
+        guard isTranscript,
+              let url = attributes["url"] ?? attributes["URL"],
+              !url.isEmpty else { return }
+        let type = (attributes["type"] ?? "").lowercased()
+        guard !Self.unsupportedTypes.contains(type) else { return }
+        let priority = Self.typePriority[type] ?? 99
+        if priority < itemBestPriority {
+            itemBestURL = url
+            itemBestPriority = priority
         }
     }
 
@@ -461,15 +488,16 @@ private final class PodcastTranscriptXMLParser: NSObject, XMLParserDelegate {
 
     func parser(_ parser: XMLParser, didEndElement elementName: String,
                 namespaceURI: String?, qualifiedName qName: String?) {
-        let localName = elementName.lowercased()
-        if localName == "item" || (qName ?? "").lowercased() == "item" {
-            inItem = false
-            currentGUID = nil
-        }
-        if capturingGUID && localName == "guid" {
-            currentGUID = guidBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = elementName.lowercased()
+        if capturingGUID && name == "guid" {
+            itemGUID = guidBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
             capturingGUID = false
             guidBuffer = ""
+        } else if name == "item" {
+            if let guid = itemGUID, !guid.isEmpty, let url = itemBestURL {
+                result[guid] = url
+            }
+            inItem = false
         }
     }
 }
