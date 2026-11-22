@@ -15,6 +15,10 @@ final class Podcast {
     // Public feed URL for sharing (fallback if no iTunes ID and this is a private feed)
     var publicFeedURL: String?
 
+    // Set once an iTunes lookup for `publicFeedURL` has completed (match or not), so
+    // private feeds with no public listing aren't searched again on every visit.
+    var publicFeedLookupAttempted: Bool = false
+
     // Per-podcast settings
     var playbackSpeedOverride: Double?  // nil = use global setting
     var autoDownloadNewEpisodes: Bool = false  // Auto-download new episodes when refreshed

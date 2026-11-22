@@ -2,26 +2,22 @@
 
 ## Bugs to Investigate
 
-### 🔍 PodcastLookupService Called Unexpectedly
-- **Status**: Open
-- **Severity**: Medium
-- **Description**:
-  - `PodcastLookupService` is being called automatically with search terms ("naddpod", "exclusives", "patreon") even when user is not attempting to add a podcast
-  - User is not performing any search action, yet the console shows podcast lookup results
-  - Searches are failing to find matches (all negative/zero scores)
-- **Possible Causes**:
-  - Background refresh process triggering lookups
-  - Debug view or feature calling PodcastLookupService
-  - Related to similar podcast recommendations
-  - Leftover from previous feature
-- **Next Steps**:
-  - Add stack traces to PodcastLookupService calls
-  - Check what's triggering the lookups
-  - Review background tasks and refresh logic
+_None currently open._
 
 ---
 
 ## Recently Completed
+
+### ✅ PodcastLookupService Called Unexpectedly
+- **Status**: Fixed
+- **Cause**: Two automatic "find the public listing for this private feed" lookups (used only for sharing) ran with no user action:
+  - `FeedService.fetchPodcast` called `findPublicFeed` for every private feed on **every refresh** — and the result was set on a throwaway `Podcast` that `refreshPodcast` discarded, so it never stuck.
+  - `PodcastDetailView.onAppear` re-ran the multi-query lookup ("naddpod", etc.) on **every visit** whenever no match had been found.
+  - Patreon/premium titles rarely match a public iTunes listing, so these failed forever.
+- **Fix**:
+  - Removed the lookup from `FeedService` (refresh no longer touches the iTunes Search API).
+  - Moved the lookup into `PublicFeedLookupService`, which runs **at most once per podcast**: skipped if `itunesID` or `publicFeedURL` is set, or if new `Podcast.publicFeedLookupAttempted` is true. The flag is only set when iTunes actually answers, so an offline attempt can retry later. Concurrent callers (page appear + Share) share one in-flight lookup.
+  - Sharing behavior unchanged: `shareURL` still prefers the iTunes URL, then the found public URL; private feeds with no match still aren't shared with their private URL.
 
 ### ✅ Background Episode Processing
 - **Status**: Complete

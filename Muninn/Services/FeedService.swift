@@ -30,11 +30,6 @@ final class FeedService {
             // Extract podcast:transcript URLs (FeedKit doesn't parse this namespace)
             enrichEpisodesWithTranscripts(episodes, from: data)
 
-            // If this is a private feed, try to find the public version
-            if podcast.isPrivateFeed {
-                await findPublicFeed(for: podcast)
-            }
-
             return (podcast, episodes)
         case .failure(let error):
             throw FeedError.parsingFailed(error.localizedDescription)
@@ -98,32 +93,6 @@ final class FeedService {
             return (podcast, episodes, newETag, newLastModified)
         case .failure(let error):
             throw FeedError.parsingFailed(error.localizedDescription)
-        }
-    }
-
-    /// Searches iTunes for the public version of a private podcast
-    private func findPublicFeed(for podcast: Podcast) async {
-        do {
-            let results = try await PodcastLookupService.shared.searchPodcasts(query: podcast.title)
-
-            // Find a match with the same or very similar title
-            let normalizedTitle = podcast.title.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-
-            for result in results {
-                let resultTitle = result.title.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-
-                // Exact match or very close
-                if resultTitle == normalizedTitle ||
-                   resultTitle.contains(normalizedTitle) ||
-                   normalizedTitle.contains(resultTitle) {
-                    if let feedURL = result.feedURL {
-                        podcast.publicFeedURL = feedURL
-                        return
-                    }
-                }
-            }
-        } catch {
-            // Silently fail - sharing will just use the private URL
         }
     }
 

@@ -195,10 +195,10 @@ struct PodcastDetailView: View {
 
             loadEpisodes()
 
-            // Pre-lookup public feed URL for sharing
-            if podcast.isPrivateFeed && podcast.publicFeedURL == nil {
+            // Pre-lookup public feed URL for sharing (runs at most once per podcast)
+            if PublicFeedLookupService.shared.needsLookup(podcast) {
                 Task {
-                    await lookupPublicFeed()
+                    await PublicFeedLookupService.shared.lookupIfNeeded(for: podcast)
                     try? modelContext.save()
                 }
             }
@@ -900,9 +900,9 @@ struct PodcastDetailView: View {
     private func prepareAndShare() async {
         isPreparingShare = true
 
-        // If private feed without public URL, try to find it
-        if podcast.isPrivateFeed && podcast.publicFeedURL == nil {
-            await lookupPublicFeed()
+        // If private feed without public URL, try to find it (no-op if already attempted)
+        if PublicFeedLookupService.shared.needsLookup(podcast) {
+            await PublicFeedLookupService.shared.lookupIfNeeded(for: podcast)
             try? modelContext.save()
         }
 
@@ -910,118 +910,6 @@ struct PodcastDetailView: View {
             shareText = podcast.shareURL
             isPreparingShare = false
         }
-    }
-
-    private func lookupPublicFeed() async {
-        let logger = AppLogger.feed
-        logger.info("Looking up public feed for: \(podcast.title)")
-        logger.info("Private feed URL: \(podcast.feedURL)")
-
-        // Clean up the title - remove common private feed suffixes
-        var cleanTitle = podcast.title
-
-        // Remove "(private feed for email@example.com)" pattern
-        if let range = cleanTitle.range(of: #"\s*\(private feed.*\)"#, options: [.regularExpression, .caseInsensitive]) {
-            cleanTitle = String(cleanTitle[..<range.lowerBound])
-        }
-
-        // Remove parenthetical suffixes like "(Premium)" or "(Subscriber)"
-        if let range = cleanTitle.range(of: #"\s*\((premium|subscriber|member|patron).*\)"#, options: [.regularExpression, .caseInsensitive]) {
-            cleanTitle = String(cleanTitle[..<range.lowerBound])
-        }
-
-        // Remove bare (non-parenthetical) private/member suffixes, e.g.
-        // "Patreon Exclusives", "Patreon Feed", "Members Only", "Subscriber Exclusive"
-        if let range = cleanTitle.range(of: #"\s+(patreon|patron|subscribers?|members?)(\s+(exclusives?|feed|only|content))?\s*$"#,
-                                        options: [.regularExpression, .caseInsensitive]) {
-            cleanTitle = String(cleanTitle[..<range.lowerBound])
-        }
-
-        cleanTitle = cleanTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        logger.info("Clean title for search: \(cleanTitle)")
-
-        // Try progressively shorter search queries until we find good matches.
-        // This handles cases like "If Books Could Kill Mile High Club" where
-        // "Mile High Club" is a tier name, and single-word abbreviations like
-        // "NaddPod" where stripping the suffix leaves only one word.
-        var searchQueries = [cleanTitle]
-        let words = cleanTitle.split(separator: " ").map(String.init)
-        if words.count >= 2 {
-            // Try removing last 1, 2, 3 words (keeping at least 1)
-            for dropCount in 1...min(3, words.count - 1) {
-                let shortened = words.dropLast(dropCount).joined(separator: " ")
-                if shortened.count >= 3 {
-                    searchQueries.append(shortened)
-                }
-            }
-        }
-
-        // De-duplicate while preserving order
-        var seen = Set<String>()
-        searchQueries = searchQueries.filter { seen.insert($0).inserted }
-
-        for (queryIndex, searchQuery) in searchQueries.enumerated() {
-            logger.info("Trying search query: \(searchQuery)")
-
-            do {
-                let results = try await PodcastLookupService.shared.searchPodcasts(query: searchQuery)
-                logger.info("Found \(results.count) search results")
-
-                if results.isEmpty { continue }
-
-                // Try to find best match using word overlap
-                let titleWords = Set(searchQuery.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init))
-                logger.info("Title words: \(titleWords)")
-
-                var bestMatch: (result: PodcastSearchResult, score: Int)?
-
-                for result in results {
-                    let resultWords = Set(result.title.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init))
-                    let overlap = titleWords.intersection(resultWords).count
-                    let score = overlap * 2 - abs(titleWords.count - resultWords.count)
-
-                    logger.info("Result: '\(result.title)' - overlap: \(overlap), score: \(score)")
-
-                    if result.feedURL != nil && score > 0 {
-                        if bestMatch == nil || score > bestMatch!.score {
-                            bestMatch = (result, score)
-                        }
-                    }
-                }
-
-                if let match = bestMatch, match.result.feedURL != nil {
-                    logger.info("Best match: '\(match.result.title)' with score \(match.score)")
-                    let appleURL = "https://podcasts.apple.com/podcast/id\(match.result.id)"
-                    logger.info("Setting public URL: \(appleURL)")
-                    await MainActor.run {
-                        podcast.publicFeedURL = appleURL
-                    }
-                    return
-                }
-
-                // Fallback for single-word abbreviation queries (e.g. "NaddPod"):
-                // word-overlap scoring can never work when the query is an opaque
-                // abbreviation of the full show title.  If this is the last query
-                // and it's a single substantive word, trust iTunes' own ranking and
-                // accept the top result.
-                let isLastQuery = queryIndex == searchQueries.count - 1
-                if isLastQuery && titleWords.count == 1,
-                   let word = titleWords.first, word.count >= 4,
-                   let topResult = results.first(where: { $0.feedURL != nil }) {
-                    logger.info("Accepting top iTunes result for abbreviation query '\(searchQuery)': '\(topResult.title)'")
-                    let appleURL = "https://podcasts.apple.com/podcast/id\(topResult.id)"
-                    logger.info("Setting public URL: \(appleURL)")
-                    await MainActor.run {
-                        podcast.publicFeedURL = appleURL
-                    }
-                    return
-                }
-            } catch {
-                logger.error("Search failed: \(error.localizedDescription)")
-            }
-        }
-
-        logger.warning("No matching public feed found after trying all queries")
     }
 }
 
